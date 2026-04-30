@@ -59,7 +59,6 @@ export type CanonicalSupervisorEventTarget =
   | 'payment'
   | 'travel'
   | 'sales'
-  | 'faq'
   | 'consult'
   | 'handoff'
   | 'unknown';
@@ -74,7 +73,6 @@ export const SUPERVISOR_EVENT_TARGETS = [
   'payment',
   'travel',
   'sales',
-  'faq',
   'consult',
   'handoff',
   'unknown',

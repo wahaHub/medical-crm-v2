@@ -1887,7 +1887,7 @@ describe('SupervisorService event extraction', () => {
     expect(gatewayCalled).toBe(true);
   });
 
-  it('classifies consult FAQ wording as the consult target when the semantic gateway is unavailable', async () => {
+  it('classifies consult policy wording as the consult target when the semantic gateway is unavailable', async () => {
     const supervisor = new SupervisorService();
 
     await expect(supervisor.extractEvent({

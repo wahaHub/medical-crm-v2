@@ -54,8 +54,7 @@ describe('buildSkillPolicy', () => {
     ['payment', 'payment_skill', 'payment'],
     ['travel', 'travel_skill', 'travel'],
     ['sales', 'sales_skill', 'sales'],
-    ['faq', 'faq_skill', 'faq'],
-    ['consult', 'faq_skill', 'consult'],
+    ['consult', 'policy_skill', 'consult'],
     ['handoff', 'handoff_skill', 'handoff'],
   ] satisfies Array<[SupervisorEventTarget, DomainSkillId, SupervisorEventTarget]>)(
     'routes canonical target %s to %s with %s section hints',
@@ -267,7 +266,7 @@ describe('buildSkillPolicy', () => {
     });
   });
 
-  it('routes consult FAQ turns to consult FAQ skill sections', () => {
+  it('routes consult questions to policy consult sections', () => {
     const policy = buildSkillPolicy({
       event: event({ target: 'unknown' }),
       turnPlan: plan({
@@ -279,7 +278,7 @@ describe('buildSkillPolicy', () => {
     });
 
     expect(policy.requests[0]).toMatchObject({
-      skillId: 'faq_skill',
+      skillId: 'policy_skill',
       role: 'primary',
       sectionHints: { target: 'consult' },
     });

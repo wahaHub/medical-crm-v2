@@ -328,7 +328,7 @@ describe('ResponseComposer', () => {
       },
     });
 
-    expect(response.messages[0]?.text).toContain('reliable FAQ answer');
+    expect(response.messages[0]?.text).toContain('reliable answer');
     expect(response.messages[0]?.text).not.toContain('3 follow-up questions');
     expect(response.messages[0]?.text).not.toContain('Please upload your diagnosis proof');
     expect(response.cards).toEqual([]);
@@ -451,7 +451,7 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).toContain('already received your basic intake');
-    expect(response.messages[0]?.text).toContain('3 follow-up questions');
+    expect(response.messages[0]?.text).toContain('Please share the main symptom or diagnosis');
     expect(response.messages[0]?.text).not.toContain('share the key medical facts and any records you already have');
   });
 
@@ -1289,7 +1289,7 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).toContain('outside Medora scope');
-    expect(response.messages[0]?.text).not.toContain('could not find a reliable FAQ answer');
+    expect(response.messages[0]?.text).not.toContain('could not find a reliable answer');
   });
 
   it('uses faq-specific degraded guidance for faq failures', () => {
@@ -1303,7 +1303,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.',
+      'I could not load that answer just now, but your current stage is still saved. Please try asking again.',
     );
   });
 

@@ -59,6 +59,17 @@ describe('Records prompt skill context', () => {
     expectRecordsSkillContext(prompt);
   });
 
+  it('does not ask for a three-question follow-up when the response contract allows one question', () => {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask({
+      mode: 'minimal_triage',
+      minimalTriageComplete: false,
+    }));
+
+    expect(prompt).toContain('"maxQuestions":1');
+    expect(prompt).not.toContain('3-question follow-up');
+    expect(prompt).not.toContain('array of exactly the 3 canonical question strings');
+  });
+
   it('renders loaded skill guidance and read intents into medical collection prompts', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask({
       currentStage: 'COLLECT_MEDICAL_INPUTS',

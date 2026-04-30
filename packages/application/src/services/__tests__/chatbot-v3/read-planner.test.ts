@@ -87,12 +87,12 @@ describe('buildReadPlan', () => {
     ]);
   });
 
-  it('uses explicit consult FAQ read intents with consult category', () => {
+  it('uses explicit consult read intents with consult category', () => {
     const plan = buildReadPlan({
       event: event({ target: 'consult' }),
       turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' } }),
       loadedSkillSections: [
-        loadedSection('faq_skill', {
+        loadedSection('policy_skill', {
           sectionIds: ['consult_sources'],
           readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
         }),
@@ -100,8 +100,8 @@ describe('buildReadPlan', () => {
     });
 
     expect(plan.readIntents).toEqual([
-      { type: 'CONSULT_READINESS', reasonCode: 'faq_skill:consult_sources' },
-      { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'faq_skill:consult_sources' },
+      { type: 'CONSULT_READINESS', reasonCode: 'policy_skill:consult_sources' },
+      { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'policy_skill:consult_sources' },
     ]);
   });
 
@@ -175,7 +175,7 @@ describe('buildReadPlan', () => {
         loadedSection('policy_skill', {
           sectionIds: ['policy_sources'],
           retrievalGuidance: [
-            'Use process policy and process FAQ for direct questions. General policy boundary text may mention payment timing or travel logistics as dependencies.',
+            'Use process policy and process policy content for direct questions. General policy boundary text may mention payment timing or travel logistics as dependencies.',
           ],
         }),
       ],
@@ -183,7 +183,6 @@ describe('buildReadPlan', () => {
 
     expect(plan.readIntents).toEqual([
       { type: 'PROCESS_POLICY', reasonCode: 'policy_skill:policy_sources' },
-      { type: 'GENERAL_FAQ', category: 'policy', reasonCode: 'policy_skill:policy_sources' },
     ]);
   });
 
@@ -274,7 +273,7 @@ describe('buildReadPlan', () => {
       loadedSkillSections: [
         loadedSection('policy_skill', {
           sectionIds: ['policy_sources'],
-          retrievalGuidance: ['Use process policy first; use process FAQ for direct user questions.'],
+          retrievalGuidance: ['Use process policy first; use process policy content for direct user questions.'],
         }),
       ],
     });
@@ -369,7 +368,7 @@ describe('buildReadPlan', () => {
       loadedSkillSections: [
         loadedSection('treatment_skill', {
           sectionIds: ['treatment_sources'],
-          retrievalGuidance: ['Use consult readiness first; use consult FAQ for direct policy questions.'],
+          retrievalGuidance: ['Use consult readiness first; use consult policy content for direct policy questions.'],
         }),
       ],
     });

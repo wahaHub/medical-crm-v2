@@ -95,7 +95,7 @@ describe('chatbot-v3 generic event sessions', () => {
     });
   });
 
-  it('keeps process FAQ from re-entering the formal process overview', () => {
+  it('keeps process questions from re-entering the formal process overview', () => {
     const session = createSession({
       stage: 'ONLINE_CONSULT',
       facts: {

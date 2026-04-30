@@ -7,7 +7,7 @@ export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v3-events';
 
 const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, string> = {
   USER_EXPRESSED_INTEREST: 'user expresses a service goal or desire, such as treatment in China, hospital matching, pricing, travel support, or Medora help.',
-  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, FAQ, online consultation, or handoff.',
+  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, online consultation, or handoff.',
   USER_PROVIDED_INFORMATION: 'user gives facts, preferences, records, medical details, document availability, or contact information.',
   USER_RESPONDED_TO_REQUEST: 'user replies to the previous assistant request or CTA; use last_question context when available.',
   USER_REQUESTED_ACTION: 'user asks Medora to do something, such as arrange, prepare, compare, estimate, schedule, or hand off.',
@@ -102,7 +102,7 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'If an event is not in the allowed list for this turn, do not return it.',
     'If multiple events seem possible, choose the primary user intent.',
     'medical-advice questions use USER_ASKED_QUESTION with target=medical_advice.',
-    'online consultation timing, readiness, scheduling, or process FAQ uses target=consult unless the user asks refund/payment policy.',
+    'online consultation timing, readiness, scheduling, or process questions use target=consult unless the user asks refund/payment policy.',
     'outside Medora scope uses target=service_scope.',
     'USER_REQUESTED_HUMAN always uses target=handoff.',
     'Do not represent human requests as modifier=request_action.',
@@ -115,7 +115,7 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Concrete taxonomy examples:',
     ...CONCRETE_TAXONOMY_EXAMPLES,
     '',
-    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, consult, handoff, unknown.',
+    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, consult, handoff, unknown.',
     'Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.',
     '',
     'Context:',

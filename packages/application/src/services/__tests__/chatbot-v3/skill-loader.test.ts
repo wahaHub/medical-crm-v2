@@ -17,7 +17,6 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
   it('contains exactly the Phase 1.2 domain skills', () => {
     expect(Object.keys(DOMAIN_SKILL_REGISTRY).sort()).toEqual([
       'clarification_recovery_skill',
-      'faq_skill',
       'handoff_skill',
       'hospital_skill',
       'medical_advice_skill',

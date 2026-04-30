@@ -78,8 +78,8 @@ function createFaqAgentTask(): AgentTask {
   const readPlan: ReadPlan = {
     reasonCode: 'consult_question',
     readIntents: [
-      { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'faq_skill:consult_sources' },
-      { type: 'CONSULT_READINESS', reasonCode: 'faq_skill:consult_sources' },
+      { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'policy_skill:consult_sources' },
+      { type: 'CONSULT_READINESS', reasonCode: 'policy_skill:consult_sources' },
     ],
   };
 
@@ -110,13 +110,13 @@ function createFaqAgentTask(): AgentTask {
     recentMessages: recentMessages(),
     knownFacts: knownFacts(),
     loadedSkillSections: [{
-      skillId: 'faq_skill',
+      skillId: 'policy_skill',
       role: 'primary',
       reasonCode: 'consult_question',
       sectionIds: ['consult_readiness', 'consult_sources'],
       readIntentTypes: ['GENERAL_FAQ', 'CONSULT_READINESS'],
       policyText: ['Answer consult questions before asking one readiness follow-up.'],
-      retrievalGuidance: ['Retrieve consult FAQ and readiness criteria.'],
+      retrievalGuidance: ['Retrieve consult policy and readiness criteria.'],
       handlingGuidance: ['Invite one next step that preserves the primary stage.'],
     }],
     readPlan,

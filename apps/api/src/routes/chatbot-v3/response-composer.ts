@@ -30,8 +30,8 @@ export interface ResponseComposerInput {
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
 export const SAFE_MEDICAL_REDIRECT_TEXT = 'Medora can help with hospital or doctor matching and care coordination, but we cannot provide specific medical advice here. A licensed doctor should advise on diagnosis or treatment. Would you like us to help arrange a doctor consultation?';
 export const OUT_OF_SCOPE_REDIRECT_TEXT = 'Medora focuses on medical travel coordination, hospital and doctor matching, records collection, and consult setup. I can redirect this back to the care path or connect you with our team if needed.';
-const FAQ_DEGRADED_TEXT = 'I could not load that FAQ answer just now, but your current stage is still saved. Please try asking again.';
-const FAQ_MISS_TEXT = 'I could not find a reliable FAQ answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
+const FAQ_DEGRADED_TEXT = 'I could not load that answer just now, but your current stage is still saved. Please try asking again.';
+const FAQ_MISS_TEXT = 'I could not find a reliable answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
 const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
 const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
 const HANDOFF_DENIED_TEXT = 'Before we connect you with a human, please complete the current step first.';
@@ -383,7 +383,7 @@ function buildMinimalTriageOpeningText(
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): string {
   if (statusSnapshot?.minimalTriageStatus === 'pending') {
-    return 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.';
+    return 'We already received your basic intake. Please share the main symptom or diagnosis, when it started and how severe it is, plus any tests, treatments, medicines, or diagnoses so far.';
   }
 
   return 'Please share the key medical facts and any records you already have so I can guide the next step.';

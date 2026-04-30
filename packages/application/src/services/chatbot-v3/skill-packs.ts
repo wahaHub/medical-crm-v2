@@ -17,7 +17,6 @@ export type DomainSkillId =
   | 'payment_skill'
   | 'travel_skill'
   | 'sales_skill'
-  | 'faq_skill'
   | 'handoff_skill'
   | 'clarification_recovery_skill';
 
@@ -31,7 +30,6 @@ export type DomainSkillTarget =
   | 'payment'
   | 'travel'
   | 'sales'
-  | 'faq'
   | 'handoff'
   | 'clarification';
 
@@ -499,8 +497,33 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       },
       {
         id: 'policy_online_consultation',
-        appliesTo: { targets: ['policy', 'process'] },
+        appliesTo: { targets: ['policy', 'process', 'consult'] },
         text: 'Online consultation is a standard necessary step before coming to China and costs USD 400. If the user does not come to China, Medora keeps the USD 400 consultation fee. If the user comes to China for treatment, the USD 400 is applied toward the user treatment cost. Do not describe this as optional telemedicine for the standard pre-China pathway.',
+      },
+      {
+        id: 'consult_readiness',
+        appliesTo: { targets: ['consult'] },
+        text: 'Explain what is needed before doctor review and which records help readiness.',
+      },
+      {
+        id: 'consult_scope',
+        appliesTo: { targets: ['consult'] },
+        text: 'Frame online consult as records-based doctor review, second opinion preparation, or appointment readiness. Do not imply diagnosis, prescription, or treatment plan is confirmed by chat.',
+      },
+      {
+        id: 'consult_next_requirements',
+        appliesTo: { targets: ['consult'] },
+        text: 'Name concrete readiness inputs when useful: diagnosis or suspected condition, imaging/lab/pathology records, current treatment history, medication list, and the user question for the doctor.',
+      },
+      {
+        id: 'consult_timing_boundary',
+        appliesTo: { targets: ['consult'] },
+        text: 'Do not promise exact consult scheduling or doctor response time unless retrieved policy supports it. Explain that scheduling depends on records completeness and doctor availability.',
+      },
+      {
+        id: 'consult_confirmation_boundary',
+        appliesTo: { targets: ['consult'] },
+        text: 'Do not imply an appointment is confirmed unless a tool result confirms it.',
       },
       {
         id: 'policy_document_review',
@@ -529,7 +552,13 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
           id: 'policy_sources',
           appliesTo: { targets: ['policy', 'process', 'next_step'] },
           readIntentTypes: ['PROCESS_POLICY', 'GENERAL_FAQ'],
-          searchGuidance: 'Use process policy first; use process FAQ for direct user questions.',
+          searchGuidance: 'Use process policy first; use process policy content for direct user questions.',
+        },
+        {
+          id: 'consult_sources',
+          appliesTo: { targets: ['consult'] },
+          readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
+          searchGuidance: 'Use consult readiness first; use consult policy content for direct online consultation questions.',
         },
       ],
     },
@@ -610,54 +639,6 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       },
     },
     futureCms: { editable: true, owner: 'clinical' },
-  },
-  faq_skill: {
-    id: 'faq_skill',
-    target: 'faq',
-    description: 'Online consult questions and consult readiness.',
-    policySections: [
-      {
-        id: 'consult_readiness',
-        appliesTo: { targets: ['consult'] },
-        text: 'Explain what is needed before doctor review and which records help readiness.',
-      },
-      {
-        id: 'consult_scope',
-        appliesTo: { targets: ['consult'] },
-        text: 'Frame online consult as records-based doctor review, second opinion preparation, or appointment readiness. Do not imply diagnosis, prescription, or treatment plan is confirmed by chat.',
-      },
-      {
-        id: 'consult_next_requirements',
-        appliesTo: { targets: ['consult'] },
-        text: 'Name concrete readiness inputs when useful: diagnosis or suspected condition, imaging/lab/pathology records, current treatment history, medication list, and the user question for the doctor.',
-      },
-      {
-        id: 'consult_timing_boundary',
-        appliesTo: { targets: ['consult'] },
-        text: 'Do not promise exact consult scheduling or doctor response time unless retrieved policy supports it. Explain that scheduling depends on records completeness and doctor availability.',
-      },
-      {
-        id: 'consult_confirmation_boundary',
-        appliesTo: appliesToAll,
-        text: 'Do not imply an appointment is confirmed unless a tool result confirms it.',
-      },
-    ],
-    retrieval: {
-      sections: [
-        {
-          id: 'consult_sources',
-          appliesTo: { targets: ['consult'] },
-          readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
-          searchGuidance: 'Use consult readiness first; use consult FAQ for direct policy questions.',
-        },
-      ],
-    },
-    handling: {
-      USER_ASKED_QUESTION: {
-        ask: 'Explain the consult step and invite the next readiness action.',
-      },
-    },
-    futureCms: { editable: true, owner: 'ops' },
   },
   handoff_skill: {
     id: 'handoff_skill',

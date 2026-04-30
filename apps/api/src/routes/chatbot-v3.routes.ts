@@ -634,7 +634,7 @@ function resolveFacts(
   };
 }
 
-async function resolveSupervisorIntakeSeed(
+export async function resolveSupervisorIntakeSeed(
   services: AppServices,
   session: AiChatSession | null,
 ): Promise<MinimalIntakeSeed> {
@@ -650,11 +650,14 @@ async function resolveSupervisorIntakeSeed(
   const profile = await services.aiUserProfileRepo.findByAnonymousKeyOrPatient({
     patientId: session.patientId,
   });
+  const patient = profile?.preferredLanguage
+    ? null
+    : await services.patientRepo.findById(session.patientId, session.site);
 
   return {
     condition: profile?.conditionOrGoal ?? profile?.conditionCategory ?? null,
     targetDestination: profile?.preferredDestination[0] ?? null,
-    language: profile?.preferredLanguage ?? null,
+    language: profile?.preferredLanguage ?? patient?.preferredLanguage ?? null,
     gender: null,
   };
 }

@@ -113,7 +113,6 @@ function addReadIntentsForLoadedSection(
       add({ type: 'TRAVEL_SUPPORT_SCOPE', reasonCode });
       return;
     case 'sales_skill':
-    case 'faq_skill':
       if (hasSignal('faq')) {
         add({ type: 'GENERAL_FAQ', category: resolveGeneralFaqCategory(input.event, input.turnPlan), reasonCode });
       }

@@ -124,6 +124,17 @@ describe('extractDeterministicEvent', () => {
     })).toBeNull();
   });
 
+  it('does not treat a medical specialist request as an explicit human handoff', () => {
+    expect(extractDeterministicEvent({
+      message: "How much to see a pain specialist? I don't want to come if too expensive.",
+      attachments: [],
+    })).toBeNull();
+    expect(extractDeterministicEvent({
+      message: 'Can I talk to a pain specialist about my back?',
+      attachments: [],
+    })).toBeNull();
+  });
+
   it('leaves next-step text for the semantic layer', () => {
     expect(extractDeterministicEvent({
       message: '下一步呢？',

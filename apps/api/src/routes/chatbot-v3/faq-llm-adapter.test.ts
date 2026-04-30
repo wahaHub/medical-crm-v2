@@ -299,13 +299,13 @@ describe('FaqLlmAdapter', () => {
         'load_consult_readiness_criteria',
       ],
       loadedSkillSections: [{
-        skillId: 'faq_skill',
+        skillId: 'policy_skill',
         role: 'primary',
         reasonCode: 'answer_consult_faq',
         sectionIds: ['consult_readiness', 'consult_sources'],
         readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
         policyText: ['Explain what is needed before doctor review and which records help readiness.'],
-        retrievalGuidance: ['Use consult readiness first; use consult FAQ for direct policy questions.'],
+        retrievalGuidance: ['Use consult readiness first; use consult policy content for direct policy questions.'],
         handlingGuidance: ['Explain the consult step and invite the next readiness action.'],
       }],
       readIntents: [
@@ -332,7 +332,7 @@ describe('FaqLlmAdapter', () => {
     expect(planPrompt).toContain('loaded_skill_sections=');
     expect(planPrompt).toContain('consult_readiness');
     expect(planPrompt).toContain('Explain what is needed before doctor review and which records help readiness.');
-    expect(planPrompt).toContain('Use consult readiness first; use consult FAQ for direct policy questions.');
+    expect(planPrompt).toContain('Use consult readiness first; use consult policy content for direct policy questions.');
     expect(planPrompt).toContain('Explain the consult step and invite the next readiness action.');
     expect(planPrompt).toContain('"readIntentTypes":["CONSULT_READINESS","GENERAL_FAQ"]');
     expect(planPrompt).not.toContain('allowed_skill_packs=');

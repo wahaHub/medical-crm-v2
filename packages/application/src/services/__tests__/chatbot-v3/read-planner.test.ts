@@ -46,6 +46,147 @@ describe('buildReadPlan', () => {
     };
   }
 
+  it('uses explicit pricing read intents from loaded skill section metadata', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'pricing' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'pricing', mode: 'faq' } }),
+      loadedSkillSections: [
+        loadedSection('pricing_skill', {
+          sectionIds: ['pricing_sources'],
+          readIntentTypes: ['PRICING_FACTORS', 'GENERAL_FAQ', 'RECORD_REQUIREMENTS'],
+          retrievalGuidance: [
+            'Legacy wording mentions policy detours, but metadata owns retrieval intents.',
+          ],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'PRICING_FACTORS', reasonCode: 'pricing_skill:pricing_sources' },
+      { type: 'GENERAL_FAQ', category: 'pricing', reasonCode: 'pricing_skill:pricing_sources' },
+      { type: 'RECORD_REQUIREMENTS', reasonCode: 'pricing_skill:pricing_sources' },
+    ]);
+  });
+
+  it('uses explicit hospital read intents from loaded skill section metadata', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'hospital' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'PRESENT_OPTIONS', target: 'hospital' } }),
+      loadedSkillSections: [
+        loadedSection('hospital_skill', {
+          sectionIds: ['hospital_sources'],
+          readIntentTypes: ['HOSPITAL_CANDIDATES', 'HOSPITAL_FAQ', 'DOCTOR_MATCHING_CONTEXT'],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'HOSPITAL_CANDIDATES', reasonCode: 'hospital_skill:hospital_sources' },
+      { type: 'HOSPITAL_FAQ', category: 'hospital', reasonCode: 'hospital_skill:hospital_sources' },
+      { type: 'DOCTOR_MATCHING_CONTEXT', reasonCode: 'hospital_skill:hospital_sources' },
+    ]);
+  });
+
+  it('uses explicit consult FAQ read intents with consult category', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'consult' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' } }),
+      loadedSkillSections: [
+        loadedSection('faq_skill', {
+          sectionIds: ['consult_sources'],
+          readIntentTypes: ['CONSULT_READINESS', 'GENERAL_FAQ'],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'CONSULT_READINESS', reasonCode: 'faq_skill:consult_sources' },
+      { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'faq_skill:consult_sources' },
+    ]);
+  });
+
+  it('uses explicit policy read intents with process category for next-step questions', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'next_step' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'next_step', mode: 'faq' } }),
+      loadedSkillSections: [
+        loadedSection('policy_skill', {
+          sectionIds: ['policy_sources'],
+          readIntentTypes: ['PROCESS_POLICY', 'GENERAL_FAQ'],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'PROCESS_POLICY', reasonCode: 'policy_skill:policy_sources' },
+      { type: 'GENERAL_FAQ', category: 'process', reasonCode: 'policy_skill:policy_sources' },
+    ]);
+  });
+
+  it('uses explicit dedicated skill read intents from loaded section metadata', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'policy' }),
+      turnPlan: turnPlan({}),
+      loadedSkillSections: [
+        loadedSection('payment_skill', {
+          sectionIds: ['payment_policy_sources'],
+          readIntentTypes: ['PAYMENT_POLICY'],
+        }),
+        loadedSection('travel_skill', {
+          sectionIds: ['travel_support_sources'],
+          readIntentTypes: ['TRAVEL_SUPPORT_SCOPE'],
+        }),
+        loadedSection('service_scope_skill', {
+          sectionIds: ['service_scope'],
+          readIntentTypes: ['SERVICE_SCOPE'],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'PAYMENT_POLICY', reasonCode: 'payment_skill:payment_policy_sources' },
+      { type: 'TRAVEL_SUPPORT_SCOPE', reasonCode: 'travel_skill:travel_support_sources' },
+      { type: 'SERVICE_SCOPE', reasonCode: 'service_scope_skill:service_scope' },
+    ]);
+  });
+
+  it('keeps reason code deterministic when loaded sections do not expose section ids', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'payment' }),
+      turnPlan: turnPlan({}),
+      loadedSkillSections: [
+        loadedSection('payment_skill', {
+          reasonCode: 'payment_loaded',
+          readIntentTypes: ['PAYMENT_POLICY'],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'PAYMENT_POLICY', reasonCode: 'payment_skill:payment_loaded' },
+    ]);
+  });
+
+  it('does not infer payment or travel reads from canonical policy boundary prose', () => {
+    const plan = buildReadPlan({
+      event: event({ target: 'policy' }),
+      turnPlan: turnPlan({ primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' } }),
+      loadedSkillSections: [
+        loadedSection('policy_skill', {
+          sectionIds: ['policy_sources'],
+          retrievalGuidance: [
+            'Use process policy and process FAQ for direct questions. General policy boundary text may mention payment timing or travel logistics as dependencies.',
+          ],
+        }),
+      ],
+    });
+
+    expect(plan.readIntents).toEqual([
+      { type: 'PROCESS_POLICY', reasonCode: 'policy_skill:policy_sources' },
+      { type: 'GENERAL_FAQ', category: 'policy', reasonCode: 'policy_skill:policy_sources' },
+    ]);
+  });
+
   it('plans admin FAQ reads from loaded pricing skill sections', () => {
     const plan = buildReadPlan({
       event: event({ target: 'pricing' }),

@@ -88,12 +88,6 @@ function addReadIntentsForLoadedSection(
       }
       return;
     case 'policy_skill':
-      if (hasSignal('travel')) {
-        add({ type: 'TRAVEL_SUPPORT_SCOPE', reasonCode });
-      }
-      if (hasSignal('payment')) {
-        add({ type: 'PAYMENT_POLICY', reasonCode });
-      }
       if (hasSignal('process', 'next-step', 'next step')) {
         add({ type: 'PROCESS_POLICY', reasonCode });
       }

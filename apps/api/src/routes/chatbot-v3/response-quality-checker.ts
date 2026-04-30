@@ -431,6 +431,7 @@ function hasUnsupportedInsuranceClaim(responseText: string): boolean {
   const normalized = stripInsuranceBoundaryDisclaimers(normalize(responseText));
   return /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process)\s+[^.!?]{0,50}\binsurance\s+claims?\b/.test(normalized)
     || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\binsurance\s+claims?\b[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process)\b/.test(normalized)
+    || /\bmedora\s+(will|can|could|shall)\s+[^.!?]{0,50}\b(support|help with)\s+(your\s+)?insurance\s+claims?\b/.test(normalized)
     || /\b(guarantee|approve)\s+[^.!?]{0,30}\b(reimbursement|coverage)\b/.test(normalized)
     || /\b(reimbursement|coverage)\s+[^.!?]{0,30}\b(guaranteed|approved)\b/.test(normalized)
     || /\b(direct billing|coverage)\s+approval\b/.test(normalized);
@@ -441,7 +442,8 @@ function stripInsuranceBoundaryDisclaimers(normalized: string): string {
     .replace(/\b(contact|ask|check with)\s+(your\s+)?insurer\s+(directly\s+)?(?:for|about)\s+(claims?|coverage|reimbursement)\b/g, ' ')
     .replace(/\bmedora\s+can\s+organize\s+neutral\s+hospital\s+documents\b/g, ' ')
     .replace(/\bask\s+the\s+hospital\s+about\s+medical\s+liability\s+insurance\b/g, ' ')
-    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process|approve|guarantee)\s+[^.!?]{0,50}\b(insurance\s+claims?|claims?|coverage|reimbursement|direct billing)\b/g, ' ');
+    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\b(handle|submit|manage|follow up|file|process|approve|guarantee|provide|support|help with)\s+[^.!?]{0,50}\b(insurance\s+claims?|claims?|coverage|reimbursement|direct billing)\b/g, ' ')
+    .replace(/\bmedora\s+(does\s+not|doesn't|cannot|can't|will\s+not|won't)\s+[^.!?]{0,50}\bprovide\s+direct billing approval\s+for\s+insurance\s+claims?\b/g, ' ');
 }
 
 function isOnlineConsultationFeeBoundarySection(section: LoadedSkillSection): boolean {
@@ -450,10 +452,16 @@ function isOnlineConsultationFeeBoundarySection(section: LoadedSkillSection): bo
 }
 
 function hasUnsupportedOnlineConsultationFeeClaim(responseText: string): boolean {
-  const normalized = normalize(responseText);
+  const normalized = stripOnlineConsultationFeeBoundaryDisclaimers(normalize(responseText));
   return /\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|online consultation(?: fee)?)\b[^.!?]{0,80}\b(free|refundable|refund(?:ed)?|not required|optional)\b/.test(normalized)
     || /\b(free|refundable|refund(?:ed)?|not required|optional)\b[^.!?]{0,80}\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|online consultation(?: fee)?)\b/.test(normalized)
     || /\bonline consultation(?: fee)?\b[^.!?]{0,80}\b(not required|optional)\b[^.!?]{0,60}\b(before|prior to)\s+(china\s+)?travel\b/.test(normalized);
+}
+
+function stripOnlineConsultationFeeBoundaryDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\bonline consultation(?: fee)?\b[^.!?]{0,80}\bis\s+not\s+(free|refundable)\b/g, ' ')
+    .replace(/\b(usd\s*400|\$400|400\s*(?:usd|dollars?)|fee)\b[^.!?]{0,80}\bis\s+not\s+refundable\b/g, ' ');
 }
 
 function sectionContextText(section: LoadedSkillSection): string {
@@ -541,11 +549,16 @@ function isDoctorMatchingBoundarySection(section: LoadedSkillSection): boolean {
 }
 
 function hasUnsupportedDoctorMatchingClaim(responseText: string): boolean {
-  const normalized = normalize(responseText);
+  const normalized = stripDoctorMatchingBoundaryDisclaimers(normalize(responseText));
   return /\b(recommend|match|choose)\s+(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\b/.test(normalized)
     || /\b(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\s+[^.!?]{0,60}\b(best|right|recommended|good fit)\b/.test(normalized)
     || /\b(symptoms?\s+alone|based on your symptoms?)\b[^.!?]{0,80}\b(recommend|match|choose)\s+(?:a\s+)?(?:dr\.?|doctor)\b/.test(normalized)
     || /\bno\s+(medical\s+)?records?\s+(are\s+)?needed\s+[^.!?]{0,60}\bdoctor\s+recommendation\b/.test(normalized);
+}
+
+function stripDoctorMatchingBoundaryDisclaimers(normalized: string): string {
+  return normalized
+    .replace(/\b(?:i|we|medora)\s+(cannot|can't|can not|do\s+not|don't|will\s+not|won't)\s+recommend\s+(?:dr\.?|doctor|professor)\s+[a-z][a-z'.-]*\s+from\s+symptoms?\s+alone\b/g, ' ');
 }
 
 function hasUnsupportedHandoffPromise(responseText: string): boolean {

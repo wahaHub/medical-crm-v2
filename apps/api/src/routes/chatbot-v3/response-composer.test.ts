@@ -2090,6 +2090,50 @@ describe('ResponseQualityChecker', () => {
     }));
   });
 
+  it('allows policy_skill insurance disclaimers that deny direct billing approval', () => {
+    const cannotChecks = checkSkillBehavior(
+      'Medora cannot provide direct billing approval for insurance claims.',
+      [policySection],
+    );
+    const doesNotChecks = checkSkillBehavior(
+      'Medora does not provide direct billing approval for insurance claims.',
+      [policySection],
+    );
+
+    expect(cannotChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(doesNotChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('fails policy_skill when the response promises insurance claims support', () => {
+    const supportChecks = checkSkillBehavior(
+      'Medora can support your insurance claim.',
+      [policySection],
+    );
+    const helpChecks = checkSkillBehavior(
+      'Medora can help with your insurance claims.',
+      [policySection],
+    );
+
+    expect(supportChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(helpChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+  });
+
   it('fails policy_skill when the online consultation fee is described as free, refundable, or optional before standard China travel', () => {
     const checks = checkSkillBehavior(
       'The USD 400 online consultation is free and refundable if you do not come, and it is not required before China travel.',
@@ -2111,6 +2155,28 @@ describe('ResponseQualityChecker', () => {
     );
 
     expect(checks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows policy_skill online consultation fee negations', () => {
+    const notRefundableChecks = checkSkillBehavior(
+      'The online consultation fee is USD 400 and is not refundable if you do not come.',
+      [policySection],
+    );
+    const notFreeChecks = checkSkillBehavior(
+      'The online consultation is not free; the fee is USD 400.',
+      [policySection],
+    );
+
+    expect(notRefundableChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_online_consultation_fee_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+    expect(notFreeChecks).toContainEqual(expect.objectContaining({
       id: 'policy_online_consultation_fee_boundary',
       result: 'pass',
       severity: 'observed',
@@ -2328,6 +2394,28 @@ describe('ResponseQualityChecker', () => {
   it('allows doctor matching boundary language that asks for records before human review', () => {
     const checks = checkSkillBehavior(
       'Please upload your records first. The Medora human team will review them before doctor matching.',
+      [{
+        skillId: 'hospital_skill',
+        role: 'primary',
+        reasonCode: 'doctor_matching',
+        sectionIds: ['doctor_matching_boundary'],
+        readIntentTypes: [],
+        policyText: ['Upload records first; the human team reviews before doctor matching.'],
+        retrievalGuidance: [],
+        handlingGuidance: ['Do not name or recommend a doctor from symptoms alone.'],
+      }],
+    );
+
+    expect(checks).toContainEqual(expect.objectContaining({
+      id: 'hospital_doctor_matching_boundary',
+      result: 'pass',
+      severity: 'observed',
+    }));
+  });
+
+  it('allows doctor matching boundary language that names a doctor only inside a refusal', () => {
+    const checks = checkSkillBehavior(
+      'I cannot recommend Dr. Li from symptoms alone. Please upload records first so the human team can review before doctor matching.',
       [{
         skillId: 'hospital_skill',
         role: 'primary',

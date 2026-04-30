@@ -186,4 +186,22 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).not.toContain('medical_facts');
     expect(prompt).not.toContain('contact, human');
   });
+
+  it('locks refined taxonomy classification scenarios with concrete examples', () => {
+    const prompt = buildSupervisorPrompt(baseInput);
+
+    expect(prompt).toContain('Concrete taxonomy examples:');
+    expect(prompt).toContain('"Can I talk to a human coordinator?" -> eventType=USER_REQUESTED_HUMAN, target=handoff, modifier=ask.');
+    expect(prompt).toContain('"Could this be trigeminal neuralgia?" -> eventType=USER_ASKED_QUESTION, target=medical_advice, modifier=ask.');
+    expect(prompt).toContain('"Can you help me get a work visa?" -> eventType=USER_ASKED_QUESTION, target=service_scope, modifier=ask.');
+    expect(prompt).toContain('"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.');
+    expect(prompt).toContain('"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
+    expect(prompt).toContain('"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
+    expect(prompt).toContain('"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
+    expect(prompt).toContain('Unclear messages -> eventType=USER_MESSAGE_UNCLEAR, target=unknown, modifier=unknown.');
+    expect(prompt).toContain('Doctor matching belongs to target=hospital, not target=medical_advice.');
+    expect(prompt).toContain('Do not add legacy out-of-scope or medical-advice event types for these scenarios.');
+  });
 });

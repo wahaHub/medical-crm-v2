@@ -41,6 +41,21 @@ const MEDORA_SUPPORTED_SERVICE_SCOPE = [
   'arranging or preparing records-based review, online consults, appointments, or human coordinator handoff for the medical-travel case',
 ] as const;
 
+const CONCRETE_TAXONOMY_EXAMPLES = [
+  '"Can I talk to a human coordinator?" -> eventType=USER_REQUESTED_HUMAN, target=handoff, modifier=ask.',
+  '"Could this be trigeminal neuralgia?" -> eventType=USER_ASKED_QUESTION, target=medical_advice, modifier=ask.',
+  '"Can you help me get a work visa?" -> eventType=USER_ASKED_QUESTION, target=service_scope, modifier=ask.',
+  '"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.',
+  '"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
+  '"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
+  '"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  '"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  '"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
+  'Unclear messages -> eventType=USER_MESSAGE_UNCLEAR, target=unknown, modifier=unknown.',
+  'Doctor matching belongs to target=hospital, not target=medical_advice.',
+  'Do not add legacy out-of-scope or medical-advice event types for these scenarios.',
+] as const;
+
 function isSemanticSupervisorEventType(eventType: SupervisorEventType): eventType is SemanticSupervisorEventType {
   return eventType in SEMANTIC_EVENT_CLASSIFICATION_GUIDE;
 }
@@ -94,6 +109,9 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Classify requests for a service outside that supported scope as USER_ASKED_QUESTION or USER_REQUESTED_ACTION with target=service_scope.',
     'Classify guarantee/promise/ensure outcome wording as USER_ASKED_QUESTION with target=medical_advice, not USER_EXPRESSED_INTEREST.',
     'If uncertain, use USER_MESSAGE_UNCLEAR with target=unknown and modifier=unknown.',
+    '',
+    'Concrete taxonomy examples:',
+    ...CONCRETE_TAXONOMY_EXAMPLES,
     '',
     'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, handoff, unknown.',
     'Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.',

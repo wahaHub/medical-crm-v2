@@ -6072,17 +6072,17 @@ describe('chatbot-v3 runtime', () => {
             target: 'consult',
           }),
           selectedDomainSkills: expect.arrayContaining([
-            'policy_skill',
+            'faq_skill',
           ]),
           loadedSkillSections: expect.arrayContaining([
             expect.objectContaining({
-              skillId: 'policy_skill',
+              skillId: 'faq_skill',
               sectionIds: expect.any(Array),
             }),
           ]),
           readIntents: expect.arrayContaining([
             expect.objectContaining({ type: 'GENERAL_FAQ', category: 'consult' }),
-            expect.objectContaining({ type: 'PROCESS_POLICY' }),
+            expect.objectContaining({ type: 'CONSULT_READINESS' }),
           ]),
           retrievedContext: expect.arrayContaining([
             expect.objectContaining({

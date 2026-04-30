@@ -267,6 +267,96 @@ describe('loadSkillSections', () => {
     ]);
   });
 
+  it('loads detailed sections for canonical service scope and handoff requests', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'handoff_skill',
+          role: 'primary',
+          reasonCode: 'canonical_handoff',
+          sectionHints: {
+            eventType: 'USER_REQUESTED_HUMAN',
+            target: 'handoff',
+            modifier: 'ask',
+            primaryActionType: 'ESCALATE',
+          },
+        },
+        {
+          skillId: 'service_scope_skill',
+          role: 'auxiliary',
+          reasonCode: 'canonical_service_scope',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'service_scope',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(2);
+    expect(loaded.warnings).toEqual([]);
+
+    const handoff = loaded.skillSections[0];
+    expect(handoff).toMatchObject({
+      skillId: 'handoff_skill',
+      reasonCode: 'canonical_handoff',
+    });
+    expect(handoff?.sectionIds).toEqual(expect.arrayContaining([
+      'handoff_readiness',
+      'handoff_minimum_context',
+      'handoff_summary_payload',
+    ]));
+    expect(handoff?.policyText.join('\n')).toContain('Handoff summary');
+
+    const serviceScope = loaded.skillSections[1];
+    expect(serviceScope).toMatchObject({
+      skillId: 'service_scope_skill',
+      reasonCode: 'canonical_service_scope',
+    });
+    expect(serviceScope?.sectionIds).toEqual(expect.arrayContaining([
+      'service_scope_identity_contact',
+      'service_scope_catalog',
+      'service_scope_boundary',
+    ]));
+    expect(serviceScope?.policyText.join('\n')).toContain('RM H2 4/F CENTURY IND CTR');
+    expect(serviceScope?.policyText.join('\n')).toContain('Service catalog');
+  });
+
+  it('loads focused Medora policy essentials for canonical policy requests', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'policy_skill',
+          role: 'primary',
+          reasonCode: 'canonical_policy',
+          sectionHints: {
+            eventType: 'USER_ASKED_QUESTION',
+            target: 'policy',
+            modifier: 'ask',
+            primaryActionType: 'ANSWER',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.warnings).toEqual([]);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'policy_online_consultation',
+      'policy_document_review',
+      'policy_insurance_boundary',
+    ]));
+    expect(loaded.skillSections[0]?.sectionIds).not.toEqual(expect.arrayContaining([
+      'process_travel_scope',
+      'process_payment_scope',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('USD 400');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('within 48 hours');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('does not provide claims support');
+  });
+
   it('exposes structured read intent types from matching retrieval sections', () => {
     const loaded = loadSkillSections({
       requests: [
@@ -327,7 +417,7 @@ describe('loadSkillSections', () => {
     expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Do not blanket dismiss');
   });
 
-  it('loads detailed process guidance for process, next-step, travel, payment, and detours', () => {
+  it('loads detailed process guidance for canonical policy detours', () => {
     const loaded = loadSkillSections({
       requests: [
         {
@@ -351,13 +441,9 @@ describe('loadSkillSections', () => {
       'process_overview_boundary',
       'process_next_step_routing',
       'process_timeline_boundary',
-      'process_travel_scope',
-      'process_payment_scope',
     ]));
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('formal overview');
     expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('journey stage');
-    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('travel logistics');
-    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('payment timing');
     expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Answer the detour');
   });
 

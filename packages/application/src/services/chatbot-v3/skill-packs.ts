@@ -519,12 +519,12 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       },
       {
         id: 'process_travel_scope',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['travel'], eventTypes: ['USER_ASKED_QUESTION'] },
         text: 'For travel logistics, stay within treatment-related support such as visa timing context, flights, hotels, local transport, hospital appointment logistics, and travel document preparation. Do not offer unrelated immigration, housing, school, job, or legal services.',
       },
       {
         id: 'process_payment_scope',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['payment'], eventTypes: ['USER_ASKED_QUESTION'] },
         text: 'For payment questions, explain payment timing, methods, deposits, refunds, and billing uncertainty only from retrieved payment policy. Do not invent discounts, fixed totals, guarantees, or financing terms.',
       },
       {
@@ -688,17 +688,17 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     policySections: [
       {
         id: 'handoff_confirm',
-        appliesTo: { targets: ['human', 'contact'] },
+        appliesTo: { targets: ['handoff', 'human', 'contact'] },
         text: 'Confirm the handoff and summarize what will be passed to the coordinator.',
       },
       {
         id: 'handoff_readiness',
-        appliesTo: { targets: ['human', 'contact'] },
+        appliesTo: { targets: ['handoff', 'human', 'contact'] },
         text: 'Before handoff, inspect fact patch, recent conversation, uploaded records summary, journey state, and available user information. If enough context exists, prepare handoff; if not, ask for the smallest useful missing item rather than blind transfer.',
       },
       {
         id: 'handoff_minimum_context',
-        appliesTo: { targets: ['human', 'contact'] },
+        appliesTo: { targets: ['handoff', 'human', 'contact'] },
         text: 'Minimum context depends on the request: general contact needs short reason and contact channel if needed; medical/hospital/treatment handoff needs diagnosis or main symptoms, one key record if available, desired service, known city/public-private preference, time window/urgency, and contact channel; pricing/payment/refund/insurance handoff needs topic, related diagnosis/procedure/hospital when relevant, and contact channel; travel handoff needs city or target hospital, travel window, logistics need, medical path status, and contact channel.',
       },
       {
@@ -708,17 +708,17 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       },
       {
         id: 'handoff_when_denied',
-        appliesTo: { targets: ['human'] },
+        appliesTo: { targets: ['handoff', 'human'] },
         text: 'If handoff is not available yet, explain the current prerequisite and offer the smallest next step rather than pretending a ticket was created.',
       },
       {
         id: 'handoff_not_ready',
-        appliesTo: { targets: ['human'] },
+        appliesTo: { targets: ['handoff', 'human'] },
         text: 'Not-yet-ready handoff cases include doctor recommendation with no diagnosis/symptoms/records, booking with no treatment goal/city/hospital/medical context, pricing with no diagnosis/procedure/hospital type/records, hospital contact with no target hospital or medical context, or contact request with no reason and no contact channel. Ask for one small missing item.',
       },
       {
         id: 'handoff_summary_payload',
-        appliesTo: { targets: ['human', 'contact'] },
+        appliesTo: { targets: ['handoff', 'human', 'contact'] },
         text: 'Handoff summary should include only relevant context for the coordinator: user goal, diagnosis/main symptoms or medical topic, uploaded records status, city/hospital/public-private preference, online consultation status, budget/timing urgency if known, requested human action, contact channel, and remaining uncertainty.',
       },
       {

@@ -76,7 +76,7 @@ describe('buildSkillPolicy', () => {
 
   it('routes USER_REQUESTED_HUMAN to the handoff skill without adding a skill-specific event type', () => {
     expect(requests({
-      event: event({ eventType: 'USER_REQUESTED_HUMAN', target: 'unknown', modifier: 'request_action' }),
+      event: event({ eventType: 'USER_REQUESTED_HUMAN', target: 'unknown', modifier: 'unknown' }),
       turnPlan: plan({
         primaryAction: { type: 'ANSWER', target: 'unknown', mode: 'faq' },
         followUpAction: { type: 'NONE' },
@@ -88,7 +88,7 @@ describe('buildSkillPolicy', () => {
       sectionHints: {
         eventType: 'USER_REQUESTED_HUMAN',
         target: 'handoff',
-        modifier: 'request_action',
+        modifier: 'unknown',
       },
     });
   });
@@ -110,6 +110,38 @@ describe('buildSkillPolicy', () => {
         followUpAction: { type: 'NONE' },
       }),
     ],
+    [
+      'CLARIFY action with medical_advice target',
+      event({ eventType: 'USER_ASKED_QUESTION', target: 'medical_advice', modifier: 'ask' }),
+      plan({
+        primaryAction: { type: 'CLARIFY', target: 'medical_advice', reasonCode: 'ambiguous_message' },
+        followUpAction: { type: 'NONE' },
+      }),
+    ],
+    [
+      'CLARIFY action with service_scope target',
+      event({ eventType: 'USER_ASKED_QUESTION', target: 'service_scope', modifier: 'ask' }),
+      plan({
+        primaryAction: { type: 'CLARIFY', target: 'service_scope', reasonCode: 'ambiguous_message' },
+        followUpAction: { type: 'NONE' },
+      }),
+    ],
+    [
+      'USER_MESSAGE_UNCLEAR event with medical_advice target',
+      event({ eventType: 'USER_MESSAGE_UNCLEAR', target: 'medical_advice', modifier: 'unknown' }),
+      plan({
+        primaryAction: { type: 'ANSWER', target: 'medical_advice', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+    ],
+    [
+      'USER_MESSAGE_UNCLEAR event with service_scope target',
+      event({ eventType: 'USER_MESSAGE_UNCLEAR', target: 'service_scope', modifier: 'unknown' }),
+      plan({
+        primaryAction: { type: 'ANSWER', target: 'service_scope', mode: 'faq' },
+        followUpAction: { type: 'NONE' },
+      }),
+    ],
   ] satisfies Array<[string, SupervisorEvent, TurnPlan]>)(
     'routes %s to clarification recovery with an unknown section target',
     (_caseName, unclearEvent, unclearPlan) => {
@@ -121,6 +153,32 @@ describe('buildSkillPolicy', () => {
         skillId: 'clarification_recovery_skill',
         role: 'primary',
         sectionHints: { target: 'unknown' },
+      });
+    },
+  );
+
+  it.each([
+    ['medical_facts', 'medical_advice_skill', 'medical_advice'],
+    ['process', 'policy_skill', 'policy'],
+    ['next_step', 'policy_skill', 'policy'],
+    ['recommendation', 'hospital_skill', 'hospital'],
+    ['hospital_selection', 'hospital_skill', 'hospital'],
+    ['human', 'handoff_skill', 'handoff'],
+    ['contact', 'handoff_skill', 'handoff'],
+  ] satisfies Array<[SupervisorEventTarget, DomainSkillId, SupervisorEventTarget]>)(
+    'routes legacy alias target %s to %s with %s section hints',
+    (target, skillId, sectionTarget) => {
+      expect(requests({
+        event: event({ eventType: 'USER_ASKED_QUESTION', target }),
+        turnPlan: plan({
+          primaryAction: { type: 'ANSWER', target: 'unknown', mode: 'faq' },
+          followUpAction: { type: 'NONE' },
+        }),
+        agentRole: 'GeneralResponseAgent',
+      })[0]).toMatchObject({
+        skillId,
+        role: 'primary',
+        sectionHints: { target: sectionTarget },
       });
     },
   );
@@ -180,11 +238,11 @@ describe('buildSkillPolicy', () => {
     });
   });
 
-  it('routes provided contact information to human handoff as the primary domain skill', () => {
+  it('routes provided contact information to human handoff via the contact alias', () => {
     expect(requests({
-      event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'handoff', modifier: 'provide' }),
+      event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'contact', modifier: 'provide' }),
       turnPlan: plan({
-        primaryAction: { type: 'ACKNOWLEDGE', target: 'handoff' },
+        primaryAction: { type: 'ACKNOWLEDGE', target: 'contact' },
         followUpAction: { type: 'NONE' },
       }),
       agentRole: 'HandoffAgent',

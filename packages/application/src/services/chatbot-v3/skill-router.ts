@@ -64,16 +64,16 @@ function primaryRouteFor(input: {
   agentRole: AgentRole;
   facts: DomainFacts;
 }): SkillRoute {
+  if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
+    return clarificationRoute();
+  }
+
   if (input.event.target === 'medical_advice') {
     return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
   }
 
   if (input.event.target === 'service_scope' || input.turnPlan.primaryAction.type === 'REDIRECT') {
     return { skillId: 'service_scope_skill', sectionTarget: input.event.target ?? 'service_scope' };
-  }
-
-  if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
-    return clarificationRoute();
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {

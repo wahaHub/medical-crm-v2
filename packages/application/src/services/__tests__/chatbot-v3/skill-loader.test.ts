@@ -41,6 +41,31 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
       expect(skill).not.toHaveProperty('forbiddenBehaviors');
     }
   });
+
+  it('contains required detailed Medora policy anchors', () => {
+    const allPolicyText = (skillId: keyof typeof DOMAIN_SKILL_REGISTRY) =>
+      DOMAIN_SKILL_REGISTRY[skillId].policySections.map((section) => section.text).join('\n');
+
+    expect(allPolicyText('service_scope_skill')).toContain('RM H2 4/F CENTURY IND CTR');
+    expect(allPolicyText('service_scope_skill')).toContain('US +1 4708613825');
+    expect(allPolicyText('service_scope_skill')).toContain('contact@medicaltourismchina.health');
+
+    expect(allPolicyText('policy_skill')).toContain('USD 400');
+    expect(allPolicyText('policy_skill')).toContain('within 48 hours');
+    expect(allPolicyText('policy_skill')).toContain('does not provide claims support');
+
+    expect(allPolicyText('medical_advice_skill')).toContain('online consultation');
+    expect(allPolicyText('hospital_skill')).toContain('hospital API');
+    expect(allPolicyText('hospital_skill')).toContain('specific doctor');
+    expect(allPolicyText('treatment_skill')).toContain('required step before coming to China');
+
+    expect(allPolicyText('pricing_skill')).toContain('Hospital medical cost vs Medora service fee');
+    expect(allPolicyText('payment_skill')).toContain('Payee distinction');
+    expect(allPolicyText('travel_skill')).toContain('medical path first');
+    expect(allPolicyText('sales_skill')).toContain('low-friction');
+    expect(allPolicyText('handoff_skill')).toContain('Handoff summary');
+    expect(allPolicyText('clarification_recovery_skill')).toContain('Safe-assumption');
+  });
 });
 
 describe('loadSkillPacks', () => {

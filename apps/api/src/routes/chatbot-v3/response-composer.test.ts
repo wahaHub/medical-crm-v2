@@ -2117,8 +2117,20 @@ describe('ResponseQualityChecker', () => {
       'Medora can support your insurance claim.',
       [policySection],
     );
+    const genericSupportChecks = checkSkillBehavior(
+      'Medora can provide claims support.',
+      [policySection],
+    );
     const helpChecks = checkSkillBehavior(
       'Medora can help with your insurance claims.',
+      [policySection],
+    );
+    const helpYouChecks = checkSkillBehavior(
+      'Medora can help you with insurance claims.',
+      [policySection],
+    );
+    const safeSupportDenialChecks = checkSkillBehavior(
+      'Medora does not provide claims support.',
       [policySection],
     );
 
@@ -2127,10 +2139,25 @@ describe('ResponseQualityChecker', () => {
       result: 'fail',
       severity: 'hard',
     }));
+    expect(genericSupportChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
     expect(helpChecks).toContainEqual(expect.objectContaining({
       id: 'policy_insurance_claims_boundary',
       result: 'fail',
       severity: 'hard',
+    }));
+    expect(helpYouChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'fail',
+      severity: 'hard',
+    }));
+    expect(safeSupportDenialChecks).toContainEqual(expect.objectContaining({
+      id: 'policy_insurance_claims_boundary',
+      result: 'pass',
+      severity: 'observed',
     }));
   });
 

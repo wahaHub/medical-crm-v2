@@ -73,7 +73,7 @@ function primaryRouteFor(input: {
   }
 
   if (input.turnPlan.primaryAction.type === 'CLARIFY' || input.event.eventType === 'USER_MESSAGE_UNCLEAR') {
-    return { skillId: 'clarification_recovery_skill', sectionTarget: input.event.target ?? 'unknown' };
+    return clarificationRoute();
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {

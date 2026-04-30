@@ -265,6 +265,62 @@ describe('SendMessageUseCase', () => {
     );
   });
 
+  it.each([
+    {
+      queueName: 'summarization',
+      arrangeFailure: () => {
+        vi.mocked(mockMessageTaskQueue.enqueueSummarization)
+          .mockRejectedValueOnce(new Error('summarization queue down'));
+      },
+    },
+    {
+      queueName: 'translation',
+      arrangeFailure: () => {
+        vi.mocked(mockMessageTaskQueue.enqueueTranslation)
+          .mockRejectedValueOnce(new Error('translation queue down'));
+      },
+    },
+  ])('FILE message returns saved result when post-persist $queueName enqueue rejects', async ({ arrangeFailure }) => {
+    const conversation = makeConversation({ category: 'ADMIN_HOSPITAL' });
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(conversation);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    arrangeFailure();
+
+    const result = await useCase.execute(
+      'conv-1',
+      {
+        content: 'see attachment',
+        messageType: 'FILE',
+        attachments: [{
+          fileName: 'scan.pdf',
+          fileSize: 4,
+          mimeType: 'application/pdf',
+          storageKey: 'communications/messages/conv-1/scan.pdf',
+        }],
+      },
+      adminActor,
+    );
+
+    expect(result.message.id).toBeTruthy();
+    expect(result.message.messageType).toBe('FILE');
+    expect(result.message.attachments).toEqual([
+      expect.objectContaining({
+        fileName: 'scan.pdf',
+        fileSize: 4,
+        mimeType: 'application/pdf',
+        storageKey: 'communications/messages/conv-1/scan.pdf',
+      }),
+    ]);
+    expect(mockMessageRepo.save).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.save).toHaveBeenCalledOnce();
+    expect(conversation.lastMessageId).toBe(result.message.id);
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[SendMessageUseCase] Failed to enqueue post-persist attachment tasks:',
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
+
   // ─── Test 6: recipientLang derivation for ADMIN_HOSPITAL ─────────────────────
 
   it('recipientLang derivation: ADMIN_HOSPITAL — ADMIN sender resolves hospital preferred lang', async () => {

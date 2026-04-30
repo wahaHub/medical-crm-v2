@@ -224,6 +224,10 @@ app.openapi(sendMessageRoute, async (c) => {
               wsManager.hasSubscribers(`patient:${caseEntity.patientId}`)
               || wsManager.hasSubscribers(`conv:${id}`)
               || (patientConversationRoom ? wsManager.hasSubscribers(patientConversationRoom) : false),
+            channel: conversation.category,
+            hospitalId: conversation.category === 'HOSPITAL_PATIENT' ? conversation.hospitalId ?? null : null,
+            sourceKind: 'message',
+            sourceId: result.id,
           });
         } catch (error) {
           console.warn('Failed to notify patient about an admin reply:', error);

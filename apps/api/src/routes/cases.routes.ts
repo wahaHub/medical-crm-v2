@@ -274,6 +274,8 @@ app.openapi(sendMarketingEmailRoute, async (c) => {
   await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
 
   const patient = await svc.patientRepo.findById(caseEntity.patientId);
+  const dedupeKey = buildMarketingEmailDedupeKey(id, body.subject, body.messagePreview);
+  const hospitalId = actor.hospitalId ?? undefined;
   try {
     await svc.notifyPatientOfCaseUpdate.execute({
       caseId: id,
@@ -281,7 +283,19 @@ app.openapi(sendMarketingEmailRoute, async (c) => {
       site: patient?.site ?? 'china',
       subject: body.subject,
       messagePreview: body.messagePreview,
-      dedupeKey: buildMarketingEmailDedupeKey(id, body.subject, body.messagePreview),
+      dedupeKey,
+      channel: 'HOSPITAL_PATIENT',
+      hospitalId,
+      sourceKind: 'marketing-email',
+      sourceId: dedupeKey,
+      resolveConversationId: async () => {
+        const conversation = await svc.createConversation.execute({
+          category: 'HOSPITAL_PATIENT',
+          caseId: id,
+          hospitalId,
+        }, actor);
+        return conversation.id;
+      },
     });
   } catch (error) {
     console.warn('Failed to send patient marketing email:', error);

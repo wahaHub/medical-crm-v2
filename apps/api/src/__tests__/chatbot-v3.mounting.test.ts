@@ -5,6 +5,7 @@ import type {
   OrchestratorV3DecisionInput,
   SupervisorEvent,
 } from '@medical-crm/application';
+import { Conversation } from '@medical-crm/domain';
 import { ConversationOrchestratorV3RuntimeService } from '../routes/chatbot-v3/runtime.service.js';
 import { createChatbotV3SessionDriver } from './helpers/chatbot-v3-session-driver.js';
 
@@ -128,6 +129,22 @@ const mockServices = {
     findBySessionId: vi.fn(),
     save: vi.fn(),
     patchStatus: vi.fn(),
+  },
+  conversationRepo: {
+    findMany: vi.fn(),
+    findOrCreateAdminPatientConversation: vi.fn(),
+    save: vi.fn(),
+    findById: vi.fn(),
+    findByIdForUpdate: vi.fn(),
+  },
+  messageRepo: {
+    save: vi.fn(),
+  },
+  notifyAdminsOfPatientMessage: {
+    execute: vi.fn(),
+  },
+  txRunner: {
+    run: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({ tx: true })),
   },
   patientAuthService: {
     verifySessionToken: vi.fn(),
@@ -294,6 +311,14 @@ describe('Chatbot v3 public route mounting', () => {
 
       return currentSession;
     });
+    mockServices.conversationRepo.findMany.mockResolvedValue({ data: [], total: 0 });
+    mockServices.conversationRepo.findOrCreateAdminPatientConversation.mockImplementation(async (entity: unknown) => entity);
+    mockServices.conversationRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.conversationRepo.findById.mockImplementation(async (id: string) => mockServices.conversationRepo.findOrCreateAdminPatientConversation.mock.results[0]?.value ?? null);
+    mockServices.conversationRepo.findByIdForUpdate.mockImplementation(async (_id: string, _tx?: unknown) => null);
+    mockServices.messageRepo.save.mockImplementation(async (entity: unknown) => entity);
+    mockServices.notifyAdminsOfPatientMessage.execute.mockResolvedValue(undefined);
+    mockServices.txRunner.run.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({ tx: true }));
     mockServices.patientAuthService.verifySessionToken.mockResolvedValue({ userId: 'patient-1' });
     mockServices.createTicket.execute.mockResolvedValue({
       id: 'ticket-v3-1',
@@ -397,6 +422,80 @@ describe('Chatbot v3 public route mounting', () => {
     expect(body.turnOutcome).toBeDefined();
     expect(chatbotV3ChatResponseSchema.parse(body)).toBeDefined();
     expect(mockServices.idempotencyExecutor.execute).toHaveBeenCalledOnce();
+  });
+
+  it('mirrors registered widget v3 turns into the admin case conversation', async () => {
+    const mirroredConversation = new Conversation({
+      id: 'conv-admin-v3-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      title: null,
+      hospitalId: null,
+      lastMessageId: null,
+      lastMessageAt: null,
+      lastMessagePreview: null,
+      lastSenderId: null,
+      assistantMode: 'AI_ACTIVE',
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+
+    currentSession = createPersistedMountingSession({
+      id: 'db-session-v3-widget-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      patientId: 'patient-1',
+      sessionSecretHash: null,
+    });
+    mockServices.aiChatSessionRepo.findBySessionId.mockImplementation(async () => currentSession);
+    mockServices.conversationRepo.findOrCreateAdminPatientConversation.mockResolvedValue(mirroredConversation);
+    mockServices.conversationRepo.findById.mockResolvedValue(mirroredConversation);
+    mockServices.conversationRepo.findByIdForUpdate.mockResolvedValue(mirroredConversation);
+
+    const app = await loadApp();
+    const res = await app.request('/api/v3/chatbot/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: 'patient_session=patient-token',
+      },
+      body: JSON.stringify({
+        sessionId: 'widget-chat:patient-1:case-1',
+        message: 'Please make sure the admin can see this.',
+        attachments: [{
+          fileName: 'report.pdf',
+          fileSize: 2048,
+          mimeType: 'application/pdf',
+          storageKey: 'chatbot-v3/widget/report.pdf',
+        }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockServices.messageRepo.save).toHaveBeenCalledTimes(2);
+    expect(mockServices.messageRepo.save.mock.calls[0]?.[0]).toMatchObject({
+      conversationId: 'conv-admin-v3-1',
+      senderId: 'patient-1',
+      senderRole: 'PATIENT',
+      content: 'Please make sure the admin can see this.',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'chatbot-v3/widget/report.pdf',
+      }],
+    });
+    expect(mockServices.messageRepo.save.mock.calls[1]?.[0]).toMatchObject({
+      conversationId: 'conv-admin-v3-1',
+      senderId: null,
+      senderRole: 'AI',
+      senderName: 'Medora AI',
+    });
+    expect(mockServices.notifyAdminsOfPatientMessage.execute).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-admin-v3-1',
+      caseId: 'case-1',
+      patientId: 'patient-1',
+      messagePreview: 'Please make sure the admin can see this.',
+    }));
   });
 
   it('rejects malformed TRIAGE_SUBMITTED requests at validation time', async () => {

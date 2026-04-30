@@ -73,8 +73,9 @@ export class StubEmailService implements IEmailService {
     messagePreview: string;
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
-    console.log(`[STUB EMAIL] Patient new message alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink}`);
+    console.log(`[STUB EMAIL] Patient new message alert to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.messagePreview} :: ${params.dashboardLink} :: replyTo=${params.replyTo ?? 'none'}`);
   }
 
   async sendPatientCaseUpdateAlert(params: {
@@ -85,7 +86,8 @@ export class StubEmailService implements IEmailService {
     bodyLines?: string[];
     dashboardLink: string;
     locale?: string | null;
+    replyTo?: string | null;
   }): Promise<void> {
-    console.log(`[STUB EMAIL] Patient case update to ${params.to} (${params.locale ?? 'default'}): ${params.subject} :: ${params.patientName} :: ${params.messagePreview} :: ${params.bodyLines?.join(' | ') ?? ''} :: ${params.dashboardLink}`);
+    console.log(`[STUB EMAIL] Patient case update to ${params.to} (${params.locale ?? 'default'}): ${params.subject} :: ${params.patientName} :: ${params.messagePreview} :: ${params.bodyLines?.join(' | ') ?? ''} :: ${params.dashboardLink} :: replyTo=${params.replyTo ?? 'none'}`);
   }
 }

@@ -45,6 +45,7 @@ Default local URLs after boot:
 The verified deployment entrypoint is:
 
 - [scripts/deploy_v2.py](scripts/deploy_v2.py)
+- [scripts/tail_journalctl.py](scripts/tail_journalctl.py)
 
 ### What it does
 
@@ -115,6 +116,35 @@ python3 scripts/deploy_v2.py \
   --ssh-key "$SSH_KEY_PATH"
 ```
 
+### Production log tail
+
+When you need to debug the API on Lightsail, use:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --follow
+```
+
+Common variants:
+
+```bash
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --since 15
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --since 30 \
+  --grep chatbot-v3
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key "$SSH_KEY_PATH" \
+  --service medora-ai-sync-outbox.service \
+  --priority err
+```
+
 ### Prerequisites
 
 - `vercel` CLI is installed and already logged in
@@ -123,12 +153,21 @@ python3 scripts/deploy_v2.py \
 - `/opt/medora/medical-crm-v2/.env` already exists on the API server
 - The SSH key passed to `--ssh-key` can access the API server
 
+### Resend Inbound Email
+
+- Configure Resend Inbound DNS for `medicaltourismchina.health` or `reply.medicaltourismchina.health`.
+- Subscribe the Resend webhook event `email.received` to the CRM API endpoint `/api/webhooks/resend/inbound`.
+- Store the webhook signing secret as `RESEND_WEBHOOK_SECRET`.
+- Keep `INBOUND_EMAIL_ENABLED=false` until staging E2E passes, then set it to `true`.
+- Patient-facing emails use the unified sender `customer@medicaltourismchina.health`; tokenized Reply-To addresses route replies back into CRM messages.
+
 ### Notes
 
 - The script deploys from the branch passed through `--branch`
 - If that branch is not the current checked-out branch, the script creates a temporary git worktree
 - The script expects a clean worktree unless `--allow-dirty` is passed
 - During Next.js builds you may still see `Dynamic server usage` warnings in Vercel logs for authenticated pages; these did not block production deployment in the verified run
+- `tail_journalctl.py` defaults to `44.253.141.97`, `ubuntu`, and `medora-crm-v2-api`, but all three can be overridden per run
 
 ## Dify API Key Rotation
 

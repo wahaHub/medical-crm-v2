@@ -113,8 +113,12 @@ export class SendMessageUseCase {
 
     // 7. IMAGE/FILE: async enqueue
     if (messageType === 'IMAGE' || messageType === 'FILE') {
-      await this.messageTaskQueue.enqueueSummarization(result.message.id);
-      await this.messageTaskQueue.enqueueTranslation(result.message.id, recipientLang);
+      try {
+        await this.messageTaskQueue.enqueueSummarization(result.message.id);
+        await this.messageTaskQueue.enqueueTranslation(result.message.id, recipientLang);
+      } catch (error) {
+        console.warn('[SendMessageUseCase] Failed to enqueue post-persist attachment tasks:', error);
+      }
     }
 
     return result;

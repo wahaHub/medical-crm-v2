@@ -326,6 +326,24 @@ def resolve_vercel_deploy_context(repo_root: Path, project_dir: Path) -> VercelD
     )
 
 
+def is_local_origin(value: str) -> bool:
+    return bool(re.match(r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:/.*)?$", value.strip()))
+
+
+def validate_remote_api_env_values(env: dict[str, str]) -> None:
+    if env.get("NODE_ENV") != "production":
+        return
+
+    invalid = [
+        name
+        for name in ("ADMIN_ORIGIN", "HOSPITAL_ORIGIN")
+        if is_local_origin(env.get(name, ""))
+    ]
+    if invalid:
+        detail = ", ".join(f"{name} must not point to localhost in production" for name in invalid)
+        raise CommandError(detail)
+
+
 def deploy_frontend(
     repo_root: Path,
     target: FrontendTarget,
@@ -374,15 +392,25 @@ required = {list(API_REQUIRED_REMOTE_ENVS)!r}
 env_path = Path({args.remote_dir!r}) / '.env'
 if not env_path.exists():
     raise SystemExit('Missing remote env file: ' + str(env_path))
-present = []
+values = {{}}
 for raw in env_path.read_text().splitlines():
     raw = raw.strip()
     if not raw or raw.startswith('#') or '=' not in raw:
         continue
-    present.append(raw.split('=', 1)[0])
+    key, value = raw.split('=', 1)
+    values[key] = value.strip().strip('"').strip("'")
+present = list(values)
 missing = [name for name in required if name not in present]
 if missing:
     raise SystemExit('Missing remote API env vars: ' + ', '.join(missing))
+if values.get('NODE_ENV') == 'production':
+    local_origins = []
+    for name in ('ADMIN_ORIGIN', 'HOSPITAL_ORIGIN'):
+        value = values.get(name, '').strip()
+        if value.startswith(('http://localhost', 'https://localhost', 'http://127.0.0.1', 'https://127.0.0.1', 'http://0.0.0.0', 'https://0.0.0.0')):
+            local_origins.append(name)
+    if local_origins:
+        raise SystemExit('Remote API production env has local origins: ' + ', '.join(local_origins))
 print('Remote API env check passed')
 PY
         """

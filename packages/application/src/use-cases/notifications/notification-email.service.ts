@@ -2,14 +2,28 @@ import type {
   IEmailNotificationCooldownRepository,
   IEmailService,
   INotificationRecipientRepository,
+  EmailReplyChannel,
   NotificationPreferences,
   PatientSite,
 } from '@medical-crm/domain';
 import { getPatientAppOrigin } from '../patient-auth/patient-app-origin.js';
+import type { CreateEmailReplyTokenUseCase } from './create-email-reply-token.use-case.js';
 
 const DEFAULT_OFFLINE_WINDOW_MS = 5 * 60 * 1000;
 const DEFAULT_EMAIL_COOLDOWN_MS = 5 * 60 * 1000;
 const ADMIN_ACTIVITY_NOTIFICATION_KIND = 'admin-patient-activity';
+
+type ReplyTokenInput = {
+  conversationId?: string | null;
+  resolveConversationId?: (() => Promise<string | null>) | null;
+  caseId: string;
+  patientId: string;
+  patientEmail: string;
+  channel?: EmailReplyChannel;
+  hospitalId?: string | null;
+  sourceKind?: string;
+  sourceId?: string | null;
+};
 
 type AdminNotificationRecipient = {
   id: string;
@@ -42,7 +56,12 @@ function preferenceEnabled(
 }
 
 function getAdminOrigin(): string {
-  return (process.env['ADMIN_ORIGIN'] ?? 'http://localhost:3002').replace(/\/+$/, '');
+  const origin = process.env['ADMIN_ORIGIN']?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('ADMIN_ORIGIN is required to generate admin notification links');
+  }
+  return 'http://localhost:3002';
 }
 
 export class NotificationEmailService {
@@ -56,11 +75,15 @@ export class NotificationEmailService {
     options?: {
       offlineWindowMs?: number;
       cooldownMs?: number;
+      createEmailReplyToken?: CreateEmailReplyTokenUseCase;
     },
   ) {
     this.offlineWindowMs = options?.offlineWindowMs ?? DEFAULT_OFFLINE_WINDOW_MS;
     this.cooldownMs = options?.cooldownMs ?? DEFAULT_EMAIL_COOLDOWN_MS;
+    this.createEmailReplyToken = options?.createEmailReplyToken;
   }
+
+  private readonly createEmailReplyToken?: CreateEmailReplyTokenUseCase;
 
   async notifyAdminsOfNewCase(input: {
     caseId: string;
@@ -155,6 +178,12 @@ export class NotificationEmailService {
     messagePreview: string;
     site: PatientSite;
     isPatientOnline: boolean;
+    replyTo?: string | null;
+    channel?: EmailReplyChannel;
+    hospitalId?: string | null;
+    sourceKind?: string;
+    sourceId?: string | null;
+    resolveConversationId?: (() => Promise<string | null>) | null;
   }): Promise<void> {
     if (input.isPatientOnline) {
       return;
@@ -169,13 +198,27 @@ export class NotificationEmailService {
       recipientId: patient.id,
       notificationKind: 'patient-new-message',
       dedupeKey: input.conversationId,
-      send: () => this.emailService.sendPatientNewMessageAlert({
-        to: patient.email,
-        patientName: patient.name || 'Patient',
-        messagePreview: truncatePreview(input.messagePreview),
-        dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
-        locale: patient.preferredLanguage ?? null,
-      }),
+      send: async () => {
+        const replyTo = input.replyTo ?? await this.buildReplyTo({
+          conversationId: input.conversationId,
+          caseId: input.caseId,
+          patientId: input.patientId,
+          patientEmail: patient.email,
+          channel: input.channel ?? 'ADMIN_PATIENT',
+          hospitalId: input.hospitalId ?? null,
+          sourceKind: input.sourceKind ?? 'message',
+          sourceId: input.sourceId ?? null,
+        });
+
+        await this.emailService.sendPatientNewMessageAlert({
+          to: patient.email,
+          patientName: patient.name || 'Patient',
+          messagePreview: truncatePreview(input.messagePreview),
+          dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
+          locale: patient.preferredLanguage ?? null,
+          replyTo,
+        });
+      },
     });
   }
 
@@ -187,6 +230,13 @@ export class NotificationEmailService {
     messagePreview: string;
     bodyLines?: string[];
     dedupeKey?: string;
+    replyTo?: string | null;
+    conversationId?: string | null;
+    channel?: EmailReplyChannel;
+    hospitalId?: string | null;
+    sourceKind?: string;
+    sourceId?: string | null;
+    resolveConversationId?: (() => Promise<string | null>) | null;
   }): Promise<void> {
     const patient = await this.recipientRepo.findRecipientById(input.patientId);
     if (!patient || patient.role !== 'PATIENT' || !patient.email) {
@@ -197,16 +247,54 @@ export class NotificationEmailService {
       recipientId: patient.id,
       notificationKind: 'patient-case-update',
       dedupeKey: input.dedupeKey?.trim() || `${input.caseId}:${input.subject}`,
-      send: () => this.emailService.sendPatientCaseUpdateAlert({
-        to: patient.email,
-        patientName: patient.name || 'Patient',
-        subject: input.subject,
-        messagePreview: truncatePreview(input.messagePreview),
-        bodyLines: input.bodyLines?.filter((line) => line.trim().length > 0),
-        dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
-        locale: patient.preferredLanguage ?? null,
-      }),
+      send: async () => {
+        const replyTo = input.replyTo ?? await this.buildReplyTo({
+          conversationId: input.conversationId ?? null,
+          resolveConversationId: input.resolveConversationId ?? null,
+          caseId: input.caseId,
+          patientId: input.patientId,
+          patientEmail: patient.email,
+          channel: input.channel,
+          hospitalId: input.hospitalId ?? null,
+          sourceKind: input.sourceKind ?? 'case-update',
+          sourceId: input.sourceId ?? null,
+        });
+
+        await this.emailService.sendPatientCaseUpdateAlert({
+          to: patient.email,
+          patientName: patient.name || 'Patient',
+          subject: input.subject,
+          messagePreview: truncatePreview(input.messagePreview),
+          bodyLines: input.bodyLines?.filter((line) => line.trim().length > 0),
+          dashboardLink: `${getPatientAppOrigin(patient.patientSite ?? input.site)}/dashboard`,
+          locale: patient.preferredLanguage ?? null,
+          replyTo,
+        });
+      },
     });
+  }
+
+  private async buildReplyTo(input: ReplyTokenInput): Promise<string | null> {
+    if (!this.createEmailReplyToken || !input.channel) {
+      return null;
+    }
+
+    const conversationId = input.conversationId ?? await input.resolveConversationId?.() ?? null;
+    if (!conversationId) {
+      return null;
+    }
+
+    const result = await this.createEmailReplyToken.execute({
+      conversationId,
+      caseId: input.caseId,
+      patientId: input.patientId,
+      patientEmail: input.patientEmail,
+      channel: input.channel,
+      hospitalId: input.hospitalId ?? null,
+      sourceKind: input.sourceKind ?? 'notification',
+      sourceId: input.sourceId ?? null,
+    });
+    return result.replyTo;
   }
 
   private async listOfflineAdmins(

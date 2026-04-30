@@ -1,11 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   extractSafeMessageErrorDetail,
   formatAttachmentTypeForDisplay,
+  buildPdfPreviewUrl,
   formatConversationCategoryForDisplay,
   formatParticipantRoleForDisplay,
   formatUserFacingMessageError,
+  translatePdfForPreview,
 } from '../components/messages-view';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('messages view error formatting', () => {
   it('hides backend-ish errors but preserves safe user-facing detail', () => {
@@ -63,5 +69,49 @@ describe('messages view error formatting', () => {
     expect(formatAttachmentTypeForDisplay({ type: 'image/png' }, translate)).toBe('Image');
     expect(formatAttachmentTypeForDisplay({ type: 'application/vnd.ms-excel' }, translate)).toBe('File');
     expect(formatAttachmentTypeForDisplay({ type: undefined }, translate)).toBe('File');
+  });
+
+  it('uses the signed PDF attachment URL directly instead of the disabled legacy preview route', () => {
+    const signedUrl = 'https://signed.example.com/attachments/report.pdf?token=abc';
+
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).toBe(signedUrl);
+    expect(buildPdfPreviewUrl(signedUrl, 'report.pdf')).not.toContain('/api/documents/preview');
+  });
+
+  it('requests PDF translation by authorized attachment identifiers instead of signed source URLs', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      inputFileName: 'report.pdf',
+      outputDir: '/tmp/babeldoc-1',
+      outputFiles: [{ fileName: 'report.zh.pdf', id: 'translated-file-1', url: '/api/v2/documents/translate/file?id=translated-file-1' }],
+      stdout: '',
+      stderr: '',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })));
+
+    await translatePdfForPreview({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+      fileName: 'report.pdf',
+      targetLanguage: 'zh',
+    }, 'Failed to translate PDF');
+
+    expect(fetch).toHaveBeenCalledWith('/api/documents/translate', expect.objectContaining({
+      method: 'POST',
+    }));
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = JSON.parse(String((init as RequestInit).body));
+    expect(body).toMatchObject({
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      storageKey: 'crm/dev/messages/conversation-1/asset-1/report.pdf',
+      fileName: 'report.pdf',
+      targetLanguage: 'zh',
+      outputMode: 'mono',
+    });
+    expect(body).not.toHaveProperty('sourceUrl');
+    expect(JSON.stringify(body)).not.toContain('https://signed.example.com');
   });
 });

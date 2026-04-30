@@ -1,13 +1,14 @@
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
-import { assertHospitalCaseAccess, toActor } from '@medical-crm/application';
+import { assertHospitalCaseAccess, hasHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { uploadDocumentSchema } from '@medical-crm/validation';
-import { ValidationError } from '@medical-crm/utils';
+import { NotFoundError, ValidationError } from '@medical-crm/utils';
 import { access, readdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, extname, join, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { getServices } from '../composition-root.js';
 
 const app = new OpenAPIHono();
@@ -24,26 +25,43 @@ const docIdParamSchema = z.object({
   docId: z.string().uuid(),
 });
 
+const notifyDocumentTypes = ['INVITATION', 'DIAGNOSIS', 'QUOTE'] as const;
+type NotifyDocumentType = typeof notifyDocumentTypes[number];
+const notifyDocumentBodySchema = z.object({
+  hospitalId: z.string().uuid().optional(),
+}).strict();
+
 const translateDocumentSchema = z.object({
+  conversationId: z.string().min(1).optional(),
+  messageId: z.string().min(1).optional(),
+  storageKey: z.string().min(1).optional(),
   inputPath: z.string().min(1).optional(),
   sourceUrl: z.string().url().optional(),
   fileName: z.string().min(1).optional(),
   targetLanguage: z.string().min(2),
   sourceLanguage: z.string().min(2).optional(),
   outputMode: z.enum(['mono', 'dual', 'both']).default('mono'),
-}).superRefine((value, ctx) => {
-  if (!value.inputPath && !value.sourceUrl) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['inputPath'],
-      message: 'Either inputPath or sourceUrl is required',
-    });
-  }
 });
 
 const translatedFileQuerySchema = z.object({
-  path: z.string().min(1),
+  id: z.string().min(1).optional(),
+  path: z.string().min(1).optional(),
 });
+
+type Actor = ReturnType<typeof toActor>;
+type TranslationContext = {
+  conversationId: string;
+  messageId: string;
+  storageKey: string;
+};
+type RegisteredTranslatedFile = {
+  path: string;
+  fileName: string;
+  actor: Pick<Actor, 'userId' | 'role' | 'hospitalId'>;
+  context: TranslationContext;
+};
+
+const translatedFileRegistry = new Map<string, RegisteredTranslatedFile>();
 
 function getBabelDocConfig() {
   const root = process.env['BABELDOC_DIR']
@@ -59,25 +77,105 @@ function getBabelDocConfig() {
   };
 }
 
-async function resolvePdfTranslationInput(input: z.infer<typeof translateDocumentSchema>): Promise<string> {
-  if (input.inputPath) {
-    if (extname(input.inputPath).toLowerCase() !== '.pdf') {
-      throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
-    }
-    await access(input.inputPath, fsConstants.R_OK);
-    return input.inputPath;
+function isCallerSuppliedUrlLikeStorageKey(storageKey: string): boolean {
+  return /^(https?:|data:|blob:)/i.test(storageKey);
+}
+
+function sanitizePdfSourceFileName(candidate: string | null | undefined): string {
+  const fileName = candidate?.trim() ?? '';
+  if (
+    !fileName
+    || isAbsolute(fileName)
+    || fileName.includes('/')
+    || fileName.includes('\\')
+    || fileName.split('.').includes('..')
+    || fileName.includes('..')
+  ) {
+    throw new ValidationError('Invalid PDF source filename');
   }
 
-  if (!input.sourceUrl) {
-    throw new ValidationError('Either inputPath or sourceUrl is required');
-  }
-
-  const fileName = input.fileName?.trim() || 'document.pdf';
   if (extname(fileName).toLowerCase() !== '.pdf') {
     throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
   }
 
-  const response = await fetch(input.sourceUrl);
+  return fileName;
+}
+
+function isSameTranslationActor(left: RegisteredTranslatedFile['actor'], right: Actor): boolean {
+  return left.userId === right.userId
+    && left.role === right.role
+    && left.hospitalId === right.hospitalId;
+}
+
+function registerTranslatedOutputFiles(
+  outputFiles: Array<{ fileName: string; path: string }>,
+  actor: Actor,
+  context: TranslationContext,
+): Array<{ fileName: string; id: string; url: string }> {
+  return outputFiles.map((file) => {
+    const id = randomUUID();
+    const fileName = basename(file.fileName);
+    translatedFileRegistry.set(id, {
+      path: file.path,
+      fileName,
+      actor: {
+        userId: actor.userId,
+        role: actor.role,
+        hospitalId: actor.hospitalId,
+      },
+      context,
+    });
+    return {
+      fileName,
+      id,
+      url: `/api/v2/documents/translate/file?id=${encodeURIComponent(id)}`,
+    };
+  });
+}
+
+async function resolvePdfTranslationInput(
+  input: z.infer<typeof translateDocumentSchema>,
+  actor: Actor,
+  svc: ReturnType<typeof getServices>,
+): Promise<{ inputPath: string; context: TranslationContext }> {
+  if (input.inputPath) {
+    throw new ValidationError('inputPath is not accepted for document translation previews');
+  }
+
+  if (input.sourceUrl) {
+    throw new ValidationError('sourceUrl is not accepted for document translation previews');
+  }
+
+  if (!input.conversationId || !input.messageId || !input.storageKey) {
+    throw new ValidationError('conversationId, messageId, and storageKey are required');
+  }
+
+  if (isCallerSuppliedUrlLikeStorageKey(input.storageKey)) {
+    throw new ValidationError('Attachment storageKey must be an internal storage key');
+  }
+
+  await svc.getConversation.execute(input.conversationId, actor);
+  const message = await svc.messageRepo.findById(input.messageId);
+  if (!message || message.conversationId !== input.conversationId) {
+    throw new NotFoundError('Message not found');
+  }
+
+  const attachment = message.attachments.find((item) => item.storageKey === input.storageKey);
+  if (!attachment) {
+    throw new NotFoundError('Attachment not found');
+  }
+
+  if (isCallerSuppliedUrlLikeStorageKey(attachment.storageKey)) {
+    throw new ValidationError('Attachment storageKey must be an internal storage key');
+  }
+
+  if (attachment.mimeType !== 'application/pdf') {
+    throw new ValidationError('PDF translation preview currently supports PDF inputs only. Image translation is not wired yet.');
+  }
+
+  const fileName = sanitizePdfSourceFileName(attachment.fileName || input.fileName || 'document.pdf');
+  const signedUrl = await svc.storage.getSignedUrl(attachment.storageKey);
+  const response = await fetch(signedUrl);
   if (!response.ok) {
     throw new ValidationError(`Failed to download source PDF: ${response.status}`);
   }
@@ -86,7 +184,14 @@ async function resolvePdfTranslationInput(input: z.infer<typeof translateDocumen
   const localPath = join(tempDir, fileName);
   const buffer = Buffer.from(await response.arrayBuffer());
   await writeFile(localPath, buffer);
-  return localPath;
+  return {
+    inputPath: localPath,
+    context: {
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      storageKey: input.storageKey,
+    },
+  };
 }
 
 async function collectOutputFiles(rootDir: string, baseDir = rootDir): Promise<Array<{ fileName: string; path: string }>> {
@@ -107,15 +212,74 @@ async function collectOutputFiles(rootDir: string, baseDir = rootDir): Promise<A
   return files.flat().sort((a, b) => a.fileName.localeCompare(b.fileName));
 }
 
-async function runBabelDocTranslation(input: z.infer<typeof translateDocumentSchema>) {
+function isNotifyDocumentType(value: string): value is NotifyDocumentType {
+  return notifyDocumentTypes.includes(value as NotifyDocumentType);
+}
+
+function buildDocumentNotificationCopy(documentType: NotifyDocumentType): {
+  subject: string;
+  messagePreview: string;
+} {
+  if (documentType === 'DIAGNOSIS') {
+    return {
+      subject: 'Your diagnosis document is available',
+      messagePreview: 'Your hospital uploaded a diagnosis document for your case.',
+    };
+  }
+
+  if (documentType === 'QUOTE') {
+    return {
+      subject: 'Your treatment quote is available',
+      messagePreview: 'Your hospital uploaded a treatment quote for your case.',
+    };
+  }
+
+  return {
+    subject: 'Your invitation letter is available',
+    messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+  };
+}
+
+function buildContentDispositionHeader(fileName: string): string {
+  const sanitized = fileName
+    .replace(/[^\x20-\x7E]|[\x00-\x1F\x7F"\\\/]/g, '_')
+    .trim();
+  const fallback = sanitized || 'document';
+  const encoded = encodeURIComponent(fileName)
+    .replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
+
+async function readNotifyDocumentBody(request: Request): Promise<
+  { ok: true; hospitalId?: string } | { ok: false; error: string }
+> {
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return { ok: true };
+  }
+
+  const rawBody = await request.json().catch(() => null);
+  const parsed = notifyDocumentBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return { ok: false, error: 'Invalid document notification request body' };
+  }
+
+  return parsed.data.hospitalId ? { ok: true, hospitalId: parsed.data.hospitalId } : { ok: true };
+}
+
+async function runBabelDocTranslation(
+  input: z.infer<typeof translateDocumentSchema>,
+  actor: Actor,
+  svc: ReturnType<typeof getServices>,
+) {
   const config = getBabelDocConfig();
+  const { inputPath, context } = await resolvePdfTranslationInput(input, actor, svc);
   await access(config.pythonBin, fsConstants.X_OK);
 
   if (!config.apiKey) {
     throw new ValidationError('BABELDOC_OPENAI_API_KEY or OPENAI_API_KEY is required');
   }
 
-  const inputPath = await resolvePdfTranslationInput(input);
   const outputDir = await mkdtemp(join(tmpdir(), 'babeldoc-'));
   const args = [
     '-m',
@@ -183,8 +347,7 @@ async function runBabelDocTranslation(input: z.infer<typeof translateDocumentSch
 
   return {
     inputFileName: basename(inputPath),
-    outputDir,
-    outputFiles,
+    outputFiles: registerTranslatedOutputFiles(outputFiles, actor, context),
     stdout: result.stdout,
     stderr: result.stderr,
   };
@@ -255,38 +418,77 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   const { caseId, docId } = c.req.valid('param');
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
+  const body = await readNotifyDocumentBody(c.req.raw);
+  if (!body.ok) {
+    return c.json({ error: body.error }, 400);
+  }
 
-  if (actor.role !== 'HOSPITAL') {
-    return c.json({ error: 'Only hospital users can notify patients about uploaded case documents' }, 403);
+  if (actor.role !== 'HOSPITAL' && actor.role !== 'ADMIN') {
+    return c.json({ error: 'Only admins and hospital users can notify patients about uploaded case documents' }, 403);
+  }
+
+  if (actor.role === 'HOSPITAL' && !actor.hospitalId) {
+    return c.json({ error: 'Hospital user is missing hospital context' }, 403);
   }
 
   const caseEntity = await svc.caseRepo.findById(caseId);
   if (!caseEntity) {
     return c.json({ error: 'Case not found' }, 404);
   }
-  await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
+  if (actor.role === 'HOSPITAL') {
+    await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
+  }
 
   const doc = await svc.documentRepo.findById(docId);
   if (!doc || doc.caseId !== caseId || doc.status === 'DELETED') {
     return c.json({ error: 'Document not found' }, 404);
   }
 
-  if (doc.documentType !== 'INVITATION') {
+  if (!isNotifyDocumentType(doc.documentType)) {
     return c.body(null, 204);
   }
 
   try {
     const patient = await svc.patientRepo.findById(caseEntity.patientId);
+    const explicitHospitalId = actor.role === 'ADMIN' ? body.hospitalId : undefined;
+    if (explicitHospitalId) {
+      const hospital = await svc.hospitalRepo.findById(explicitHospitalId);
+      if (!hospital) {
+        return c.json({ error: 'Hospital not found' }, 404);
+      }
+
+      const hasAccess = await hasHospitalCaseAccess(caseEntity, explicitHospitalId, svc.chcRepo);
+      if (!hasAccess) {
+        return c.json({ error: 'Hospital is not associated with this case' }, 403);
+      }
+    }
+
+    const hospitalId = actor.role === 'HOSPITAL' ? actor.hospitalId : explicitHospitalId ?? null;
+    const channel = hospitalId ? 'HOSPITAL_PATIENT' : 'ADMIN_PATIENT';
+    const copy = buildDocumentNotificationCopy(doc.documentType);
+
     await svc.notifyPatientOfCaseUpdate.execute({
       caseId,
       patientId: caseEntity.patientId,
       site: patient?.site ?? 'china',
-      subject: 'Your invitation letter is available',
-      messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
+      subject: copy.subject,
+      messagePreview: copy.messagePreview,
       dedupeKey: `document:${docId}`,
+      channel,
+      hospitalId,
+      sourceKind: 'document',
+      sourceId: docId,
+      resolveConversationId: async () => {
+        const conversation = await svc.createConversation.execute({
+          category: channel,
+          caseId,
+          ...(hospitalId ? { hospitalId } : {}),
+        }, actor);
+        return conversation.id;
+      },
     });
   } catch (error) {
-    console.warn('Failed to notify patient about an invitation document:', error);
+    console.warn('Failed to notify patient about a case document:', error);
   }
 
   return c.body(null, 204);
@@ -310,42 +512,35 @@ const translateDocumentRoute = createRoute({
 app.openapi(translateDocumentRoute, async (c) => {
   const body = c.req.valid('json');
   const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
 
   if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
     return c.json({ error: 'Only admin and hospital users can translate documents' }, 403);
   }
 
-  console.info('[debug][documents.translate] enter', {
-    actorRole: actor.role,
-    inputPath: body.inputPath ?? null,
-    sourceUrl: body.sourceUrl ?? null,
-    fileName: body.fileName ?? null,
-    targetLanguage: body.targetLanguage,
-    outputMode: body.outputMode,
-  });
+  if (body.inputPath) {
+    return c.json({ error: 'inputPath is not accepted for document translation previews' }, 400);
+  }
+  if (body.sourceUrl) {
+    return c.json({ error: 'sourceUrl is not accepted for document translation previews' }, 400);
+  }
+  if (body.storageKey && isCallerSuppliedUrlLikeStorageKey(body.storageKey)) {
+    return c.json({ error: 'Attachment storageKey must be an internal storage key' }, 400);
+  }
 
   try {
-    const result = await runBabelDocTranslation(body);
-    console.info('[debug][documents.translate] success', {
-      inputFileName: result.inputFileName,
-      outputDir: result.outputDir,
-      outputCount: result.outputFiles.length,
-    });
+    const result = await runBabelDocTranslation(body, actor, svc);
     return c.json(result, 200);
   } catch (error) {
-    console.error('[debug][documents.translate] failed', {
-      inputPath: body.inputPath ?? null,
-      sourceUrl: body.sourceUrl ?? null,
-      fileName: body.fileName ?? null,
-      targetLanguage: body.targetLanguage,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    if (error instanceof ValidationError) {
+      return c.json({ error: error.message }, 400);
+    }
     throw error;
   }
 });
 
 // ---------------------------------------------------------------------------
-// 1c. GET /api/v2/documents/translate/file?path=... — GetTranslatedDocumentFile
+// 1c. GET /api/v2/documents/translate/file?id=... — GetTranslatedDocumentFile
 // ---------------------------------------------------------------------------
 const translatedFileRoute = createRoute({
   method: 'get',
@@ -357,22 +552,40 @@ const translatedFileRoute = createRoute({
 });
 
 app.openapi(translatedFileRoute, async (c) => {
-  const { path } = c.req.valid('query');
+  const { id, path } = c.req.valid('query');
   const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
 
   if (actor.role !== 'ADMIN' && actor.role !== 'HOSPITAL') {
     return c.json({ error: 'Only admin and hospital users can access translated documents' }, 403);
   }
 
-  const resolvedPath = resolve(path);
-  const allowedRoot = tmpdir();
-  if (!resolvedPath.startsWith(resolve(allowedRoot)) || !resolvedPath.includes('/babeldoc-')) {
-    throw new ValidationError('Invalid translated document path');
+  if (path || !id) {
+    return c.json({ error: 'id is required for translated document download' }, 400);
   }
 
-  await access(resolvedPath, fsConstants.R_OK);
-  const file = await readFile(resolvedPath);
-  const contentType = extname(resolvedPath).toLowerCase() === '.pdf'
+  const registeredFile = translatedFileRegistry.get(id);
+  if (!registeredFile) {
+    throw new NotFoundError('Translated document not found');
+  }
+
+  if (!isSameTranslationActor(registeredFile.actor, actor)) {
+    return c.json({ error: 'Access denied to translated document' }, 403);
+  }
+
+  await svc.getConversation.execute(registeredFile.context.conversationId, actor);
+  const message = await svc.messageRepo.findById(registeredFile.context.messageId);
+  if (
+    !message
+    || message.conversationId !== registeredFile.context.conversationId
+    || !message.attachments.some((attachment) => attachment.storageKey === registeredFile.context.storageKey)
+  ) {
+    throw new NotFoundError('Translated document context not found');
+  }
+
+  await access(registeredFile.path, fsConstants.R_OK);
+  const file = await readFile(registeredFile.path);
+  const contentType = extname(registeredFile.path).toLowerCase() === '.pdf'
     ? 'application/pdf'
     : 'application/octet-stream';
 
@@ -380,7 +593,7 @@ app.openapi(translatedFileRoute, async (c) => {
     status: 200,
     headers: {
       'Content-Type': contentType,
-      'Content-Disposition': `inline; filename="${basename(resolvedPath)}"`,
+      'Content-Disposition': buildContentDispositionHeader(registeredFile.fileName),
       'Cache-Control': 'no-store',
     },
   });
@@ -404,6 +617,34 @@ app.openapi(listDocumentsRoute, async (c) => {
   const svc = getServices();
   const result = await svc.listDocuments.execute(caseId, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 2a. GET /api/v2/cases/:caseId/documents/:docId/preview — GetDocumentPreview
+// ---------------------------------------------------------------------------
+const getDocumentPreviewRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/cases/{caseId}/documents/{docId}/preview',
+  request: {
+    params: docIdParamSchema,
+  },
+  responses: { 200: { description: 'Document preview bytes' } },
+});
+
+app.openapi(getDocumentPreviewRoute, async (c) => {
+  const { caseId, docId } = c.req.valid('param');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const preview = await svc.getDocumentPreview.execute(caseId, docId, actor);
+
+  return new Response(preview.body, {
+    status: 200,
+    headers: {
+      'Content-Type': preview.contentType,
+      'Content-Disposition': buildContentDispositionHeader(preview.fileName),
+      'Cache-Control': 'private, no-store',
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------

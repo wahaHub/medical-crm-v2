@@ -7,11 +7,14 @@ import {
   type ChatbotV3RecentMessage,
   type MinimalIntakeSeed,
   SupervisorService,
+  toMessageDTO,
 } from '@medical-crm/application';
 import {
   AiChatMessage,
   AiChatSession as AiChatSessionEntity,
+  Conversation,
   deriveCanonicalTruthFlagsFromStatusSnapshot,
+  Message,
   normalizeSupportingDocuments,
 } from '@medical-crm/domain';
 import type {
@@ -55,6 +58,7 @@ import { createChatbotV3SupervisorRouteAdapter } from './chatbot-v3/supervisor-r
 import {
   composeResponse,
 } from './chatbot-v3/response-composer.js';
+import { wsManager } from '../ws/ws-manager.js';
 
 type AppServices = ReturnType<typeof getServices>;
 
@@ -62,6 +66,8 @@ let chatbotV3RuntimeSingleton: ConversationOrchestratorV3RuntimeService | null =
 const CHATBOT_SESSION_SECRET_COOKIE = 'chatbot_session_secret';
 const PATIENT_SESSION_COOKIE = 'patient_session';
 const TRACE_ID_MAX_LENGTH = 128;
+const AI_MIRROR_SENDER_NAME = 'Medora AI';
+const AI_MIRROR_SENDER_ROLE = 'AI';
 const CANONICAL_JOURNEY_ORDER = [
   'COLLECT_MINIMAL_MEDICAL_FACTS',
   'RECOMMENDATION',
@@ -191,6 +197,13 @@ chatbotV3PublicRoutes.post('/api/v3/chatbot/chat', async (c) => {
       body,
       response,
       traceId,
+      turnId,
+    });
+    await mirrorChatbotV3TurnIntoAdminConversation({
+      services,
+      session,
+      body,
+      response,
       turnId,
     });
   }
@@ -552,6 +565,157 @@ function toChatbotV3RecentMessage(message: AiChatMessage): ChatbotV3RecentMessag
   };
 }
 
+async function mirrorChatbotV3TurnIntoAdminConversation(input: {
+  services: AppServices;
+  session: AiChatSession;
+  body: ChatbotV3ChatRequest;
+  response: ChatbotV3ChatResponse;
+  turnId: string;
+}): Promise<void> {
+  const conversation = await resolveAdminConversationForChatbotV3Session(input.services, input.session);
+  if (!conversation || !input.session.patientId) {
+    return;
+  }
+
+  const userCreatedAt = new Date();
+  const attachments = input.body.attachments ?? [];
+  const patientContent = (input.body.message ?? '').trim().length > 0
+    ? input.body.message ?? ''
+    : (attachments.length > 0 ? 'Uploaded attachments' : '');
+  const patientMessage = await mirrorMessageIntoConversation(input.services, conversation, new Message({
+    id: createDeterministicTurnMessageId(input.session.id, input.turnId, 'USER'),
+    conversationId: conversation.id,
+    senderId: input.session.patientId,
+    senderRole: 'PATIENT',
+    content: patientContent,
+    originalLanguage: null,
+    translatedContent: null,
+    messageType: 'TEXT',
+    moderationStatus: 'ALLOWED',
+    attachments,
+    aiSummary: null,
+    createdAt: userCreatedAt,
+  }));
+  wsManager.broadcast(`conv:${conversation.id}`, {
+    type: 'new_message',
+    data: toMessageDTO(patientMessage),
+  });
+  if (conversation.caseId) {
+    try {
+      await input.services.notifyAdminsOfPatientMessage.execute({
+        conversationId: conversation.id,
+        caseId: conversation.caseId,
+        patientId: input.session.patientId,
+        patientName: null,
+        messagePreview: buildNotificationPreview(patientContent),
+      });
+    } catch (error) {
+      console.warn('Failed to notify admins about a mirrored chatbot v3 patient message:', error);
+    }
+  }
+
+  const assistantText = input.response.messages.find((message) => message.text.trim().length > 0)?.text ?? '';
+  if (!assistantText.trim()) {
+    return;
+  }
+  const latestConversation = await input.services.conversationRepo.findById(conversation.id) ?? conversation;
+  if (latestConversation.assistantMode === 'HUMAN_TAKEOVER') {
+    return;
+  }
+  const assistantMessage = await mirrorMessageIntoConversation(input.services, latestConversation, new Message({
+    id: createDeterministicTurnMessageId(input.session.id, input.turnId, 'ASSISTANT'),
+    conversationId: latestConversation.id,
+    senderId: null,
+    senderRoleOverride: AI_MIRROR_SENDER_ROLE,
+    senderNameOverride: AI_MIRROR_SENDER_NAME,
+    senderRole: AI_MIRROR_SENDER_ROLE,
+    senderName: AI_MIRROR_SENDER_NAME,
+    content: assistantText,
+    originalLanguage: null,
+    translatedContent: null,
+    messageType: 'TEXT',
+    moderationStatus: 'ALLOWED',
+    attachments: [],
+    aiSummary: null,
+    createdAt: new Date(userCreatedAt.getTime() + 1),
+  }));
+  wsManager.broadcast(`conv:${latestConversation.id}`, {
+    type: 'new_message',
+    data: toMessageDTO(assistantMessage),
+  });
+}
+
+async function resolveAdminConversationForChatbotV3Session(
+  services: AppServices,
+  session: AiChatSession,
+): Promise<Conversation | null> {
+  const caseId = extractWidgetSessionCaseId(session.sessionId);
+  if (!caseId) {
+    return null;
+  }
+
+  const existing = await services.conversationRepo.findMany({
+    page: 1,
+    limit: 10,
+    caseId,
+    category: 'ADMIN_PATIENT',
+  });
+  const conversation = existing.data[0];
+  if (conversation) {
+    return conversation;
+  }
+
+  const now = new Date();
+  const newConversation = new Conversation({
+    id: randomUUID(),
+    caseId,
+    hospitalId: null,
+    category: 'ADMIN_PATIENT',
+    title: null,
+    lastMessageId: null,
+    lastMessageAt: null,
+    lastMessagePreview: null,
+    lastSenderId: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return services.conversationRepo.findOrCreateAdminPatientConversation(newConversation);
+}
+
+async function mirrorMessageIntoConversation(
+  services: AppServices,
+  conversation: Conversation,
+  message: Message,
+): Promise<Message> {
+  const saved = await services.messageRepo.save(message);
+  conversation.updateLastMessage({
+    id: saved.id,
+    content: saved.content,
+    senderId: saved.senderId,
+    createdAt: saved.createdAt,
+  });
+  await services.conversationRepo.save(conversation);
+  return saved;
+}
+
+function extractWidgetSessionCaseId(sessionId: string): string | null {
+  if (!sessionId.startsWith('widget-chat:')) {
+    return null;
+  }
+
+  const [, , caseId] = sessionId.split(':');
+  return typeof caseId === 'string' && caseId.length > 0 && caseId !== 'pending'
+    ? caseId
+    : null;
+}
+
+function buildNotificationPreview(content: string | null | undefined): string {
+  const normalized = (content ?? '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return 'Open Medora to read the latest message.';
+  return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
+}
+
 async function createOrUpdateAiChatHistoryMessage(
   services: AppServices,
   message: AiChatMessage,
@@ -634,7 +798,7 @@ function resolveFacts(
   };
 }
 
-async function resolveSupervisorIntakeSeed(
+export async function resolveSupervisorIntakeSeed(
   services: AppServices,
   session: AiChatSession | null,
 ): Promise<MinimalIntakeSeed> {
@@ -650,11 +814,14 @@ async function resolveSupervisorIntakeSeed(
   const profile = await services.aiUserProfileRepo.findByAnonymousKeyOrPatient({
     patientId: session.patientId,
   });
+  const patient = profile?.preferredLanguage
+    ? null
+    : await services.patientRepo.findById(session.patientId, session.site);
 
   return {
     condition: profile?.conditionOrGoal ?? profile?.conditionCategory ?? null,
     targetDestination: profile?.preferredDestination[0] ?? null,
-    language: profile?.preferredLanguage ?? null,
+    language: profile?.preferredLanguage ?? patient?.preferredLanguage ?? null,
     gender: null,
   };
 }

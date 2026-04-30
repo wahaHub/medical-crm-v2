@@ -36,7 +36,27 @@ vi.mock('@medical-crm/ui', () => ({
   }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode }) => (
     <button className={className} {...props}>{children}</button>
   ),
-  DataTable: () => <div />,
+  DataTable: <T,>({
+    columns,
+    data,
+    keyExtractor,
+  }: {
+    columns: Array<{ key: string; render: (row: T) => React.ReactNode }>;
+    data: T[];
+    keyExtractor: (row: T) => string;
+  }) => (
+    <table>
+      <tbody>
+        {data.map((row) => (
+          <tr key={keyExtractor(row)}>
+            {columns.map((column) => (
+              <td key={column.key}>{column.render(row)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ),
   EmptyState: ({ title }: { title: string }) => <div>{title}</div>,
   useMediaUpload: () => ({
     upload: vi.fn(),
@@ -192,6 +212,76 @@ describe('SelectedHospitalsCard layout', () => {
 
     expect(markup).toContain('Custom hospital requested');
     expect(markup).toContain('Ruijin Hospital');
+  });
+});
+
+describe('CaseOverviewTab documents', () => {
+  it('opens case documents through the authorized preview route and keeps downloads on signed URLs', () => {
+    mockUseCaseDocuments.mockReturnValue({
+      data: [
+        {
+          id: 'doc-1',
+          fileName: 'record.pdf',
+          documentType: 'MEDICAL_INTAKE',
+          downloadUrl: 'https://signed.example.com/record.pdf',
+        },
+      ],
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    const markup = renderToStaticMarkup(
+      <CaseOverviewTab
+        caseData={{
+          id: 'case-1',
+          caseNumber: 'CASE-2026-1001',
+          patientName: 'Jane Doe',
+          status: 'ACTIVE',
+          assignmentStatus: 'UNASSIGNED',
+          treatmentStage: null,
+          patientSite: 'china',
+          hospitalType: 'REGULAR',
+          createdAt: '2026-04-03T00:00:00.000Z',
+        } as never}
+      />,
+    );
+
+    expect(markup).toContain('href="/api/cases/case-1/documents/doc-1/preview"');
+    expect(markup).toContain('href="https://signed.example.com/record.pdf" download="record.pdf"');
+  });
+
+  it('uses signed URLs for message attachment document previews instead of pseudo ids', () => {
+    mockUseCaseDocuments.mockReturnValue({
+      data: [
+        {
+          id: 'message-attachment:attachment-1',
+          fileName: 'attachment.pdf',
+          documentType: 'MESSAGE_ATTACHMENT',
+          downloadUrl: 'https://signed.example.com/attachment.pdf',
+        },
+      ],
+      isLoading: false,
+      refetch: vi.fn(),
+    });
+
+    const markup = renderToStaticMarkup(
+      <CaseOverviewTab
+        caseData={{
+          id: 'case-1',
+          caseNumber: 'CASE-2026-1001',
+          patientName: 'Jane Doe',
+          status: 'ACTIVE',
+          assignmentStatus: 'UNASSIGNED',
+          treatmentStage: null,
+          patientSite: 'china',
+          hospitalType: 'REGULAR',
+          createdAt: '2026-04-03T00:00:00.000Z',
+        } as never}
+      />,
+    );
+
+    expect(markup).toContain('href="https://signed.example.com/attachment.pdf"');
+    expect(markup).not.toContain('/api/cases/case-1/documents/message-attachment:attachment-1/preview');
   });
 });
 

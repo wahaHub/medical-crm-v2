@@ -1,4 +1,33 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DomainError, ForbiddenError, NotFoundError, mapErrorToStatus } from '@medical-crm/utils';
+
+const {
+  mockAccess,
+  mockMkdtemp,
+  mockReaddir,
+  mockReadFile,
+  mockWriteFile,
+  mockSpawn,
+} = vi.hoisted(() => ({
+  mockAccess: vi.fn(),
+  mockMkdtemp: vi.fn(),
+  mockReaddir: vi.fn(),
+  mockReadFile: vi.fn(),
+  mockWriteFile: vi.fn(),
+  mockSpawn: vi.fn(),
+}));
+
+vi.mock('node:fs/promises', () => ({
+  access: mockAccess,
+  mkdtemp: mockMkdtemp,
+  readdir: mockReaddir,
+  readFile: mockReadFile,
+  writeFile: mockWriteFile,
+}));
+
+vi.mock('node:child_process', () => ({
+  spawn: mockSpawn,
+}));
 
 // ---------------------------------------------------------------------------
 // Mock the composition root — must be declared before importing routes
@@ -16,13 +45,19 @@ const mockServices = {
   getCaseStats: { execute: vi.fn() },
   uploadDocument: { execute: vi.fn() },
   listDocuments: { execute: vi.fn() },
+  getDocumentPreview: { execute: vi.fn() },
   deleteDocument: { execute: vi.fn() },
   mediaUpload: { createUploadIntent: vi.fn() },
+  getConversation: { execute: vi.fn() },
+  messageRepo: { findById: vi.fn() },
+  storage: { getSignedUrl: vi.fn() },
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
+  hospitalRepo: { findById: vi.fn() },
+  createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
   chcRepo: { findByCaseAndHospital: vi.fn() },
 };
@@ -53,12 +88,50 @@ app.use('/api/v2/*', async (c, next) => {
 
 app.route('/', documentRoutes);
 
+app.onError((err, c) => {
+  if (err instanceof DomainError) {
+    const status = mapErrorToStatus(err.code);
+    return c.json({ error: err.message, code: err.code }, status as 400 | 401 | 403 | 404 | 500);
+  }
+  if (err instanceof Error && 'code' in err) {
+    const code = String((err as Error & { code: unknown }).code);
+    const status = mapErrorToStatus(code);
+    return c.json({ error: err.message, code }, status as 400 | 401 | 403 | 404 | 500);
+  }
+  return c.json({ error: 'Internal server error' }, 500);
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const CASE_UUID = '00000000-0000-0000-0000-000000000001';
 const DOC_UUID = '00000000-0000-0000-0000-000000000002';
+const ASSOCIATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000002';
+const UNRELATED_HOSPITAL_UUID = '10000000-0000-0000-0000-000000000099';
+const CONVERSATION_ID = 'conversation-1';
+const MESSAGE_ID = 'message-1';
+const PDF_STORAGE_KEY = 'crm/dev/messages/conversation-1/asset-1/report.pdf';
+const TRANSLATED_FILE_ID_PATTERN = /^[0-9a-f-]{36}$/i;
+
+function mockSuccessfulBabelDocRun() {
+  vi.stubEnv('OPENAI_API_KEY', 'test-key');
+  mockAccess.mockResolvedValue(undefined);
+  mockMkdtemp
+    .mockResolvedValueOnce('/tmp/pdftranslate-source-1')
+    .mockResolvedValueOnce('/tmp/babeldoc-1');
+  mockReaddir.mockResolvedValue([
+    { name: 'report.zh.pdf', isDirectory: () => false },
+  ]);
+  mockWriteFile.mockResolvedValue(undefined);
+  mockSpawn.mockReturnValue({
+    stdout: { on: vi.fn() },
+    stderr: { on: vi.fn() },
+    on: vi.fn((event: string, callback: (value?: unknown) => void) => {
+      if (event === 'close') callback(0);
+    }),
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -67,6 +140,7 @@ const DOC_UUID = '00000000-0000-0000-0000-000000000002';
 describe('Documents routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServices.getDocumentPreview.execute.mockReset();
     currentSession = {
       userId: 'u-1',
       email: 'admin@test.com',
@@ -88,13 +162,50 @@ describe('Documents routes', () => {
         documentType: 'INVITATION',
       },
     ]);
+    mockServices.getDocumentPreview.execute.mockResolvedValue({
+      body: new Uint8Array([37, 80, 68, 70]),
+      contentType: 'application/pdf',
+      fileName: 'report.pdf',
+    });
     mockServices.documentRepo.findById.mockResolvedValue({
       id: DOC_UUID,
       caseId: CASE_UUID,
       documentType: 'INVITATION',
       status: 'ACTIVE',
     });
+    mockServices.createConversation.execute.mockResolvedValue({
+      id: CONVERSATION_ID,
+      caseId: CASE_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+    });
+    mockServices.getConversation.execute.mockResolvedValue({
+      id: CONVERSATION_ID,
+      caseId: CASE_UUID,
+      category: 'HOSPITAL_PATIENT',
+      hospitalId: 'hospital-1',
+    });
+    mockServices.messageRepo.findById.mockResolvedValue({
+      id: MESSAGE_ID,
+      conversationId: CONVERSATION_ID,
+      attachments: [{
+        fileName: 'report.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 1024,
+        storageKey: PDF_STORAGE_KEY,
+      }],
+    });
+    mockServices.storage.getSignedUrl.mockResolvedValue('https://signed.example.com/report.pdf?token=abc');
+    mockServices.hospitalRepo.findById.mockResolvedValue({
+      id: ASSOCIATED_HOSPITAL_UUID,
+      name: 'Associated Hospital',
+    });
     mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
+    mockReadFile.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Uint8Array([37, 80, 68, 70]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/pdf' },
+    })));
   });
 
   // -----------------------------------------------------------------------
@@ -201,14 +312,164 @@ describe('Documents routes', () => {
       });
 
       expect(res.status).toBe(204);
-      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith({
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
         caseId: CASE_UUID,
         patientId: 'patient-1',
         site: 'beauty',
         subject: 'Your invitation letter is available',
         messagePreview: 'Your hospital uploaded a medical invitation letter for your case.',
         dedupeKey: `document:${DOC_UUID}`,
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
+      }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: 'hospital-1',
+      }, expect.anything());
+    });
+
+    it.each([
+      ['INVITATION', 'Your invitation letter is available'],
+      ['DIAGNOSIS', 'Your diagnosis document is available'],
+      ['QUOTE', 'Your treatment quote is available'],
+    ])('routes hospital %s notifications to the hospital-patient conversation', async (documentType, subject) => {
+      currentSession = {
+        userId: 'hospital-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: 'hospital-1',
+      };
+      mockServices.documentRepo.findById.mockResolvedValue({
+        id: DOC_UUID,
+        caseId: CASE_UUID,
+        documentType,
+        status: 'ACTIVE',
       });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        subject,
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: 'hospital-1',
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
+      }));
+    });
+
+    it('routes admin document notifications to the admin-patient conversation by default', async () => {
+      mockServices.createConversation.execute.mockResolvedValue({
+        id: 'admin-conversation-1',
+        caseId: CASE_UUID,
+        category: 'ADMIN_PATIENT',
+        hospitalId: null,
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        channel: 'ADMIN_PATIENT',
+        hospitalId: null,
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
+      }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'ADMIN_PATIENT',
+        caseId: CASE_UUID,
+      }, expect.anything());
+    });
+
+    it('rejects invalid explicit hospitalId format for admin document notifications', async () => {
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: 'hospital-2' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+    });
+
+    it('rejects unrelated explicit hospital routing for admin document notifications', async () => {
+      mockServices.hospitalRepo.findById.mockResolvedValue({
+        id: UNRELATED_HOSPITAL_UUID,
+        name: 'Unrelated Hospital',
+      });
+      mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: UNRELATED_HOSPITAL_UUID }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes admin document notifications to an associated hospital conversation when hospitalId is explicit', async () => {
+      mockServices.createConversation.execute.mockResolvedValue({
+        id: 'hospital-conversation-1',
+        caseId: CASE_UUID,
+        category: 'HOSPITAL_PATIENT',
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+      });
+      mockServices.hospitalRepo.findById.mockResolvedValue({
+        id: ASSOCIATED_HOSPITAL_UUID,
+        name: 'Associated Hospital',
+      });
+      mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue({
+        id: 'chc-1',
+        caseId: CASE_UUID,
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+        subStatus: 'DISTRIBUTED',
+        removedAt: null,
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hospitalId: ASSOCIATED_HOSPITAL_UUID }),
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).toHaveBeenCalledWith(expect.objectContaining({
+        channel: 'HOSPITAL_PATIENT',
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+        sourceKind: 'document',
+        sourceId: DOC_UUID,
+        resolveConversationId: expect.any(Function),
+      }));
+
+      const [notificationInput] = mockServices.notifyPatientOfCaseUpdate.execute.mock.calls[0]!;
+      await notificationInput.resolveConversationId();
+      expect(mockServices.createConversation.execute).toHaveBeenCalledWith({
+        category: 'HOSPITAL_PATIENT',
+        caseId: CASE_UUID,
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+      }, expect.anything());
     });
 
     it('returns 204 even if invitation notification delivery fails', async () => {
@@ -256,6 +517,258 @@ describe('Documents routes', () => {
     });
   });
 
+  describe('POST /api/v2/documents/translate', () => {
+    it('rejects caller-supplied sourceUrl fetch input', async () => {
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceUrl: 'https://evil.example/internal.pdf',
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('sourceUrl is not accepted'),
+      });
+      expect(mockServices.storage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the attachment storage key is not on the message', async () => {
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: 'crm/dev/messages/conversation-1/asset-2/other.pdf',
+          fileName: 'other.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(404);
+      expect(mockServices.storage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the actor cannot access the conversation', async () => {
+      mockServices.getConversation.execute.mockRejectedValueOnce(new ForbiddenError('Access denied to this conversation'));
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockServices.storage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('rejects URL-like storage keys before signing', async () => {
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: 'https://signed.example.com/report.pdf',
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.storage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('translates an authorized PDF attachment using its verified storage key', async () => {
+      mockSuccessfulBabelDocRun();
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json).not.toHaveProperty('outputDir');
+      expect(json.outputFiles[0]).toMatchObject({
+        fileName: 'report.zh.pdf',
+        id: expect.stringMatching(TRANSLATED_FILE_ID_PATTERN),
+        url: expect.stringContaining('/api/v2/documents/translate/file?id='),
+      });
+      expect(json.outputFiles[0]).not.toHaveProperty('path');
+      expect(mockServices.getConversation.execute).toHaveBeenCalledWith(CONVERSATION_ID, expect.anything());
+      expect(mockServices.storage.getSignedUrl).toHaveBeenCalledWith(PDF_STORAGE_KEY);
+      expect(fetch).toHaveBeenCalledWith('https://signed.example.com/report.pdf?token=abc');
+      expect(mockWriteFile).toHaveBeenCalledWith('/tmp/pdftranslate-source-1/report.pdf', expect.any(Buffer));
+    });
+
+    it('rejects unsafe attachment filenames before writing the downloaded PDF', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'test-key');
+      mockServices.messageRepo.findById.mockResolvedValueOnce({
+        id: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        attachments: [{
+          fileName: '../owned.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          storageKey: PDF_STORAGE_KEY,
+        }],
+      });
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'safe-request.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid PDF source filename'),
+      });
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it('rejects unsafe request filenames when attachment metadata has no filename', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'test-key');
+      mockServices.messageRepo.findById.mockResolvedValueOnce({
+        id: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        attachments: [{
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          storageKey: PDF_STORAGE_KEY,
+        }],
+      });
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: '../owned.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('Invalid PDF source filename'),
+      });
+      expect(mockWriteFile).not.toHaveBeenCalled();
+    });
+
+    it('does not emit debug translate logs', async () => {
+      mockSuccessfulBabelDocRun();
+      const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const res = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(infoSpy).not.toHaveBeenCalledWith(expect.stringContaining('[debug][documents.translate]'), expect.anything());
+      expect(errorSpy).not.toHaveBeenCalledWith(expect.stringContaining('[debug][documents.translate]'), expect.anything());
+    });
+  });
+
+  describe('GET /api/v2/documents/translate/file', () => {
+    it('rejects legacy absolute temp path download capability', async () => {
+      const res = await app.request('/api/v2/documents/translate/file?path=/tmp/babeldoc-1/report.zh.pdf');
+
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: expect.stringContaining('id is required'),
+      });
+      expect(mockReadFile).not.toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
+    });
+
+    it('streams an opaque translated file id only for the creating actor', async () => {
+      mockSuccessfulBabelDocRun();
+      mockReadFile.mockResolvedValueOnce(new Uint8Array([37, 80, 68, 70]));
+      const translateRes = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+      const translated = await translateRes.json();
+      const fileId = translated.outputFiles[0].id;
+
+      const downloadRes = await app.request(`/api/v2/documents/translate/file?id=${encodeURIComponent(fileId)}`);
+
+      expect(downloadRes.status).toBe(200);
+      expect(downloadRes.headers.get('content-type')).toBe('application/pdf');
+      expect(mockReadFile).toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
+    });
+
+    it('rejects another actor for an opaque translated file id', async () => {
+      mockSuccessfulBabelDocRun();
+      const translateRes = await app.request('/api/v2/documents/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: CONVERSATION_ID,
+          messageId: MESSAGE_ID,
+          storageKey: PDF_STORAGE_KEY,
+          fileName: 'report.pdf',
+          targetLanguage: 'zh',
+        }),
+      });
+      const translated = await translateRes.json();
+      const fileId = translated.outputFiles[0].id;
+      currentSession = {
+        userId: 'other-admin',
+        email: 'other-admin@test.com',
+        roles: ['ADMIN'],
+        hospitalId: null,
+      };
+
+      const downloadRes = await app.request(`/api/v2/documents/translate/file?id=${encodeURIComponent(fileId)}`);
+
+      expect(downloadRes.status).toBe(403);
+      expect(mockReadFile).not.toHaveBeenCalledWith('/tmp/babeldoc-1/report.zh.pdf');
+    });
+  });
+
   // -----------------------------------------------------------------------
   // GET /api/v2/cases/:caseId/documents — list documents
   // -----------------------------------------------------------------------
@@ -285,6 +798,115 @@ describe('Documents routes', () => {
     it('rejects invalid caseId param', async () => {
       const res = await app.request('/api/v2/cases/bad-id/documents');
       expect(res.status).toBe(400);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // GET /api/v2/cases/:caseId/documents/:docId/preview — preview document
+  // -----------------------------------------------------------------------
+  describe('GET /api/v2/cases/:caseId/documents/:docId/preview', () => {
+    it('allows an admin to preview a document in a case', async () => {
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('application/pdf');
+      expect(res.headers.get('content-disposition')).toContain('filename="report.pdf"');
+      expect(res.headers.get('content-disposition')).toContain("filename*=UTF-8''report.pdf");
+      expect(res.headers.get('cache-control')).toBe('private, no-store');
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([37, 80, 68, 70]));
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'ADMIN', userId: 'u-1' }),
+      );
+    });
+
+    it('uses an ASCII fallback and RFC 5987 filename for non-ASCII preview filenames', async () => {
+      mockServices.getDocumentPreview.execute.mockResolvedValue({
+        body: new Uint8Array([37, 80, 68, 70]),
+        contentType: 'application/pdf',
+        fileName: '报告.pdf',
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(200);
+      const contentDisposition = res.headers.get('content-disposition') ?? '';
+      expect(contentDisposition).toContain('filename="__.pdf"');
+      expect(contentDisposition).toContain("filename*=UTF-8''%E6%8A%A5%E5%91%8A.pdf");
+    });
+
+    it('allows a hospital to preview only when the hospital has case access', async () => {
+      currentSession = {
+        userId: 'hospital-user-1',
+        email: 'hospital@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: ASSOCIATED_HOSPITAL_UUID,
+      };
+
+      const allowed = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+      expect(allowed.status).toBe(200);
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenLastCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'HOSPITAL', hospitalId: ASSOCIATED_HOSPITAL_UUID }),
+      );
+
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new ForbiddenError('Access denied to this case');
+      });
+      currentSession = {
+        userId: 'hospital-user-2',
+        email: 'unrelated@test.com',
+        roles: ['HOSPITAL'],
+        hospitalId: UNRELATED_HOSPITAL_UUID,
+      };
+
+      const denied = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({ error: 'Access denied to this case', code: 'FORBIDDEN' });
+    });
+
+    it('returns 404 when the document does not belong to the case', async () => {
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new NotFoundError(`Document ${DOC_UUID} not found`);
+      });
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: `Document ${DOC_UUID} not found`, code: 'NOT_FOUND' });
+    });
+
+    it('returns 404 when the document is deleted', async () => {
+      mockServices.getDocumentPreview.execute.mockReset();
+      mockServices.getDocumentPreview.execute.mockImplementation(async () => {
+        throw new NotFoundError(`Document ${DOC_UUID} not found`);
+      });
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview`);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: `Document ${DOC_UUID} not found`, code: 'NOT_FOUND' });
+    });
+
+    it('does not accept an arbitrary url query parameter or fetch arbitrary URLs', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const res = await app.request(
+        `/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/preview?url=https%3A%2F%2Fevil.example%2Ffile.pdf`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(mockServices.getDocumentPreview.execute).toHaveBeenCalledWith(
+        CASE_UUID,
+        DOC_UUID,
+        expect.objectContaining({ role: 'ADMIN' }),
+      );
+      expect(mockServices.getDocumentPreview.execute.mock.calls.at(-1)).toHaveLength(3);
+      fetchSpy.mockRestore();
     });
   });
 

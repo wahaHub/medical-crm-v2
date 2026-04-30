@@ -77,6 +77,8 @@ python3 scripts/deploy_v2.py \
 - If the requested branch is not the currently checked-out branch, the script creates a temporary git worktree and deploys from there.
 - If you deploy from the current branch, the script requires a clean working tree unless you pass `--allow-dirty`.
 - API deploy syncs the local checkout to `/opt/medora/medical-crm-v2`, runs `pnpm install --frozen-lockfile`, restarts `medora-crm-v2-api`, then waits for `http://127.0.0.1:3001/health` and `https://crmapi.medicaltourismchina.health/health`.
+- For inbound replies, configure Resend Inbound DNS for `medicaltourismchina.health` or `reply.medicaltourismchina.health`, subscribe `email.received` to `/api/webhooks/resend/inbound`, store the signing secret as `RESEND_WEBHOOK_SECRET`, and keep `INBOUND_EMAIL_ENABLED=false` until staging E2E passes.
+- Patient-facing emails send from `customer@medicaltourismchina.health`; tokenized Reply-To addresses route replies back into CRM messages.
 
 ## Latest verification
 
@@ -94,3 +96,40 @@ Verified on `2026-04-06` against branch `feature/phase-2bc`:
   - Confirmed local and public health endpoint success:
     - `http://127.0.0.1:3001/health`
     - `https://crmapi.medicaltourismchina.health/health`
+
+## Production log tail helper
+
+For repeated Lightsail debugging, use:
+
+```bash
+cd /Users/haowang/Desktop/medora-health-beauty/medical-crm-v2
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --follow
+```
+
+Useful variants:
+
+```bash
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --since 15
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --since 30 \
+  --grep chatbot-v3
+
+python3 scripts/tail_journalctl.py \
+  --ssh-key /Users/haowang/Downloads/LightsailDefaultKey-us-west-2.pem \
+  --service medora-ai-sync-outbox.service \
+  --priority err
+```
+
+Defaults:
+
+- remote host: `44.253.141.97`
+- remote user: `ubuntu`
+- service: `medora-crm-v2-api`
+
+`Ctrl+C` stops the local ssh session; no remote cleanup step is required.

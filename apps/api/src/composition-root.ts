@@ -31,6 +31,7 @@ import {
   GetCaseStatsUseCase,
   UploadDocumentUseCase,
   ListDocumentsUseCase,
+  GetDocumentPreviewUseCase,
   DeleteDocumentUseCase,
   GetCaseProgressUseCase,
   AddCaseProgressUseCase,
@@ -208,6 +209,8 @@ import {
   UpdateProfileUseCase,
   ChangePasswordUseCase,
   NotificationEmailService,
+  CreateEmailReplyTokenUseCase,
+  ProcessInboundEmailUseCase,
   TranslationTaskService,
   ProcessTranslationTasksUseCase,
   RetryTranslationUseCase,
@@ -238,6 +241,8 @@ import {
   DrizzleUserEmailLookupRepository,
   DrizzleNotificationRecipientRepository,
   DrizzleEmailNotificationCooldownRepository,
+  DrizzleEmailReplyTokenRepository,
+  DrizzleInboundEmailEventRepository,
   DrizzleConversationRepository,
   DrizzleMessageRepository,
   DrizzleMessageTaskRepository,
@@ -272,6 +277,7 @@ import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
 import { S3StorageAdapter } from '@medical-crm/infrastructure/storage/s3';
 import { StorageAdapterRegistry } from '@medical-crm/infrastructure/storage/registry';
 import { RoutedStorageService } from '@medical-crm/infrastructure/storage/routed';
+import { ServerSideUploadService } from '@medical-crm/infrastructure/storage/server-side-upload';
 import { MediaUploadService } from '@medical-crm/application/services/media-upload';
 import {
   UploadPolicyRegistry,
@@ -290,7 +296,7 @@ import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getCrmSupabase } from '@medical-crm/infrastructure/supabase-crm';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, ResendInboundService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -325,6 +331,7 @@ interface AppServices {
   difyApi: DifyApiClientService;
   difyClassifierApi?: DifyApiClientService;
   difyFaqGroundingApi?: DifyApiClientService;
+  resendInbound: ResendInboundService;
   resolveHospitalType: (hospitalId: string) => Promise<'COSMETIC' | 'REGULAR'>;
 
   // use cases — cases
@@ -340,6 +347,7 @@ interface AppServices {
   getCaseStats: GetCaseStatsUseCase;
   uploadDocument: UploadDocumentUseCase;
   listDocuments: ListDocumentsUseCase;
+  getDocumentPreview: GetDocumentPreviewUseCase;
   deleteDocument: DeleteDocumentUseCase;
   getCaseProgress: GetCaseProgressUseCase;
   addCaseProgress: AddCaseProgressUseCase;
@@ -374,6 +382,7 @@ interface AppServices {
   regenerateSummary: RegenerateSummaryUseCase;
   retranslateMessage: RetranslateMessageUseCase;
   processMessageTasks: ProcessMessageTasksUseCase;
+  processInboundEmail: ProcessInboundEmailUseCase;
   bootstrapAiSync: BootstrapAiSyncUseCase;
 
   // use cases — consultations
@@ -527,6 +536,11 @@ interface AppServices {
       messagePreview: string;
       site: import('@medical-crm/domain').PatientSite;
       isPatientOnline: boolean;
+      channel?: import('@medical-crm/domain').EmailReplyChannel;
+      hospitalId?: string | null;
+      sourceKind?: string;
+      sourceId?: string | null;
+      resolveConversationId?: (() => Promise<string | null>) | null;
     }): Promise<void>;
   };
   notifyPatientOfCaseUpdate: {
@@ -536,7 +550,14 @@ interface AppServices {
       site: import('@medical-crm/domain').PatientSite;
       subject: string;
       messagePreview: string;
+      bodyLines?: string[];
       dedupeKey?: string;
+      conversationId?: string | null;
+      channel?: import('@medical-crm/domain').EmailReplyChannel;
+      hospitalId?: string | null;
+      sourceKind?: string;
+      sourceId?: string | null;
+      resolveConversationId?: (() => Promise<string | null>) | null;
     }): Promise<void>;
   };
   sendPatientLoginLink: SendPatientLoginLinkUseCase;
@@ -622,6 +643,7 @@ interface AppServices {
 }
 
 let _services: AppServices | null = null;
+let _resendInboundVerifier: ResendInboundService | null = null;
 
 function resolveKeycloakAdminBaseUrl(): string {
   const configuredBaseUrl = process.env['KEYCLOAK_URL']?.trim();
@@ -645,6 +667,13 @@ function resolveKeycloakAdminBaseUrl(): string {
 }
 
 /** Wire all infrastructure adapters, repositories, and use cases. Lazy singleton. */
+export function getResendInboundVerifier(): ResendInboundService {
+  if (!_resendInboundVerifier) {
+    _resendInboundVerifier = new ResendInboundService();
+  }
+  return _resendInboundVerifier;
+}
+
 export function getServices(): AppServices {
   if (!_services) {
     const crmDb = getCrmDb();
@@ -715,6 +744,7 @@ export function getServices(): AppServices {
     ]);
 
     const mediaUploadService = new MediaUploadService(uploadPolicyRegistry, storageAdapterRegistry);
+    const serverSideUploadService = new ServerSideUploadService();
     const difyRequestTimeoutMs = Number.parseInt(
       process.env['DIFY_REQUEST_TIMEOUT_MS'] ?? '90000',
       10,
@@ -978,10 +1008,15 @@ export function getServices(): AppServices {
         });
       },
     };
+    const emailReplyTokenRepo = new DrizzleEmailReplyTokenRepository(crmDb);
+    const inboundEventRepo = new DrizzleInboundEmailEventRepository(crmDb);
+    const resendInboundService = getResendInboundVerifier();
+    const createEmailReplyToken = new CreateEmailReplyTokenUseCase(emailReplyTokenRepo);
     const notificationEmailService = new NotificationEmailService(
       notificationRecipientRepo,
       emailNotificationCooldownRepo,
       emailService,
+      { createEmailReplyToken },
     );
 
     const chcRepo = new DrizzleCHCRepository(crmDb);
@@ -998,6 +1033,18 @@ export function getServices(): AppServices {
     const faqRepo = new DrizzleChatbotFaqRepository(crmDb);
     const emailTemplateRepo = new DrizzleEmailTemplateRepository(crmDb);
     const txRunner = new DrizzleTransactionRunner(crmDb);
+    const sendMessage = new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo, txRunner);
+    const processInboundEmail = new ProcessInboundEmailUseCase({
+      replyTokenRepo: emailReplyTokenRepo,
+      inboundEventRepo,
+      conversationRepo,
+      caseRepo,
+      patientRepo,
+      mediaUpload: mediaUploadService,
+      attachmentSource: resendInboundService,
+      attachmentUploader: serverSideUploadService,
+      sendMessage,
+    });
     const idempotencyGuard = new IdempotencyGuard(crmDb);
     const translationTaskRepo = new DrizzleTranslationTaskRepository(crmDb);
     const translationTaskService = new TranslationTaskService(translationTaskRepo);
@@ -1041,6 +1088,7 @@ export function getServices(): AppServices {
       difyApi: difyApiClient,
       difyClassifierApi: difyClassifierApiClient,
       difyFaqGroundingApi: difyFaqGroundingApiClient,
+      resendInbound: resendInboundService,
       resolveHospitalType,
 
       createCase: new CreateCaseUseCase(caseRepo),
@@ -1055,6 +1103,7 @@ export function getServices(): AppServices {
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
       uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo),
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
+      getDocumentPreview: new GetDocumentPreviewUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
       deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo, chcRepo),
       getCaseProgress: new GetCaseProgressUseCase(progressRepo, caseRepo, chcRepo),
       addCaseProgress: new AddCaseProgressUseCase(progressRepo, caseRepo, chcRepo),
@@ -1074,7 +1123,7 @@ export function getServices(): AppServices {
       getConversation: new GetConversationUseCase(conversationRepo),
       updateConversation: new UpdateConversationUseCase(conversationRepo),
       resumeConversationAi: new ResumeConversationAiUseCase(conversationRepo, messageRepo, txRunner),
-      sendMessage: new SendMessageUseCase(conversationRepo, messageRepo, translationService, messageTaskRepo, patientRepo, userRepo, caseRepo, txRunner),
+      sendMessage,
       listMessages: new ListMessagesUseCase(conversationRepo, messageRepo, routedStorageService),
       getMessage: new GetMessageUseCase(conversationRepo, messageRepo, routedStorageService),
       updateMessage: new UpdateMessageUseCase(conversationRepo, messageRepo),
@@ -1085,6 +1134,7 @@ export function getServices(): AppServices {
       regenerateSummary: new RegenerateSummaryUseCase(messageRepo, translationService),
       retranslateMessage: new RetranslateMessageUseCase(messageRepo, translationService),
       processMessageTasks: new ProcessMessageTasksUseCase(messageTaskRepo, messageRepo, translationService),
+      processInboundEmail,
 
       createConsultation: new CreateConsultationUseCase(consultationRepo, caseRepo, translationTaskService, chcRepo),
       getConsultation: new GetConsultationUseCase(consultationRepo),

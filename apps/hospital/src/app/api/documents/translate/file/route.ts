@@ -2,12 +2,12 @@ import { NextRequest } from 'next/server';
 import { apiFetch } from '@/lib/api-fetch';
 
 export async function GET(request: NextRequest): Promise<Response> {
-  const path = request.nextUrl.searchParams.get('path');
-  if (!path) {
-    return Response.json({ error: 'path is required' }, { status: 400 });
+  const id = request.nextUrl.searchParams.get('id');
+  if (!id) {
+    return Response.json({ error: 'id is required' }, { status: 400 });
   }
 
-  const res = await apiFetch(`/api/v2/documents/translate/file?path=${encodeURIComponent(path)}`);
+  const res = await apiFetch(`/api/v2/documents/translate/file?id=${encodeURIComponent(id)}`);
   const headers = new Headers();
   const contentType = res.headers.get('content-type');
   const contentDisposition = res.headers.get('content-disposition');

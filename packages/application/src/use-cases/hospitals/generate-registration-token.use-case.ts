@@ -9,6 +9,15 @@ import type {
 } from '@medical-crm/domain';
 import type { Actor } from '../../types/actor.js';
 
+function resolveHospitalRegistrationOrigin(): string {
+  const origin = process.env.ADMIN_ORIGIN?.trim();
+  if (origin) return origin.replace(/\/+$/, '');
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('ADMIN_ORIGIN is required to generate hospital registration links');
+  }
+  return 'http://localhost:3002';
+}
+
 export class GenerateRegistrationTokenUseCase {
   constructor(
     private readonly hospitalRepo: IHospitalManagementRepository,
@@ -62,11 +71,10 @@ export class GenerateRegistrationTokenUseCase {
       createdAt: now,
     });
 
-    await this.tokenRepo.save(token);
-
     if (this.emailService) {
+      const registrationUrl = `${resolveHospitalRegistrationOrigin()}/auth/hospital/register?token=${encodeURIComponent(token.token)}`;
+      await this.tokenRepo.save(token);
       try {
-        const registrationUrl = `${process.env.ADMIN_ORIGIN ?? 'http://localhost:3002'}/auth/hospital/register?token=${token.token}`;
         await this.emailService.sendHospitalInvitation({
           to: normalizedEmail,
           hospitalName: hospital.name,
@@ -75,6 +83,8 @@ export class GenerateRegistrationTokenUseCase {
       } catch (error) {
         console.error('Failed to send hospital invitation email:', error);
       }
+    } else {
+      await this.tokenRepo.save(token);
     }
 
     return { token: token.token, expiresAt: token.expiresAt.toISOString() };

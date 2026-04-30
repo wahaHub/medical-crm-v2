@@ -14,14 +14,16 @@ describe('Recommendation prompt skill context', () => {
         skillId: 'hospital_skill',
         role: 'primary',
         reasonCode: 'recommend_hospitals',
-        sectionIds: ['candidate_policy', 'recommendation_handling'],
-        readIntentTypes: ['HOSPITAL_RECOMMENDATION'],
+        sectionIds: ['hospital_sources'],
+        readIntentTypes: ['HOSPITAL_CANDIDATES', 'HOSPITAL_FAQ', 'DOCTOR_MATCHING_CONTEXT'],
         policyText: ['Use only supplied candidate hospitals and known patient facts.'],
         retrievalGuidance: ['Ground recommendations in the retrieved candidate list.'],
         handlingGuidance: ['Explain uncertainty as a reason to refine, not to invent options.'],
       }],
       readIntents: [
-        { type: 'HOSPITAL_RECOMMENDATION', reasonCode: 'hospital_skill:candidate_policy' },
+        { type: 'HOSPITAL_CANDIDATES', reasonCode: 'hospital_skill:hospital_sources' },
+        { type: 'HOSPITAL_FAQ', category: 'hospital', reasonCode: 'hospital_skill:hospital_sources' },
+        { type: 'DOCTOR_MATCHING_CONTEXT', reasonCode: 'hospital_skill:hospital_sources' },
       ],
     };
 
@@ -32,12 +34,12 @@ describe('Recommendation prompt skill context', () => {
 
     expect(prompt).toContain('loaded_skill_sections=');
     expect(prompt).toContain('hospital_skill');
-    expect(prompt).toContain('"sectionIds":["candidate_policy","recommendation_handling"]');
-    expect(prompt).toContain('"readIntentTypes":["HOSPITAL_RECOMMENDATION"]');
+    expect(prompt).toContain('"sectionIds":["hospital_sources"]');
+    expect(prompt).toContain('"readIntentTypes":["HOSPITAL_CANDIDATES","HOSPITAL_FAQ","DOCTOR_MATCHING_CONTEXT"]');
     expect(prompt).toContain('Use only supplied candidate hospitals and known patient facts.');
     expect(prompt).toContain('Ground recommendations in the retrieved candidate list.');
     expect(prompt).toContain('Explain uncertainty as a reason to refine, not to invent options.');
-    expect(prompt).toContain('read_intents={"type":"HOSPITAL_RECOMMENDATION","reasonCode":"hospital_skill:candidate_policy"}');
+    expect(prompt).toContain('read_intents={"type":"HOSPITAL_CANDIDATES","reasonCode":"hospital_skill:hospital_sources"}, {"type":"HOSPITAL_FAQ","category":"hospital","reasonCode":"hospital_skill:hospital_sources"}, {"type":"DOCTOR_MATCHING_CONTEXT","reasonCode":"hospital_skill:hospital_sources"}');
     expect(prompt).not.toContain('[object Object]');
   });
 });

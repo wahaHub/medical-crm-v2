@@ -10,12 +10,12 @@ describe('FAQ prompt skill context', () => {
       primaryStage: 'COLLECT_MEDICAL_INPUTS',
       latestUserMessage: 'How long does online consultation take?',
       primaryAction: { type: 'ANSWER', target: 'consult', mode: 'faq' },
-      followUpAction: { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_detail' },
+      followUpAction: { type: 'GO_DEEP', target: 'consult', reasonCode: 'user_requested_more_detail' },
       loadedSkillSections: [{
-        skillId: 'consult_skill',
+        skillId: 'faq_skill',
         role: 'primary',
         reasonCode: 'answer_consult_faq',
-        sectionIds: ['consult_policy', 'consult_readiness'],
+        sectionIds: ['consult_readiness', 'consult_sources'],
         readIntentTypes: ['GENERAL_FAQ', 'CONSULT_READINESS'],
         policyText: ['Answer consult timing from grounded FAQ policy before asking for records.'],
         retrievalGuidance: ['Retrieve consult readiness criteria and matching FAQ entries.'],
@@ -23,7 +23,7 @@ describe('FAQ prompt skill context', () => {
       }],
       readIntents: [
         { type: 'GENERAL_FAQ', category: 'consult', reasonCode: 'answer_consult_faq' },
-        { type: 'CONSULT_READINESS', reasonCode: 'consult_skill:consult_readiness' },
+        { type: 'CONSULT_READINESS', reasonCode: 'faq_skill:consult_sources' },
       ],
       responseContract: {
         structure: 'answer_then_advance',
@@ -52,13 +52,13 @@ describe('FAQ prompt skill context', () => {
 
     for (const prompt of prompts) {
       expect(prompt).toContain('loaded_skill_sections=');
-      expect(prompt).toContain('consult_skill');
-      expect(prompt).toContain('"sectionIds":["consult_policy","consult_readiness"]');
+      expect(prompt).toContain('faq_skill');
+      expect(prompt).toContain('"sectionIds":["consult_readiness","consult_sources"]');
       expect(prompt).toContain('"readIntentTypes":["GENERAL_FAQ","CONSULT_READINESS"]');
       expect(prompt).toContain('Answer consult timing from grounded FAQ policy before asking for records.');
       expect(prompt).toContain('Retrieve consult readiness criteria and matching FAQ entries.');
       expect(prompt).toContain('Give the answer first, then invite one readiness step.');
-      expect(prompt).toContain('read_intents={"type":"GENERAL_FAQ","category":"consult","reasonCode":"answer_consult_faq"}, {"type":"CONSULT_READINESS","reasonCode":"consult_skill:consult_readiness"}');
+      expect(prompt).toContain('read_intents={"type":"GENERAL_FAQ","category":"consult","reasonCode":"answer_consult_faq"}, {"type":"CONSULT_READINESS","reasonCode":"faq_skill:consult_sources"}');
       expect(prompt).not.toContain('[object Object]');
     }
   });

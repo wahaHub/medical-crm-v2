@@ -7,17 +7,17 @@ const recordsSkillContext: Pick<
   'loadedSkillSections' | 'readIntents' | 'responseContract'
 > = {
   loadedSkillSections: [{
-    skillId: 'records_skill',
+    skillId: 'treatment_skill',
     role: 'primary',
     reasonCode: 'collect_records',
-    sectionIds: ['minimal_triage_policy', 'diagnosis_proof_policy'],
+    sectionIds: ['treatment_requirements'],
     readIntentTypes: ['RECORD_REQUIREMENTS'],
     policyText: ['Collect only the record or medical fact needed for the active stage.'],
     retrievalGuidance: ['Use record requirements to name the next useful document.'],
     handlingGuidance: ['Acknowledge what the user shared and ask one focused next step.'],
   }],
   readIntents: [
-    { type: 'RECORD_REQUIREMENTS', reasonCode: 'records_skill:diagnosis_proof_policy' },
+    { type: 'RECORD_REQUIREMENTS', reasonCode: 'treatment_skill:treatment_requirements' },
   ],
   responseContract: {
     structure: 'acknowledge_then_advance',
@@ -73,12 +73,12 @@ describe('Records prompt skill context', () => {
 
 function expectRecordsSkillContext(prompt: string): void {
   expect(prompt).toContain('loaded_skill_sections=');
-  expect(prompt).toContain('records_skill');
-  expect(prompt).toContain('"sectionIds":["minimal_triage_policy","diagnosis_proof_policy"]');
+  expect(prompt).toContain('treatment_skill');
+  expect(prompt).toContain('"sectionIds":["treatment_requirements"]');
   expect(prompt).toContain('"readIntentTypes":["RECORD_REQUIREMENTS"]');
   expect(prompt).toContain('Collect only the record or medical fact needed for the active stage.');
   expect(prompt).toContain('Use record requirements to name the next useful document.');
   expect(prompt).toContain('Acknowledge what the user shared and ask one focused next step.');
-  expect(prompt).toContain('read_intents={"type":"RECORD_REQUIREMENTS","reasonCode":"records_skill:diagnosis_proof_policy"}');
+  expect(prompt).toContain('read_intents={"type":"RECORD_REQUIREMENTS","reasonCode":"treatment_skill:treatment_requirements"}');
   expect(prompt).not.toContain('[object Object]');
 }

@@ -55,6 +55,7 @@ describe('buildSkillPolicy', () => {
     ['travel', 'travel_skill', 'travel'],
     ['sales', 'sales_skill', 'sales'],
     ['faq', 'faq_skill', 'faq'],
+    ['consult', 'faq_skill', 'consult'],
     ['handoff', 'handoff_skill', 'handoff'],
   ] satisfies Array<[SupervisorEventTarget, DomainSkillId, SupervisorEventTarget]>)(
     'routes canonical target %s to %s with %s section hints',

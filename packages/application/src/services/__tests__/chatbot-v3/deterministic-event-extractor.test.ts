@@ -60,7 +60,7 @@ describe('extractDeterministicEvent', () => {
     });
 
     expect(event?.eventType).toBe('USER_REQUESTED_HUMAN');
-    expect(event?.target).toBe('human');
+    expect(event?.target).toBe('handoff');
     expect(event?.modifier).toBe('ask');
     expect(event?.source).toBe('deterministic');
   });

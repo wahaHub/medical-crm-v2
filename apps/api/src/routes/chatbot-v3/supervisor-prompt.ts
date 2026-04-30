@@ -7,7 +7,7 @@ export const SUPERVISOR_PROMPT_VERSION = 'supervisor-prompt-v3-events';
 
 const SEMANTIC_EVENT_CLASSIFICATION_GUIDE: Record<SemanticSupervisorEventType, string> = {
   USER_EXPRESSED_INTEREST: 'user expresses a service goal or desire, such as treatment in China, hospital matching, pricing, travel support, or Medora help.',
-  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, FAQ, or handoff.',
+  USER_ASKED_QUESTION: 'user asks an informational question about service scope, policy, medical advice, hospital, treatment, pricing, payment, travel, sales, FAQ, online consultation, or handoff.',
   USER_PROVIDED_INFORMATION: 'user gives facts, preferences, records, medical details, document availability, or contact information.',
   USER_RESPONDED_TO_REQUEST: 'user replies to the previous assistant request or CTA; use last_question context when available.',
   USER_REQUESTED_ACTION: 'user asks Medora to do something, such as arrange, prepare, compare, estimate, schedule, or hand off.',
@@ -20,7 +20,7 @@ const EVENT_TARGET_MODIFIER_BOUNDARY_GUIDE = [
   'target is the business domain / skill-aligned topic.',
   'modifier is the user posture.',
   'Do not create skill-specific event types.',
-  'A medical, pricing, hospital, travel, payment, sales, or policy question can all be USER_ASKED_QUESTION; the domain difference belongs in target.',
+  'A medical, pricing, hospital, travel, payment, sales, consult, or policy question can all be USER_ASKED_QUESTION; the domain difference belongs in target.',
 ].join('\n');
 
 const DETAILED_SEMANTIC_EVENT_GUIDE = [
@@ -48,6 +48,7 @@ const CONCRETE_TAXONOMY_EXAMPLES = [
   '"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.',
   '"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
   '"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.',
+  '"How long does online consultation take?" -> eventType=USER_ASKED_QUESTION, target=consult, modifier=ask.',
   '"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
   '"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
   '"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.',
@@ -101,6 +102,7 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'If an event is not in the allowed list for this turn, do not return it.',
     'If multiple events seem possible, choose the primary user intent.',
     'medical-advice questions use USER_ASKED_QUESTION with target=medical_advice.',
+    'online consultation timing, readiness, scheduling, or process FAQ uses target=consult unless the user asks refund/payment policy.',
     'outside Medora scope uses target=service_scope.',
     'USER_REQUESTED_HUMAN always uses target=handoff.',
     'Do not represent human requests as modifier=request_action.',
@@ -113,7 +115,7 @@ export function buildSupervisorPrompt(input: SupervisorGatewayInput): string {
     'Concrete taxonomy examples:',
     ...CONCRETE_TAXONOMY_EXAMPLES,
     '',
-    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, handoff, unknown.',
+    'Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, consult, handoff, unknown.',
     'Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.',
     '',
     'Context:',

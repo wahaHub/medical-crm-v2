@@ -180,7 +180,7 @@ export function decidePrimaryAction(input: {
     case 'USER_REQUESTED_HUMAN':
       return { type: 'ESCALATE', target: 'handoff', reasonCode: 'human_requested' };
     case 'USER_REQUESTED_ACTION':
-      return decideNextStepFromFacts(facts);
+      return decideRequestedAction(event, facts);
     case 'USER_ASKED_MEDICAL_ADVICE':
       return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
     case 'USER_ASKED_OUT_OF_SCOPE_OR_RESTRICTED_SERVICE':
@@ -236,6 +236,22 @@ export function decidePrimaryAction(input: {
     default:
       return { type: 'CLARIFY', target: 'unknown', reasonCode: 'ambiguous_message' };
   }
+}
+
+function decideRequestedAction(event: SupervisorEvent, facts: DomainFacts): PrimaryAction {
+  if (event.target === 'service_scope') {
+    return { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' };
+  }
+
+  if (event.target === 'medical_advice') {
+    return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
+  }
+
+  if (event.target === 'hospital' || event.target === 'recommendation' || event.target === 'hospital_selection') {
+    return { type: 'PRESENT_OPTIONS', target: 'hospital' };
+  }
+
+  return decideNextStepFromFacts(facts);
 }
 
 export function decideNextStepFromFacts(facts: DomainFacts): PrimaryAction {

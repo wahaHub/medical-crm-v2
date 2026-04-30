@@ -61,6 +61,7 @@ describe('supervisor-event.types', () => {
       'travel',
       'sales',
       'faq',
+      'consult',
       'handoff',
       'unknown',
     ]);
@@ -70,7 +71,6 @@ describe('supervisor-event.types', () => {
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('documents');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('process');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('recommendation');
-    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('consult');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('contact');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('human');
   });

@@ -94,6 +94,7 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('USER_REQUESTED_HUMAN: explicit human/coordinator/contact request, always target=handoff.');
     expect(prompt).toContain('USER_MESSAGE_UNCLEAR: too unclear to classify safely.');
     expect(prompt).toContain('medical-advice questions use USER_ASKED_QUESTION with target=medical_advice');
+    expect(prompt).toContain('online consultation timing, readiness, scheduling, or process FAQ uses target=consult unless the user asks refund/payment policy');
     expect(prompt).toContain('outside Medora scope uses target=service_scope');
     expect(prompt).toContain('USER_REQUESTED_HUMAN always uses target=handoff');
     expect(prompt).toContain('Do not represent human requests as modifier=request_action');
@@ -180,7 +181,7 @@ describe('buildSupervisorPrompt', () => {
   it('lists only skill-aligned targets and the canonical posture modifiers', () => {
     const prompt = buildSupervisorPrompt(baseInput);
 
-    expect(prompt).toContain('Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, handoff, unknown.');
+    expect(prompt).toContain('Target guide: service_scope, policy, medical_advice, hospital, treatment, pricing, payment, travel, sales, faq, consult, handoff, unknown.');
     expect(prompt).toContain('Modifier guide: ask, provide, confirm, reject, hesitate, correct, compare, revisit, request_action, urgent, unknown.');
     expect(prompt).not.toContain('Target guide: treatment, recommendation, documents');
     expect(prompt).not.toContain('medical_facts');
@@ -197,6 +198,7 @@ describe('buildSupervisorPrompt', () => {
     expect(prompt).toContain('"Please help me get school admission." -> eventType=USER_REQUESTED_ACTION, target=service_scope, modifier=request_action.');
     expect(prompt).toContain('"Can Medora submit my insurance claim or get reimbursement approval?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
     expect(prompt).toContain('"Is the $400 online consultation refundable if I don\'t come to China?" -> eventType=USER_ASKED_QUESTION, target=policy, modifier=ask.');
+    expect(prompt).toContain('"How long does online consultation take?" -> eventType=USER_ASKED_QUESTION, target=consult, modifier=ask.');
     expect(prompt).toContain('"Recommend hospitals in Shanghai for lung cancer." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
     expect(prompt).toContain('"Which doctor should I see?" -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');
     expect(prompt).toContain('"Recommend a doctor for my CT results." -> eventType=USER_REQUESTED_ACTION, target=hospital, modifier=request_action.');

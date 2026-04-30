@@ -470,7 +470,7 @@ function normalizeSemanticSupervisorEventTarget(
   if (value === 'consult') {
     return eventType === 'USER_REQUESTED_ACTION' || modifier === 'request_action'
       ? 'handoff'
-      : 'policy';
+      : 'consult';
   }
 
   if (isSupervisorEventTarget(value)) {
@@ -860,6 +860,12 @@ function inferQuestionTarget(message: string): NonNullable<SupervisorEvent['targ
   if (/\b(?:next step|what next|now what|do next|下一步|接下来|然后呢)\b/i.test(message)) {
     return 'policy';
   }
+  if (
+    /\b(?:consult|consultation|appointment|call|问诊|会诊|咨询|预约)\b/i.test(message)
+    && /\b(?:refund|refundable|reimbursement|payment|pay|fee|fees|cost|price|deposit|退款|退费|报销|付款|付费|费用|价格|定金)\b/i.test(message)
+  ) {
+    return /\b(?:payment|pay|付款|付费)\b/i.test(message) ? 'payment' : 'policy';
+  }
   if (/\b(?:price|cost|fee|fees|expensive|cheap|payment|pay|多少钱|费用|价格|付款|付费|太贵)\b/i.test(message)) {
     return /\b(?:payment|pay|付款|付费)\b/i.test(message) ? 'payment' : 'pricing';
   }
@@ -870,7 +876,7 @@ function inferQuestionTarget(message: string): NonNullable<SupervisorEvent['targ
     return 'hospital';
   }
   if (/\b(?:consult|consultation|appointment|call|问诊|会诊|咨询|预约)\b/i.test(message)) {
-    return 'policy';
+    return 'consult';
   }
   if (/\b(?:travel|visa|flight|hotel|trip|签证|机票|酒店|赴华|行程)\b/i.test(message)) {
     return 'travel';

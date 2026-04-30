@@ -58,6 +58,7 @@ describe('DOMAIN_SKILL_REGISTRY', () => {
     expect(allPolicyText('hospital_skill')).toContain('hospital API');
     expect(allPolicyText('hospital_skill')).toContain('specific doctor');
     expect(allPolicyText('treatment_skill')).toContain('required step before coming to China');
+    expect(allPolicyText('treatment_skill')).toContain('within 48 hours');
 
     expect(allPolicyText('pricing_skill')).toContain('Hospital medical cost vs Medora service fee');
     expect(allPolicyText('payment_skill')).toContain('Payee distinction');
@@ -265,6 +266,33 @@ describe('loadSkillSections', () => {
     expect(loaded.skillSections[0]?.handlingGuidance).toEqual([
       expect.stringContaining('Respect the choice'),
     ]);
+  });
+
+  it('loads upload-review promise on deterministic document upload turns', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'treatment_skill',
+          role: 'primary',
+          reasonCode: 'documents_uploaded',
+          sectionHints: {
+            eventType: 'DOCUMENTS_UPLOADED',
+            target: 'documents',
+            modifier: 'provide',
+            primaryActionType: 'REQUEST_INFO',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'documents_upload_review_promise',
+      'DOCUMENTS_UPLOADED.provide',
+    ]));
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('Medora human team will review');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('within 48 hours');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('Do not imply the chatbot has clinically reviewed');
   });
 
   it('loads detailed sections for canonical service scope and handoff requests', () => {

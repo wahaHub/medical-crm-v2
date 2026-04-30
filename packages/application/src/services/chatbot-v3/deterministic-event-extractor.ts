@@ -39,7 +39,7 @@ export function extractDeterministicEvent(
 
   if (isExplicitHumanRequest(message)) {
     return buildEvent('USER_REQUESTED_HUMAN', {
-      target: 'human',
+      target: 'handoff',
       modifier: 'ask',
       metadata: { rawText: message },
     });

@@ -60,6 +60,7 @@ export type CanonicalSupervisorEventTarget =
   | 'travel'
   | 'sales'
   | 'faq'
+  | 'consult'
   | 'handoff'
   | 'unknown';
 
@@ -74,6 +75,7 @@ export const SUPERVISOR_EVENT_TARGETS = [
   'travel',
   'sales',
   'faq',
+  'consult',
   'handoff',
   'unknown',
 ] as const satisfies readonly CanonicalSupervisorEventTarget[];
@@ -81,7 +83,6 @@ export const SUPERVISOR_EVENT_TARGETS = [
 export type LegacySupervisorActionTarget =
   | 'recommendation'
   | 'documents'
-  | 'consult'
   | 'next_step'
   | 'process'
   | 'hospital_selection'

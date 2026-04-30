@@ -182,6 +182,54 @@ describe('reduceJourney', () => {
     expect(result.state.primaryStage).toBe('ONLINE_CONSULT');
   });
 
+  it('keeps service-scope action requests on the service-scope boundary instead of generic progression', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MEDICAL_INPUTS'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
+        process: { explained: true },
+        records: { supportingDocumentsCount: 1, availableDocumentTypes: [], missingDocumentTypes: [] },
+      }),
+      event: {
+        eventType: 'USER_REQUESTED_ACTION',
+        target: 'service_scope',
+        modifier: 'request_action',
+        confidence: 0.9,
+        source: 'llm',
+      },
+    });
+
+    expect(result.turnPlan.primaryAction).toEqual({
+      type: 'REDIRECT',
+      target: 'service_scope',
+      reasonCode: 'out_of_scope',
+    });
+    expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
+  });
+
+  it('keeps hospital action requests on hospital recommendations instead of generic consult progression', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MEDICAL_INPUTS'),
+      facts: facts({
+        intake: { minimalTriageStatus: 'submitted' },
+        recommendation: { status: 'selected', selectedHospitalIds: ['h1'] },
+        process: { explained: true },
+        records: { supportingDocumentsCount: 1, availableDocumentTypes: [], missingDocumentTypes: [] },
+      }),
+      event: {
+        eventType: 'USER_REQUESTED_ACTION',
+        target: 'hospital',
+        modifier: 'request_action',
+        confidence: 0.9,
+        source: 'llm',
+      },
+    });
+
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'PRESENT_OPTIONS', target: 'hospital' });
+    expect(result.state.primaryStage).toBe('RECOMMENDATION');
+  });
+
   it('treats legacy next-step question targets as workflow progression', () => {
     const result = reduceJourney({
       state: state('RECOMMENDATION'),

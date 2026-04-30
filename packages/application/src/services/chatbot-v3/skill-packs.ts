@@ -421,6 +421,11 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
         text: 'Useful treatment-review records may include diagnosis summary, recent imaging report and original images if available, labs, pathology report, surgery/procedure notes, discharge summary, medication list, prior treatment plan, current symptoms and functional status, allergies/comorbidities, relevant photos, prior doctor opinions, and questions for the Chinese specialist.',
       },
       {
+        id: 'documents_upload_review_promise',
+        appliesTo: { eventTypes: ['DOCUMENTS_UPLOADED'], targets: ['treatment', 'documents'] },
+        text: 'When the user uploads medical files or case materials, acknowledge receipt when confirmed and say Medora human team will review them, seek careful doctor review where appropriate, and contact the user within 48 hours. Do not imply the chatbot has clinically reviewed the file, diagnosed from it, or determined treatment.',
+      },
+      {
         id: 'documents_minimal_medical_facts',
         appliesTo: { targets: ['treatment', 'medical_facts'] },
         text: 'When facts are missing, ask for the smallest useful set: diagnosis or suspected condition, main symptoms and duration, prior tests or treatments, and destination/timing constraints when relevant.',

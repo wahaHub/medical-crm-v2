@@ -17,9 +17,21 @@ describe('buildConsumerShowcaseUrl', () => {
       buildConsumerShowcaseUrl({
         id: 'hospital-uuid',
         type: 'REGULAR',
+        site: 'china',
         consumerSlug: 'peking-union-medical-college-hospital',
       }),
     ).toBe('https://www.medicaltourismchina.health/hospitals/peking-union-medical-college-hospital');
+  });
+
+  it('builds a global regular consumer URL from the hospital slug', () => {
+    expect(
+      buildConsumerShowcaseUrl({
+        id: 'a850398e-f7de-4d59-bb4a-876812ab2056',
+        type: 'REGULAR',
+        site: 'global',
+        consumerSlug: 'mongolian-spinal-hospital',
+      }),
+    ).toBe('https://globalcareaccess.health/hospitals/mongolian-spinal-hospital');
   });
 
   it('returns null when the consumer slug is missing', () => {

@@ -64,7 +64,9 @@ export const hospitals = pgTable("hospitals", {
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 	type: hospitalType().default('COSMETIC').notNull(),
+	site: varchar({ length: 20 }),
 }, (table) => [
+	index("hospitals_site_idx").using("btree", table.site.asc().nullsLast().op("text_ops")),
 	index("hospitals_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	index("hospitals_type_idx").using("btree", table.type.asc().nullsLast().op("enum_ops")),
 ]);

@@ -42,6 +42,12 @@ const HOSPITAL_TYPE_COLORS: Record<string, string> = {
   REGULAR: 'bg-blue-50 text-blue-700',
 };
 
+const HOSPITAL_SITE_COLORS: Record<string, string> = {
+  cosmetic: 'bg-pink-50 text-pink-700',
+  china: 'bg-red-50 text-red-700',
+  global: 'bg-emerald-50 text-emerald-700',
+};
+
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -64,6 +70,13 @@ const columns: Column<HospitalSummary>[] = [
     header: 'Type',
     render: (row) => (
       <StatusBadge status={row.type} colorMap={HOSPITAL_TYPE_COLORS} />
+    ),
+  },
+  {
+    key: 'site',
+    header: 'Site',
+    render: (row) => (
+      <StatusBadge status={row.site ?? 'unset'} colorMap={HOSPITAL_SITE_COLORS} />
     ),
   },
   {

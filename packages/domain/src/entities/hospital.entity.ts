@@ -1,4 +1,4 @@
-import type { HospitalStatus, HospitalType } from '../enums/index.js';
+import type { HospitalSite, HospitalStatus, HospitalType } from '../enums/index.js';
 import { ValidationError } from '@medical-crm/utils';
 import { HOSPITAL_STATUS_TRANSITIONS } from '../state-machine/hospital-status-transitions.js';
 
@@ -15,6 +15,7 @@ export interface HospitalProps {
   specialties: string[] | null;
   status: HospitalStatus;
   type: HospitalType;
+  site: HospitalSite | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +33,7 @@ export class Hospital {
   specialties: string[] | null;
   status: HospitalStatus;
   type: HospitalType;
+  site: HospitalSite | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -48,6 +50,7 @@ export class Hospital {
     this.specialties = props.specialties;
     this.status = props.status;
     this.type = props.type;
+    this.site = props.site;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

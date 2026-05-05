@@ -7,6 +7,7 @@ import { createHospital, generateRegistrationToken } from '@/actions/hospital-ac
 import { useSpecialties } from '@/queries/use-specialties';
 
 type HospitalType = 'COSMETIC' | 'REGULAR';
+type HospitalSite = 'cosmetic' | 'china' | 'global';
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100';
@@ -20,6 +21,7 @@ export function NewHospitalForm() {
   // Form fields
   const [name, setName] = useState('');
   const [type, setType] = useState<HospitalType | ''>('');
+  const [site, setSite] = useState<HospitalSite | ''>('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [phone, setPhone] = useState('');
@@ -32,6 +34,7 @@ export function NewHospitalForm() {
   // Reset selected specialties when type changes
   useEffect(() => {
     setSelectedSpecialties([]);
+    setSite(type === 'COSMETIC' ? 'cosmetic' : type === 'REGULAR' ? 'china' : '');
   }, [type]);
 
   function toggleSpecialty(specialty: string) {
@@ -53,6 +56,10 @@ export function NewHospitalForm() {
       setError('Hospital type is required.');
       return;
     }
+    if (!site) {
+      setError('Hospital site is required.');
+      return;
+    }
     if (!email.trim()) {
       setError('Email is required.');
       return;
@@ -65,6 +72,7 @@ export function NewHospitalForm() {
     const payload: Record<string, unknown> = {
       name: name.trim(),
       type,
+      site,
       contactEmail: email.trim(),
       specialties: selectedSpecialties,
     };
@@ -145,6 +153,30 @@ export function NewHospitalForm() {
             <option value="COSMETIC">Cosmetic (整容医院)</option>
             <option value="REGULAR">Regular (普通医院)</option>
           </select>
+        </div>
+
+        {/* Site */}
+        <div className="space-y-1.5">
+          <label className="block text-sm font-medium text-slate-700" htmlFor="site">
+            Site <span className="text-red-500">*</span>
+          </label>
+          <select
+            id="site"
+            value={site}
+            onChange={(e) => setSite(e.target.value as HospitalSite | '')}
+            className={inputClass}
+            required
+          >
+            <option value="" disabled>
+              Select a site...
+            </option>
+            {type === 'COSMETIC' && <option value="cosmetic">cosmetic</option>}
+            {type === 'REGULAR' && <option value="china">china</option>}
+            {type === 'REGULAR' && <option value="global">global</option>}
+          </select>
+          <p className="text-xs text-slate-500">
+            Cosmetic hospitals use cosmetic. Regular hospitals use china unless they belong to the global site.
+          </p>
         </div>
 
         {/* Specialties */}

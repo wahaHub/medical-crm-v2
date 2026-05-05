@@ -144,7 +144,7 @@ function ConsumerShowcaseLinkSection({ hospital }: { hospital: HospitalSummary }
             </p>
           )}
           <p className="mt-1 text-xs text-slate-500">
-            Domain policy: {hospital.type === 'REGULAR' ? 'REGULAR' : 'COSMETIC'} hospital
+            Domain policy: {hospital.site ?? (hospital.type === 'REGULAR' ? 'china' : 'cosmetic')} site
           </p>
         </div>
 
@@ -289,6 +289,10 @@ export function HospitalDetail({ hospital }: HospitalDetailProps) {
           <div>
             <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Type</span>
             <p className="mt-1 text-sm text-slate-900">{hospital.type}</p>
+          </div>
+          <div>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">Site</span>
+            <p className="mt-1 text-sm text-slate-900">{hospital.site ?? '—'}</p>
           </div>
           {hospital.city && (
             <div>

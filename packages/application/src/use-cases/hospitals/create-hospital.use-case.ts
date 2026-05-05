@@ -1,6 +1,6 @@
 import { generateId, ForbiddenError } from '@medical-crm/utils';
 import { Hospital } from '@medical-crm/domain';
-import type { IHospitalManagementRepository, IHospitalSyncService, HospitalType } from '@medical-crm/domain';
+import type { HospitalSite, IHospitalManagementRepository, IHospitalSyncService, HospitalType } from '@medical-crm/domain';
 import type { Actor } from '../../types/actor.js';
 import type { HospitalDTO } from '../../dtos/hospital.dto.js';
 import { toHospitalDTO } from '../../mappers/hospital.mapper.js';
@@ -8,6 +8,7 @@ import { toHospitalDTO } from '../../mappers/hospital.mapper.js';
 export interface CreateHospitalInput {
   name: string;
   type: HospitalType;
+  site?: HospitalSite;
   contactEmail: string;
   contactPhone?: string;
   address?: string;
@@ -41,6 +42,7 @@ export class CreateHospitalUseCase {
       specialties: input.specialties,
       status: 'PENDING',
       type: input.type,
+      site: input.site ?? (input.type === 'COSMETIC' ? 'cosmetic' : 'china'),
       createdAt: now,
       updatedAt: now,
     });

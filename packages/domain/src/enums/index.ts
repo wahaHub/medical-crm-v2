@@ -19,6 +19,7 @@ export type ProgressType =
 // Hospital
 export type HospitalStatus = 'ACTIVE' | 'PENDING' | 'INACTIVE';
 export type HospitalType = 'COSMETIC' | 'REGULAR';
+export type HospitalSite = 'cosmetic' | 'china' | 'global';
 
 // Messaging
 export type ConversationCategory = 'HOSPITAL' | 'PATIENT' | 'ADMIN_HOSPITAL' | 'ADMIN_PATIENT' | 'HOSPITAL_PATIENT';

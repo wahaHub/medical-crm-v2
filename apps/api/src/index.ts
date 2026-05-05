@@ -54,6 +54,10 @@ app.route('/api/patient', patientProtectedRoutes);
 import publicBookingRoutes from './routes/public-booking.routes.js';
 app.route('/', publicBookingRoutes);
 
+// Public: site-scoped hospital directory (no auth required)
+import publicHospitalRoutes from './routes/public-hospitals.routes.js';
+app.route('/', publicHospitalRoutes);
+
 // Public: chatbot routes use session-secret / patient-session auth, not Keycloak
 app.route('/', chatbotPublicRoutes);
 app.route('/', chatbotV3PublicRoutes);

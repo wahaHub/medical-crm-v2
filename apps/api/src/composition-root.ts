@@ -37,6 +37,7 @@ import {
   AddCaseProgressUseCase,
   CreateHospitalUseCase,
   ListHospitalsUseCase,
+  PublicListHospitalsUseCase,
   GetHospitalUseCase,
   UpdateHospitalUseCase,
   UpdateHospitalStatusUseCase,
@@ -355,6 +356,7 @@ interface AppServices {
   // use cases — hospitals
   createHospital: CreateHospitalUseCase;
   listHospitals: ListHospitalsUseCase;
+  publicListHospitals: PublicListHospitalsUseCase;
   getHospital: GetHospitalUseCase;
   updateHospital: UpdateHospitalUseCase;
   updateHospitalStatus: UpdateHospitalStatusUseCase;
@@ -1110,6 +1112,7 @@ export function getServices(): AppServices {
 
       createHospital: new CreateHospitalUseCase(hospitalManagementRepo, syncService),
       listHospitals: new ListHospitalsUseCase(hospitalManagementRepo),
+      publicListHospitals: new PublicListHospitalsUseCase(hospitalManagementRepo),
       getHospital: new GetHospitalUseCase(hospitalManagementRepo, userRepo, materialsRepo),
       updateHospital: new UpdateHospitalUseCase(hospitalManagementRepo, syncService),
       updateHospitalStatus: new UpdateHospitalStatusUseCase(hospitalManagementRepo, syncService),

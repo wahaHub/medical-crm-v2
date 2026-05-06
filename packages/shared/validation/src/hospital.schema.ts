@@ -2,10 +2,12 @@ import { z } from 'zod';
 
 export const hospitalStatusSchema = z.enum(['PENDING', 'ACTIVE', 'INACTIVE']);
 export const hospitalTypeSchema = z.enum(['COSMETIC', 'REGULAR']);
+export const hospitalSiteSchema = z.enum(['cosmetic', 'china', 'global']);
 
 export const createHospitalSchema = z.object({
   name: z.string().min(1).max(200),
   type: hospitalTypeSchema,
+  site: hospitalSiteSchema.optional(),
   contactEmail: z.string().email(),
   contactPhone: z.string().optional(),
   address: z.string().optional(),
@@ -19,6 +21,7 @@ export const hospitalListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: hospitalStatusSchema.optional(),
   type: hospitalTypeSchema.optional(),
+  site: hospitalSiteSchema.optional(),
   search: z.string().optional(),
 });
 
@@ -34,6 +37,7 @@ export const updateHospitalSchema = z.object({
   description: z.string().optional(),
   logoUrl: z.string().url().optional(),
   specialties: z.array(z.string()).optional(),
+  site: hospitalSiteSchema.optional(),
 });
 
 export const updateHospitalStatusSchema = z.object({

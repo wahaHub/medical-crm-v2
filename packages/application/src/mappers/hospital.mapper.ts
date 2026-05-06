@@ -15,6 +15,7 @@ export function toHospitalDTO(entity: Hospital): HospitalDTO {
     specialties: entity.specialties,
     status: entity.status,
     type: entity.type,
+    site: entity.site,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
   };

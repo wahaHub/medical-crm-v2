@@ -20,11 +20,12 @@ export class DrizzleHospitalManagementRepository implements IHospitalManagementR
   }
 
   async findMany(query: HospitalListQuery): Promise<PaginatedResult<Hospital>> {
-    const { page, limit, status, type, search } = query;
+    const { page, limit, status, type, site, search } = query;
 
     const conditions = [];
     if (status) conditions.push(eq(hospitals.status, status));
     if (type) conditions.push(eq(hospitals.type, type));
+    if (site) conditions.push(eq(hospitals.site, site));
     if (search) {
       conditions.push(
         or(
@@ -78,6 +79,7 @@ export class DrizzleHospitalManagementRepository implements IHospitalManagementR
       specialties: entity.specialties as unknown as typeof hospitals.$inferInsert['specialties'],
       status: entity.status,
       type: entity.type,
+      site: entity.site,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: now,
     };
@@ -99,6 +101,7 @@ export class DrizzleHospitalManagementRepository implements IHospitalManagementR
           specialties: values.specialties,
           status: values.status,
           type: values.type,
+          site: values.site,
           updatedAt: now,
         },
       })
@@ -135,6 +138,7 @@ export class DrizzleHospitalManagementRepository implements IHospitalManagementR
       specialties: (row.specialties as string[] | null) ?? null,
       status: row.status as import('@medical-crm/domain').HospitalStatus,
       type: row.type as import('@medical-crm/domain').HospitalType,
+      site: row.site as import('@medical-crm/domain').HospitalSite | null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

@@ -267,6 +267,8 @@ export type { AddProgressInput } from './use-cases/progress/add-case-progress.us
 export { CreateHospitalUseCase } from './use-cases/hospitals/create-hospital.use-case.js';
 export type { CreateHospitalInput } from './use-cases/hospitals/create-hospital.use-case.js';
 export { ListHospitalsUseCase } from './use-cases/hospitals/list-hospitals.use-case.js';
+export { PublicListHospitalsUseCase } from './use-cases/hospitals/public-list-hospitals.use-case.js';
+export { PublicGetHospitalUseCase } from './use-cases/hospitals/public-get-hospital.use-case.js';
 export { GetHospitalUseCase } from './use-cases/hospitals/get-hospital.use-case.js';
 export { UpdateHospitalUseCase } from './use-cases/hospitals/update-hospital.use-case.js';
 export type { UpdateHospitalInput } from './use-cases/hospitals/update-hospital.use-case.js';

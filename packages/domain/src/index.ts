@@ -6,7 +6,7 @@ export type {
 
 // Phase 2BC Enums
 export type {
-  HospitalStatus, HospitalType,
+  HospitalSite, HospitalStatus, HospitalType,
   ConversationCategory, MessageType, ModerationStatus,
   ConsultationStatus, AISummaryStatus, TranscriptStatus,
   MessageTaskKind, MessageTaskStatus,

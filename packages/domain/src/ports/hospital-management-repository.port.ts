@@ -1,5 +1,5 @@
 import type { Hospital } from '../entities/hospital.entity.js';
-import type { HospitalStatus, HospitalType } from '../enums/index.js';
+import type { HospitalSite, HospitalStatus, HospitalType } from '../enums/index.js';
 import type { PaginatedResult } from '@medical-crm/utils';
 
 export interface HospitalListQuery {
@@ -7,6 +7,7 @@ export interface HospitalListQuery {
   limit: number;
   status?: HospitalStatus;
   type?: HospitalType;
+  site?: HospitalSite;
   search?: string;
 }
 

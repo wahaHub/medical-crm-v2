@@ -1,5 +1,5 @@
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
-import type { IHospitalManagementRepository, IHospitalSyncService } from '@medical-crm/domain';
+import type { HospitalSite, IHospitalManagementRepository, IHospitalSyncService } from '@medical-crm/domain';
 import type { Actor } from '../../types/actor.js';
 import type { HospitalDTO } from '../../dtos/hospital.dto.js';
 import { toHospitalDTO } from '../../mappers/hospital.mapper.js';
@@ -14,6 +14,7 @@ export interface UpdateHospitalInput {
   description?: string;
   logoUrl?: string;
   specialties?: string[];
+  site?: HospitalSite;
 }
 
 export class UpdateHospitalUseCase {
@@ -40,6 +41,7 @@ export class UpdateHospitalUseCase {
     if (input.description !== undefined) entity.description = input.description;
     if (input.logoUrl !== undefined) entity.logoUrl = input.logoUrl;
     if (input.specialties !== undefined) entity.specialties = input.specialties;
+    if (input.site !== undefined) entity.site = input.site;
     entity.updatedAt = new Date();
 
     const saved = await this.hospitalRepo.save(entity);

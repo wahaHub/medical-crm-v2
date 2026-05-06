@@ -1,4 +1,4 @@
-import type { HospitalStatus, HospitalType } from '@medical-crm/domain';
+import type { HospitalSite, HospitalStatus, HospitalType } from '@medical-crm/domain';
 
 export interface HospitalDTO {
   id: string;
@@ -15,6 +15,7 @@ export interface HospitalDTO {
   specialties: string[] | null;
   status: HospitalStatus;
   type: HospitalType;
+  site: HospitalSite | null;
   createdAt: string;
   updatedAt: string;
 }

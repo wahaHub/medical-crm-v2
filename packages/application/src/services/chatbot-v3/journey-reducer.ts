@@ -136,13 +136,20 @@ export function deriveFactsPatch(event: SupervisorEvent, facts: DomainFacts): Do
       };
     }
     case 'USER_PROVIDED_INFORMATION':
-      if (event.target === 'medical_facts') {
+      if (isMedicalFactTarget(event.target)) {
         return deriveMedicalFactsPatch(event);
       }
       return {};
     default:
       return {};
   }
+}
+
+function isMedicalFactTarget(target: SupervisorEvent['target']): boolean {
+  return target === 'medical_facts'
+    || target === 'medical_advice'
+    || target === 'treatment'
+    || target === 'documents';
 }
 
 export function applyFactsPatch(facts: DomainFacts, patch: DomainFactsPatch): DomainFacts {
@@ -205,6 +212,9 @@ export function decidePrimaryAction(input: {
     case 'USER_PROVIDED_INFORMATION':
       if (event.target === 'handoff') {
         return { type: 'ESCALATE', target: 'handoff', reasonCode: 'contact_info_provided' };
+      }
+      if (event.target === 'medical_advice' && hasUrgentMedicalSafetySignal(event.metadata?.rawText)) {
+        return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
       }
       return decideNextStepFromFacts(facts);
     case 'USER_RESPONDED_TO_REQUEST':
@@ -410,6 +420,14 @@ function deriveMedicalFactsPatch(event: SupervisorEvent): DomainFactsPatch {
       condition: candidate.condition ?? candidate.diagnosis,
     },
   };
+}
+
+function hasUrgentMedicalSafetySignal(value: unknown): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  return /(?:chest\s+(?:pressure|pain|tightness)|heavy stone|shortness of breath|breathing trouble|one[-\s]?sided|face.*numb|facial.*numb|stroke|mouth.*crooked|arm weakness|sudden weakness|black stool|severe abdominal|right lower.*abdomen|uncontrolled bleeding|faint|confusion)/i.test(value);
 }
 
 function normalizeMedicalFactPatchCandidate(value: unknown): MedicalFactPatchCandidate | null {

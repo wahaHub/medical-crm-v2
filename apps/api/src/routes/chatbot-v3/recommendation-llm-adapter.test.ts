@@ -151,7 +151,7 @@ describe('RecommendationLlmAdapter', () => {
           reason: 'Strong multidisciplinary lung cancer team',
         },
       ],
-      explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+      explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
     });
   });
 
@@ -197,7 +197,7 @@ describe('RecommendationLlmAdapter', () => {
           reason: 'Strong multidisciplinary lung cancer team',
         },
       ],
-      explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+      explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({
@@ -255,7 +255,7 @@ describe('RecommendationLlmAdapter', () => {
           reason: 'Strong multidisciplinary lung cancer team',
         },
       ],
-      explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+      explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({
@@ -311,7 +311,7 @@ describe('RecommendationLlmAdapter', () => {
           reason: 'Strong multidisciplinary lung cancer team',
         },
       ],
-      explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+      explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({

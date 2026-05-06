@@ -60,12 +60,12 @@ describe('supervisor-event.types', () => {
       'payment',
       'travel',
       'sales',
-      'faq',
       'consult',
       'handoff',
       'unknown',
     ]);
 
+    expect(SUPERVISOR_EVENT_TARGETS).not.toContain('faq');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('records');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('eligibility_intake');
     expect(SUPERVISOR_EVENT_TARGETS).not.toContain('documents');

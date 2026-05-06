@@ -323,18 +323,18 @@ describe('buildSkillPolicy', () => {
     });
   });
 
-  it('routes minimal triage requests to documents with medical facts section hints', () => {
+  it('routes minimal triage requests to treatment guidance even when the event target is medical advice', () => {
     expect(requests({
-      event: event({ target: 'unknown' }),
+      event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'medical_advice', modifier: 'provide' }),
       turnPlan: plan({
         primaryAction: { type: 'REQUEST_INFO', target: 'minimal_triage' },
         followUpAction: { type: 'NONE' },
       }),
-      agentRole: 'GeneralResponseAgent',
+      agentRole: 'RecordsAgent',
     })[0]).toMatchObject({
-      skillId: 'medical_advice_skill',
+      skillId: 'treatment_skill',
       role: 'primary',
-      sectionHints: { target: 'medical_advice' },
+      sectionHints: { target: 'treatment' },
     });
   });
 
@@ -353,7 +353,7 @@ describe('buildSkillPolicy', () => {
     });
   });
 
-  it('routes medical-advice events to the medical advice skill before action fallback', () => {
+  it('routes medical-advice questions to the medical advice skill before action fallback', () => {
     expect(requests({
       event: event({ eventType: 'USER_ASKED_QUESTION', target: 'medical_advice', modifier: 'ask' }),
       turnPlan: plan({

@@ -203,7 +203,7 @@ describe('FaqLlmAdapter', () => {
       }],
       details: [],
     })).resolves.toEqual({
-      answer: expect.stringContaining('can help you organize the question for a clinician'),
+      answer: expect.stringContaining('I cannot confirm a diagnosis in chat'),
       citedFaqIds: [],
       confidence: 'medium',
       policyGrounded: true,
@@ -215,6 +215,191 @@ describe('FaqLlmAdapter', () => {
       details: [],
     })).answer;
     expect(answer).not.toContain('I cannot diagnose, choose treatment, recommend medication, or guarantee an outcome here.');
+  });
+
+  it('uses bruising-specific safety guidance for leukemia fear instead of abdominal bleeding copy', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('Wait if it is blood cancer should I go emergency or appointment?'),
+      recentMessages: [
+        {
+          id: 'm-1',
+          role: 'USER',
+          content: 'I keep getting bruises, maybe leukemia? I saw xhs post and now very scared.',
+          createdAt: '2026-05-02T00:00:00.000Z',
+        },
+        {
+          id: 'm-2',
+          role: 'USER',
+          content: 'It is not many, like 3 on leg and one arm, but I do not remember hitting anything.',
+          createdAt: '2026-05-02T00:01:00.000Z',
+        },
+      ],
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'blood cancer emergency appointment', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result).toEqual({
+      answer: expect.stringContaining('For a few stable bruises without heavy or unstoppable bleeding'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+    expect(result.answer).toContain('CBC');
+    expect(result.answer).not.toContain('black or bloody stool');
+    expect(result.answer).not.toContain('abdominal pain');
+  });
+
+  it('explains gum bleeding as serious only when bleeding is heavy or hard to stop', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('I do not understand what counts as serious bleeding, my gum bleeds when brushing but dentist said gum problem.'),
+      recentMessages: [
+        {
+          id: 'm-1',
+          role: 'USER',
+          content: 'I keep getting bruises, maybe leukemia?',
+          createdAt: '2026-05-02T00:00:00.000Z',
+        },
+      ],
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'serious bleeding gum brushing', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('Gum bleeding only when brushing');
+    expect(result.answer).toContain('bleeding does not stop');
+    expect(result.answer).not.toContain('black or bloody stool');
+  });
+
+  it('uses prior neurologic red-flag context when the latest message is only a timing follow-up', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('Can I wait and book next Friday?'),
+      recentMessages: [
+        {
+          id: 'm-1',
+          role: 'USER',
+          content: 'One side of my face feels numb since last night.',
+          createdAt: '2026-05-02T00:00:00.000Z',
+        },
+      ],
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'wait book next Friday facial numbness', reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('One-sided facial numbness');
+    expect(result.answer).toContain('seek local emergency care now');
+    expect(result.answer).not.toContain('I cannot confirm a diagnosis in chat');
+  });
+
+  it.each([
+    'I had a blood test already, what should I do next?',
+    'I have a fever, should I book with you?',
+  ])('does not use abdominal bleeding safety copy for broad symptom wording: %s', async (message) => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask(message),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
+      }),
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: message, reason: 'safety redirect' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('I cannot confirm a diagnosis in chat');
+    expect(result.answer).not.toContain('black or bloody stool');
+    expect(result.answer).not.toContain('abdominal pain');
+  });
+
+  it('uses skill-grounded fallback copy when the standalone FAQ index has no pricing hit', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('How much to see a pain specialist? I need budget.'),
+      primaryAction: { type: 'ANSWER', target: 'pricing', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'pricing_skill',
+        role: 'primary',
+        reasonCode: 'user_asked_question_answer',
+        sectionIds: ['pricing_online_consultation_fee'],
+        readIntentTypes: ['PRICING_FACTORS'],
+        policyText: ['Online consultation costs USD 400.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'pain specialist pricing', reason: 'pricing question' },
+      matches: [],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('USD 400'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
+  });
+
+  it('answers early nerve-pain doctor requests as guidance instead of pretending a doctor match is ready', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('Can you just recommend a doctor for nerve pain? I do not know what department, maybe bone?'),
+      currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+      primaryAction: { type: 'ANSWER', target: 'hospital', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'hospital_skill',
+        role: 'primary',
+        reasonCode: 'early_doctor_matching_question',
+        sectionIds: ['hospital_doctor_recommendation_policy'],
+        readIntentTypes: ['DOCTOR_MATCHING_CONTEXT'],
+        policyText: ['Specific doctor matching requires records review before human recommendation.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    await expect(adapter.answer({
+      task,
+      plan: { query: 'doctor for nerve pain', reason: 'early doctor matching question' },
+      matches: [],
+      details: [],
+    })).resolves.toEqual({
+      answer: expect.stringContaining('burning, electric, or numb leg pain'),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    });
   });
 
   it('passes rejection and hesitation task rules through FAQ prompts', () => {

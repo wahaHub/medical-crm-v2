@@ -40,8 +40,9 @@ describe('RecordsLlmAdapter', () => {
   it('frames minimal triage as a post-intake follow-up instead of a cold-start intake', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask('What do you need from me first?'));
     expect(prompt).toContain(
-      'We already have the submitted intake, so this step is only a focused follow-up needed to refine recommendation.',
+      'Use recent messages plus the latest user message as the medical context; this step is a focused follow-up, not a fresh intake restart.',
     );
+    expect(prompt).toContain('If the user already gave a clear symptom or diagnosis, do not ask them to restate the main problem.');
     expect(prompt).toContain('Return only the exact structured JSON fields required below.');
     expect(prompt).toContain('Use the focused question string(s) exactly as written below. Do not translate or paraphrase them.');
   });
@@ -160,6 +161,42 @@ describe('RecordsLlmAdapter', () => {
     expect(prompt).toContain('recent_messages=[{"id":"r-1","role":"USER","content":"I have chronic pain and maybe nerve pain.","createdAt":"2026-04-29T07:10:00.000Z"},{"id":"r-2","role":"ASSISTANT","content":"Please share the diagnosis or suspected condition.","createdAt":"2026-04-29T07:11:00.000Z"}]');
   });
 
+  it('does not treat a tentative timing phrase as an unusable medical reply', async () => {
+    const adapter = new RecordsLlmAdapter();
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I have this burning on my left leg, not like muscle pain, more like electric ants? It started after I fell maybe last year.'),
+    })).resolves.toMatchObject({
+      'records.minimal_triage.complete': false,
+      missing: ['duration_or_severity', 'existing_tests_or_treatments'],
+    });
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('I have this burning on my left leg, not like muscle pain, more like electric ants? It started after I fell maybe last year.'),
+    })).resolves.not.toMatchObject({
+      followUp: expect.stringContaining('main problem'),
+    });
+  });
+
+  it('uses prior user messages when deciding which minimal triage details are still missing', async () => {
+    const adapter = new RecordsLlmAdapter();
+
+    await expect(adapter.runStatus({
+      task: createRecordsTask('Actually not fall, car door hit my knee, but the pain is now thigh to foot sometimes.', {
+        recentMessages: [{
+          id: 'r-1',
+          role: 'USER',
+          content: 'I have this burning on my left leg, not like muscle pain, more like electric ants? It started after I fell maybe last year.',
+          createdAt: '2026-04-29T07:10:00.000Z',
+        }],
+      }),
+    })).resolves.toMatchObject({
+      'records.minimal_triage.complete': false,
+      missing: ['duration_or_severity', 'existing_tests_or_treatments'],
+      followUp: expect.not.stringContaining('main problem'),
+    });
+  });
+
   it('uses structured task metadata to choose collection mode without parsing string envelopes', async () => {
     const adapter = new RecordsLlmAdapter();
 
@@ -224,8 +261,8 @@ describe('RecordsLlmAdapter', () => {
       questions: [
         'What is the main symptom, diagnosis, or medical problem right now?',
       ],
-      followUp: 'We already received your basic intake. Please share the main symptom or diagnosis, when it started and how severe it is, plus any tests, treatments, medicines, or diagnoses so far.',
-      missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
+      followUp: 'Please tell me when it started, how long it has been going on, and how severe it is and what tests, treatments, medicines, or diagnoses already exist.',
+      missing: ['duration_or_severity', 'existing_tests_or_treatments'],
     });
 
     expect(adapter.getLastRunMetadata()).toMatchObject({

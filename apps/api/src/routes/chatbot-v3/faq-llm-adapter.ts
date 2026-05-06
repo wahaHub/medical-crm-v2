@@ -165,6 +165,11 @@ export function composeFallbackFaqAnswer(
   const citedFaqIds = dedupeFaqIds(sourceItems.map((item) => item.id)).slice(0, 3);
 
   if (sourceItems.length === 0) {
+    const skillFallback = composeSkillGroundedFallbackAnswer(task);
+    if (skillFallback) {
+      return skillFallback;
+    }
+
     return {
       answer: `I can help with that, but I could not find an exact FAQ answer yet for "${clampText(latestUserMessage, 120)}".`,
       citedFaqIds: [],
@@ -206,11 +211,21 @@ function composeRedirectFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnsw
   }
 
   if (task.responseMode === 'safe_medical_redirect') {
+    const contextualAnswer = composeContextualMedicalSafetyAnswer(task);
+    if (contextualAnswer) {
+      return {
+        answer: contextualAnswer,
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
     return {
       answer: [
-        'I cannot replace a licensed clinician or make a diagnosis or treatment decision here.',
-        'I can help you organize the question for a clinician and arrange a records-based doctor or hospital review in China.',
-        'If symptoms feel urgent, suddenly worsen, or involve red flags, please seek local emergency care now; otherwise the safe next step is to share the relevant records or symptom summary for review.',
+        'I cannot confirm a diagnosis in chat, but I can still help you think about the safe next step.',
+        'If the symptom is sudden, worsening, severe, or involves weakness, chest pressure, breathing trouble, fainting, uncontrolled bleeding, or other red flags, seek local urgent or emergency care first.',
+        'For non-emergency cases, Medora can help organize your records and arrange an online consultation or doctor review in China.',
       ].join(' '),
       citedFaqIds: [],
       confidence: 'medium',
@@ -237,6 +252,168 @@ function composeRedirectFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnsw
     confidence: 'medium',
     policyGrounded: true,
   };
+}
+
+function composeSkillGroundedFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnswerResult | null {
+  if (!task) {
+    return null;
+  }
+
+  const skillIds = new Set((task.loadedSkillSections ?? []).map((section) => section.skillId));
+  const actionTarget = task.primaryAction && 'target' in task.primaryAction ? task.primaryAction.target : undefined;
+  const normalized = task.latestUserMessage.toLowerCase();
+
+  if (skillIds.has('pricing_skill') || actionTarget === 'pricing') {
+    return {
+      answer: [
+        'Pricing depends on the records, hospital choice, doctor review, tests, and final treatment plan, so Medora should not give a fixed total before review.',
+        'The online consultation is USD 400; if you do not come to China, Medora keeps that fee, and if you do come for treatment, it is applied toward the treatment cost.',
+        'Public hospital cases usually have lower hospital medical fees but require a Medora coordination service fee confirmed by a human; private hospital contact has no Medora coordination service fee.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (skillIds.has('payment_skill') || actionTarget === 'payment') {
+    return {
+      answer: [
+        'Payment details depend on the hospital and service arrangement.',
+        'Hospital medical fees follow hospital rules, while Medora fees such as the USD 400 online consultation or public-hospital coordination fee follow the Medora service flow.',
+        'For insurer coverage, direct billing, reimbursement, or claim approval, please confirm with your insurer; Medora can help organize neutral hospital documents and ask the hospital about applicable medical liability insurance.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (skillIds.has('travel_skill') || actionTarget === 'travel') {
+    return {
+      answer: [
+        'Medora can support treatment-related logistics such as appointment itinerary, airport pickup, local transport, hotels near the hospital, interpretation, and practical stay coordination.',
+        'The medical path should come first: records review, online consultation, and hospital direction are usually needed before final flights, hotel booking, or fixed itinerary planning.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (skillIds.has('policy_skill') || actionTarget === 'policy' || actionTarget === 'consult') {
+    return {
+      answer: [
+        'The usual Medora path is to clarify the condition, collect the most useful records or summary, arrange the required online consultation before coming to China, and then coordinate hospital, appointment, travel, treatment, and follow-up steps as appropriate.',
+        'The online consultation costs USD 400 and is applied toward treatment cost if you come to China for treatment.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (skillIds.has('hospital_skill') || actionTarget === 'hospital' || /\bdoctor|hospital|clinic|department\b/.test(normalized)) {
+    const earlyNervePainDoctorQuestion = /\b(?:nerve|burning|electric|numb|numbness|tingling|sciatica|leg|thigh|foot|feet)\b/.test(normalized)
+      && /\b(?:doctor|department|specialist|ortho|neuro|bone)\b/.test(normalized);
+    if (earlyNervePainDoctorQuestion) {
+      return {
+        answer: [
+          'For burning, electric, or numb leg pain, the relevant direction is often a spine, neurology, pain, or rehabilitation evaluation rather than choosing only by “bone” versus “nerve” in chat.',
+          'For a specific doctor recommendation, please share any relevant records first; if you do not have records yet, a short symptom summary is enough to start and our human team can review before matching a suitable doctor.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
+    return {
+      answer: [
+        'Medora can help match hospitals based on your condition, city, public/private preference, records readiness, timing, and follow-up needs.',
+        'For a specific doctor recommendation, please share relevant medical records first; our human team reviews the case before recommending a suitable doctor.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  if (skillIds.has('treatment_skill') || actionTarget === 'treatment') {
+    return {
+      answer: [
+        'Medora can help assess the treatment path by organizing your diagnosis or suspected condition, main symptoms, prior tests or treatments, and useful records.',
+        'Before coming to China, the standard next step is an online consultation so a Chinese specialist can review whether travel and in-person treatment are worthwhile.',
+      ].join(' '),
+      citedFaqIds: [],
+      confidence: 'medium',
+      policyGrounded: true,
+    };
+  }
+
+  return null;
+}
+
+function composeContextualMedicalSafetyAnswer(task: FaqWorkerTask): string | null {
+  const normalized = buildMedicalSafetyContext(task);
+
+  if (/\b(?:chest (?:pain|pressure|tightness|heaviness)|pressure on (?:my |the )?chest|heavy stone|shortness of breath|breathing trouble|trouble breathing|cannot breathe|can't breathe|breathless)\b/.test(normalized)) {
+    return [
+      'Chest pressure can be urgent even if it comes and goes or you feel okay now.',
+      'If it is new, happens with exertion, lasts several minutes, comes with shortness of breath, sweating, faintness, pain spreading to arm/jaw/back, or returns today, please seek local urgent or emergency care first.',
+      'After immediate safety is handled, Medora can help arrange specialist review or follow-up in China.',
+    ].join(' ');
+  }
+
+  if (/\b(face|facial|mouth|stroke|one side|hand tingles|hand tingling|speak|talk)\b/.test(normalized)) {
+    return [
+      'One-sided facial numbness or new neurologic symptoms should be treated carefully.',
+      'If this is new since last night/today, worsening, or comes with face droop, arm weakness, speech trouble, severe headache, confusion, or vision changes, please seek local emergency care now rather than waiting for a routine appointment.',
+      'Medora can still help with neurology follow-up or second opinion after urgent issues are ruled out.',
+    ].join(' ');
+  }
+
+  if (/\b(leukemia|leukaemia|blood cancer|bruise|bruises|bruising|gum bleed|gum bleeds|gum bleeding)\b/.test(normalized)) {
+    if (/\bgum bleed|gum bleeds|gum bleeding|bleeds when brushing|bleeding when brushing\b/.test(normalized)) {
+      return [
+        'Gum bleeding only when brushing can come from dental or gum irritation, but I cannot confirm the cause in chat.',
+        'More serious bleeding means bleeding does not stop with pressure, repeated nose/gum bleeding without brushing, blood in urine/stool/vomit, many rapidly spreading bruises, faintness, severe weakness, shortness of breath, persistent fever, or feeling acutely unwell.',
+        'If those are not present, this is usually more suitable for a prompt appointment and basic review such as CBC and clotting-related tests rather than automatically an emergency; Medora can help arrange specialist review in China if you want.',
+      ].join(' ');
+    }
+
+    return [
+      'I cannot diagnose leukemia or blood cancer in chat.',
+      'For a few stable bruises without heavy or unstoppable bleeding, fainting, severe weakness, shortness of breath, persistent fever, or rapidly spreading bruises, it is usually more appropriate to arrange a prompt doctor appointment and basic blood tests such as CBC rather than automatically going to emergency.',
+      'If bruising is rapidly increasing, bleeding does not stop, you feel very weak or faint, or you have fever or other severe symptoms, seek local urgent or emergency care first; Medora can help with records-based review or specialist consultation after immediate safety is handled.',
+    ].join(' ');
+  }
+
+  if (/\b(?:black stool|bloody stool|blood in (?:stool|vomit|urine)|rectal bleeding|vomiting blood|right lower (?:abdomen|abdominal)|abdominal pain|severe abdominal|uncontrolled bleeding|heavy bleeding)\b/.test(normalized)) {
+    return [
+      'I cannot diagnose this in chat, but these details can matter for urgency.',
+      'Please seek local urgent care promptly if there is black or bloody stool not clearly explained by iron, worsening abdominal pain, persistent fever, faintness, severe weakness, or uncontrolled bleeding.',
+      'If it is stable, Medora can help arrange records-based review, screening, or the right specialist consultation in China.',
+    ].join(' ');
+  }
+
+  if (/\b(department|specialty|specialist|ortho|neuro|oncology|respiratory|gynecology|fertility|rheumatology|ent)\b/.test(normalized)) {
+    return [
+      'I cannot make the final clinical routing decision in chat, but I can help narrow the likely direction.',
+      'Department choice usually depends on the main symptom, duration, red flags, and any reports or prior diagnosis.',
+      'Medora can review your summary or records and help match the right hospital or specialist team.',
+    ].join(' ');
+  }
+
+  return null;
+}
+
+function buildMedicalSafetyContext(task: FaqWorkerTask): string {
+  const recentUserMessages = (task.recentMessages ?? [])
+    .filter((message) => message.role === 'USER')
+    .map((message) => message.content)
+    .filter((content) => content.trim().length > 0);
+  return [...recentUserMessages, task.latestUserMessage].join(' ').toLowerCase();
 }
 
 function buildFallbackFaqPlan(input: FaqPlanInput): FaqPlan {

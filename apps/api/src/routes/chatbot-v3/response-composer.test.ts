@@ -130,6 +130,45 @@ describe('ResponseComposer', () => {
     ]));
   });
 
+  it('does not expose generic FAQ miss text when a skill-grounded pricing fallback exists', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'How much to see a pain specialist? I do not want to come if too expensive.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'faq',
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          reason: 'pricing question during intake',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          dispatchAgent: 'FaqAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            answer: 'Pricing depends on the hospital and doctor review. The online consultation is USD 400.',
+            citedFaqIds: [],
+            confidence: 'medium',
+            policyGrounded: true,
+          },
+        },
+        render: {
+          path: 'FAQ_ANSWER',
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('USD 400');
+    expect(response.messages[0]?.text).not.toContain('I could not find a reliable answer');
+  });
+
   it('suppresses recommendation cards when faq detours cannot reconstruct the recommendation payload', () => {
     const response = composeResponse({
       body: createRequest({
@@ -378,7 +417,7 @@ describe('ResponseComposer', () => {
     expect(PROCESS_OVERVIEW_TEXT).toContain('consult');
   });
 
-  it('surfaces only the focused RecordsAgent triage follow-up on incomplete minimal triage turns', () => {
+  it('repairs vague RecordsAgent triage follow-up by rendering the actual question', () => {
     const response = composeResponse({
       body: createRequest({
         message: 'What do you need from me first?',
@@ -406,7 +445,7 @@ describe('ResponseComposer', () => {
               'When did it start, how long has it been going on, and how severe is it?',
               'What tests, treatments, medicines, or diagnoses already exist?',
             ],
-            followUp: 'We already received your basic intake. Please answer these 3 follow-up questions so we can refine your recommendation, or you can skip them if you prefer.',
+            followUp: 'To help the doctors review your case and suggest next steps, please answer this brief question as clearly as you can.',
             missing: ['symptom_or_diagnosis', 'duration_or_severity', 'existing_tests_or_treatments'],
           },
         },
@@ -414,11 +453,119 @@ describe('ResponseComposer', () => {
       sessionStatusSnapshot: null,
     });
 
-    expect(response.messages[0]?.text).toContain('We already received your basic intake');
-    expect(response.messages[0]?.text).toContain('or you can skip them if you prefer');
-    expect(response.messages[0]?.text).not.toContain('1. What is the main symptom');
-    expect(response.messages[0]?.text).not.toContain('2. When did it start');
-    expect(response.messages[0]?.text).not.toContain('3. What tests, treatments');
+    expect(response.messages[0]?.text).toContain('please answer this brief question');
+    expect(response.messages[0]?.text).toContain('What is the main symptom, diagnosis, or medical problem right now?');
+  });
+
+  it('replaces RecordsAgent answer-format coaching with a natural nerve-pain follow-up', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: "It gets worse when I sit but also when walking too long, so I don't know how to answer.",
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          reason: 'collect minimal triage details',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          dispatchAgent: 'RecordsAgent',
+          dispatchSource: 'journey-runtime-authority',
+          agentTask: {
+            agent: 'RecordsAgent',
+            currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            latestUserMessage: "It gets worse when I sit but also when walking too long, so I don't know how to answer.",
+            recentMessages: [{
+              id: 'm-1',
+              role: 'USER',
+              content: 'I have this burning on my left leg, not like muscle pain, more like electric ants? It started after I fell maybe last year.',
+              createdAt: '2026-05-01T00:00:00.000Z',
+            }, {
+              id: 'm-2',
+              role: 'USER',
+              content: 'Actually not fall, car door hit my knee, but the pain is now thigh to foot sometimes.',
+              createdAt: '2026-05-01T00:01:00.000Z',
+            }],
+            mode: 'minimal_triage',
+            minimalTriageComplete: false,
+            loadedSkillSections: [],
+            readIntents: [],
+            retrievedContext: [],
+          } as any,
+        },
+        journey: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            'records.minimal_triage.complete': false,
+            questions: ['When did it start, how long has it been going on, and how severe is it?'],
+            followUp: 'For example, you could write: "burning electric pain from left thigh to foot, worse when sitting or walking long."',
+            missing: ['duration_or_severity', 'existing_tests_or_treatments'],
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('nerve-related leg pain');
+    expect(response.messages[0]?.text).toContain('How severe does it get');
+    expect(response.messages[0]?.text).not.toContain('For example');
+    expect(response.messages[0]?.text).not.toContain('you could write');
+  });
+
+  it('does not invent leg-pain location or triggers when repairing RecordsAgent answer-format coaching', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'It is burning leg pain, I am not sure how to answer.',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'progression',
+          suggestedStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+          reason: 'collect minimal triage details',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          dispatchAgent: 'RecordsAgent',
+          dispatchSource: 'journey-runtime-authority',
+          agentTask: {
+            agent: 'RecordsAgent',
+            currentStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            primaryStage: 'COLLECT_MINIMAL_MEDICAL_FACTS',
+            latestUserMessage: 'It is burning leg pain, I am not sure how to answer.',
+            recentMessages: [],
+            mode: 'minimal_triage',
+            minimalTriageComplete: false,
+            loadedSkillSections: [],
+            readIntents: [],
+            retrievedContext: [],
+          } as any,
+        },
+        journey: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            'records.minimal_triage.complete': false,
+            questions: ['How severe is it, and have you had any tests or treatments?'],
+            followUp: 'For example, you could write: "burning electric pain from left thigh to foot, worse when sitting or walking long."',
+            missing: ['duration_or_severity', 'existing_tests_or_treatments'],
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('nerve-related leg pain');
+    expect(response.messages[0]?.text).toContain('How severe does it get');
+    expect(response.messages[0]?.text).toContain('tests, medicines, or treatments');
+    expect(response.messages[0]?.text).not.toContain('thigh to the foot');
+    expect(response.messages[0]?.text).not.toContain('sitting or walking');
   });
 
   it('uses post-intake opening wording when the current turn has a triage status patch before persistence', () => {
@@ -749,7 +896,8 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
-    expect(response.messages[0]?.text).toContain('recommendation stage');
+    expect(response.messages[0]?.text).toContain('hospital options');
+    expect(response.messages[0]?.text).not.toContain('recommendation stage');
   });
 
   it('does not leak process overview copy when an explain-process denial stays on EXPLAIN_PROCESS', () => {
@@ -779,7 +927,8 @@ describe('ResponseComposer', () => {
     });
 
     expect(response.messages[0]?.text).not.toBe(PROCESS_OVERVIEW_TEXT);
-    expect(response.messages[0]?.text).toContain('explain process stage');
+    expect(response.messages[0]?.text).toContain('Medora process');
+    expect(response.messages[0]?.text).not.toContain('explain process stage');
   });
 
   it('keeps supporting-document guidance ahead of consult copy when consult is denied for missing documents', () => {
@@ -1033,7 +1182,7 @@ describe('ResponseComposer', () => {
               },
             ],
             recommendationTask: 'compare',
-            explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+            explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
           },
         },
       }),
@@ -1109,7 +1258,8 @@ describe('ResponseComposer', () => {
       sessionStatusSnapshot: null,
     });
 
-    expect(response.messages[0]?.text).toContain('recommendation stage');
+    expect(response.messages[0]?.text).toContain('These recommendations are grounded in the current hospital list');
+    expect(response.messages[0]?.text).not.toContain('recommendation stage');
   });
 
   it('does not expose recommendation submit actions when no candidates are available', () => {
@@ -1184,7 +1334,7 @@ describe('ResponseComposer', () => {
               },
             ],
             recommendationTask: 'explain',
-            explanation: 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.',
+            explanation: 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.',
           },
         },
       }),
@@ -1303,7 +1453,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not load that answer just now, but your current stage is still saved. Please try asking again.',
+      'I could not load that answer just now. Please try asking again, or ask in a simpler way.',
     );
   });
 
@@ -1318,7 +1468,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.',
+      'I could not refresh the hospital recommendations just now. Please try again in this chat.',
     );
   });
 
@@ -1356,7 +1506,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.',
+      'I could not refresh the hospital recommendations just now. Please try again in this chat.',
     );
   });
 
@@ -1371,7 +1521,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.',
+      'I could not complete the consultation step just now. Please try again in this chat.',
     );
   });
 
@@ -1408,7 +1558,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.',
+      'I could not complete the consultation step just now. Please try again in this chat.',
     );
   });
 
@@ -1446,7 +1596,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.',
+      'I could not complete the consultation step just now. Please try again in this chat.',
     );
   });
 
@@ -1544,7 +1694,7 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe('degraded');
     expect(response.messages[0]?.text).toBe(
-      'I could not complete the requested step, but your v3 journey state is preserved.',
+      'I could not complete that request just now. Please try again, or ask for a human coordinator if needed.',
     );
     expect(response.messages[0]?.text).not.toContain('Before we connect you with a human');
   });

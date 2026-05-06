@@ -167,7 +167,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     }),
     sessionStatusSnapshot: null,
     expected: {
-      assistantTextContains: 'I could not load that answer just now, but your current stage is still saved. Please try asking again.',
+      assistantTextContains: 'I could not load that answer just now. Please try asking again, or ask in a simpler way.',
       cardType: 'PROCESS_GUIDE',
       handoffRequired: false,
       turnOutcomeStatus: 'degraded',
@@ -241,7 +241,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     }),
     sessionStatusSnapshot: null,
     expected: {
-      assistantTextContains: 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.',
+      assistantTextContains: 'I could not refresh the hospital recommendations just now. Please try again in this chat.',
       cardType: 'RECOMMENDATION_LIST',
       handoffRequired: false,
       turnOutcomeStatus: 'degraded',
@@ -277,7 +277,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     }),
     sessionStatusSnapshot: null,
     expected: {
-      assistantTextContains: 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.',
+      assistantTextContains: 'I could not complete the consultation step just now. Please try again in this chat.',
       cardType: 'CONSULT_BOOKING',
       handoffRequired: false,
       turnOutcomeStatus: 'degraded',

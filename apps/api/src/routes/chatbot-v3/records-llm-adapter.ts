@@ -178,7 +178,10 @@ function buildFallbackRecordsCollectionResult(task: RecordsWorkerTask): RecordsW
 }
 
 function buildFallbackRecordsMinimalTriageResult(task: RecordsWorkerTask): RecordsWorkerResult {
-  const analysis = analyzeRecordsMinimalTriage(task.latestUserMessage);
+  const analysis = analyzeRecordsMinimalTriage(
+    buildMinimalTriageAnalysisText(task),
+    task.latestUserMessage,
+  );
 
   if (analysis.complete) {
     return {
@@ -205,6 +208,14 @@ function buildFallbackRecordsMinimalTriageResult(task: RecordsWorkerTask): Recor
   };
 }
 
+function buildMinimalTriageAnalysisText(task: RecordsWorkerTask): string {
+  const priorUserMessages = (task.recentMessages ?? [])
+    .filter((message) => message.role === 'USER')
+    .map((message) => message.content.trim())
+    .filter((content) => content.length > 0);
+  return [...priorUserMessages, task.latestUserMessage].join(' ');
+}
+
 function getFocusedMinimalTriageQuestions(task: RecordsWorkerTask): readonly string[] {
   const maxQuestions = task.responseContract?.constraints?.maxQuestions === 2 ? 2 : 1;
   return RECORDS_MINIMAL_TRIAGE_QUESTIONS.slice(0, maxQuestions);
@@ -228,7 +239,7 @@ function resolveRecordsNodePromptVersion(
     : RECORDS_MINIMAL_TRIAGE_PROMPT_VERSION;
 }
 
-function analyzeRecordsMinimalTriage(latestUserMessage: string): {
+function analyzeRecordsMinimalTriage(latestUserMessage: string, unclearSignalText = latestUserMessage): {
   complete: boolean;
   reason: 'complete' | 'initial' | 'partial' | 'insufficient';
   missing: RecordsMinimalTriageMissingField[];
@@ -256,7 +267,7 @@ function analyzeRecordsMinimalTriage(latestUserMessage: string): {
     };
   }
 
-  if (hasUnclearSignal(normalized)) {
+  if (hasUnclearSignal(normalizeRecordsMessage(unclearSignalText))) {
     return {
       complete: false,
       reason: 'insufficient',

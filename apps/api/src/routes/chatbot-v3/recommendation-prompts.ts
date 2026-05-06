@@ -154,7 +154,7 @@ function sanitizeCompactRecommendation(value: Record<string, unknown>): CompactR
 function buildFallbackExplanation(task: RecommendationTask): string | undefined {
   switch (task) {
     case 'compare':
-      return 'These options can be compared by cancer focus, team breadth, and whether you prefer a more specialized or broader hospital.';
+      return 'These options can be compared by condition fit, location, public/private preference, records readiness, timing, and language or follow-up support needs.';
     case 'explain':
       return 'These recommendations are grounded in the current hospital list and can be refreshed if you want different options later.';
     default:

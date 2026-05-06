@@ -103,6 +103,52 @@ describe('reduceJourney', () => {
     expect(result.state.primaryStage).toBe('COLLECT_MEDICAL_INPUTS');
   });
 
+  it('keeps natural non-urgent medical detail in focused minimal triage instead of jumping to recommendation', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MINIMAL_MEDICAL_FACTS'),
+      facts: facts(),
+      event: {
+        eventType: 'USER_PROVIDED_INFORMATION',
+        target: 'medical_advice',
+        modifier: 'provide',
+        confidence: 0.91,
+        source: 'llm',
+        metadata: {
+          rawText: 'I have this burning on my left leg, not like muscle pain, more like electric ants? It started after I fell maybe last year.',
+        },
+      },
+    });
+
+    expect(result.facts.intake.minimalTriageStatus).toBe('not_started');
+    expect(result.turnPlan.primaryAction).toEqual({ type: 'REQUEST_INFO', target: 'minimal_triage' });
+    expect(result.state.primaryStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+  });
+
+  it('keeps urgent natural medical detail on the safety redirect while preserving the facts', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MINIMAL_MEDICAL_FACTS'),
+      facts: facts(),
+      event: {
+        eventType: 'USER_PROVIDED_INFORMATION',
+        target: 'medical_advice',
+        modifier: 'provide',
+        confidence: 0.91,
+        source: 'llm',
+        metadata: {
+          rawText: 'I have chest pressure sometimes, not now maybe earlier today, can I book for next Friday?',
+        },
+      },
+    });
+
+    expect(result.facts.intake.minimalTriageStatus).toBe('not_started');
+    expect(result.turnPlan.primaryAction).toEqual({
+      type: 'REDIRECT',
+      target: 'medical_advice',
+      reasonCode: 'medical_safety',
+    });
+    expect(result.state.primaryStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+  });
+
   it('handles recommendation selection as action-first conditional progression', () => {
     const needsProcess = reduceJourney({
       state: state('RECOMMENDATION'),

@@ -680,7 +680,7 @@ export class ConversationOrchestratorV3RuntimeService {
     let event: SupervisorEvent;
     try {
       const supervisorEventResult = await this.runSupervisorExtractEvent(supervisorInput);
-      event = supervisorEventResult.event;
+      event = withLatestUserMessageMetadata(supervisorEventResult.event, normalizedInput.message);
       this.emitNodeEvent(normalizedInput, {
         node: 'Supervisor',
         action: 'extractEvent',
@@ -2102,6 +2102,21 @@ function normalizeRecoverableErrorCode(
     default:
       return 'UNKNOWN';
   }
+}
+
+function withLatestUserMessageMetadata(event: SupervisorEvent, message: string): SupervisorEvent {
+  const rawText = message.trim();
+  if (rawText.length === 0 || event.metadata?.rawText) {
+    return event;
+  }
+
+  return {
+    ...event,
+    metadata: {
+      ...event.metadata,
+      rawText,
+    },
+  };
 }
 
 function normalizeReason(reason: string): string {

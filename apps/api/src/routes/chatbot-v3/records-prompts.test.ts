@@ -70,6 +70,18 @@ describe('Records prompt skill context', () => {
     expect(prompt).not.toContain('array of exactly the 3 canonical question strings');
   });
 
+  it('instructs minimal triage to acknowledge existing symptom details instead of restarting intake', () => {
+    const prompt = buildRecordsWorkerPrompt(createRecordsTask({
+      mode: 'minimal_triage',
+      minimalTriageComplete: false,
+      latestUserMessage: 'I have burning electric pain down my left leg since last year.',
+    }));
+
+    expect(prompt).toContain('If the user already gave a clear symptom or diagnosis, do not ask them to restate the main problem.');
+    expect(prompt).toContain('Answer with a short, condition-specific acknowledgement before asking the smallest missing detail.');
+    expect(prompt).toContain('Never use vague intake-only wording such as "answer this brief question"');
+  });
+
   it('renders loaded skill guidance and read intents into medical collection prompts', () => {
     const prompt = buildRecordsWorkerPrompt(createRecordsTask({
       currentStage: 'COLLECT_MEDICAL_INPUTS',

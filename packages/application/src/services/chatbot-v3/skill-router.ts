@@ -68,6 +68,10 @@ function primaryRouteFor(input: {
     return clarificationRoute();
   }
 
+  if (input.agentRole === 'RecordsAgent' && input.turnPlan.primaryAction.type === 'REQUEST_INFO') {
+    return routeForTarget(input.turnPlan.primaryAction.target) ?? clarificationRoute();
+  }
+
   if (input.event.target === 'medical_advice') {
     return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
   }
@@ -113,8 +117,9 @@ function routeForTarget(target: string | undefined): SkillRoute | null {
       return { skillId: 'policy_skill', sectionTarget: 'policy' };
     case 'medical_advice':
     case 'medical_facts':
-    case 'minimal_triage':
       return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
+    case 'minimal_triage':
+      return { skillId: 'treatment_skill', sectionTarget: 'treatment' };
     case 'treatment':
     case 'documents':
       return { skillId: 'treatment_skill', sectionTarget: 'treatment' };

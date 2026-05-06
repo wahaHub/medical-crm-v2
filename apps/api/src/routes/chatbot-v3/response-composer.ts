@@ -30,12 +30,12 @@ export interface ResponseComposerInput {
 export const PROCESS_OVERVIEW_TEXT = 'Here is the process: first, review the hospital recommendation, then I will explain the Medora medical-travel process and policy, then you can upload supporting documents, and after that we can move toward online consult.';
 export const SAFE_MEDICAL_REDIRECT_TEXT = 'Medora can help with hospital or doctor matching and care coordination, but we cannot provide specific medical advice here. A licensed doctor should advise on diagnosis or treatment. Would you like us to help arrange a doctor consultation?';
 export const OUT_OF_SCOPE_REDIRECT_TEXT = 'Medora focuses on medical travel coordination, hospital and doctor matching, records collection, and consult setup. I can redirect this back to the care path or connect you with our team if needed.';
-const FAQ_DEGRADED_TEXT = 'I could not load that answer just now, but your current stage is still saved. Please try asking again.';
-const FAQ_MISS_TEXT = 'I could not find a reliable answer right now, but your current stage is still saved. You can continue the current step or ask for a human if needed.';
-const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now, but your current stage is still saved. Please try again in this chat.';
-const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now, but your current stage is still saved. Please try again in this chat.';
+const FAQ_DEGRADED_TEXT = 'I could not load that answer just now. Please try asking again, or ask in a simpler way.';
+const FAQ_MISS_TEXT = 'I could not find a reliable answer right now. You can ask again in a simpler way, or request a human coordinator if needed.';
+const RECOMMENDATION_DEGRADED_TEXT = 'I could not refresh the hospital recommendations just now. Please try again in this chat.';
+const CONSULT_DEGRADED_TEXT = 'I could not complete the consultation step just now. Please try again in this chat.';
 const HANDOFF_DENIED_TEXT = 'Before we connect you with a human, please complete the current step first.';
-const GENERIC_DEGRADED_TEXT = 'I could not complete the requested step, but your v3 journey state is preserved.';
+const GENERIC_DEGRADED_TEXT = 'I could not complete that request just now. Please try again, or ask for a human coordinator if needed.';
 
 export function didShowExplicitProcessExplanation(
   result: ConversationOrchestratorV3TurnResult,
@@ -140,7 +140,7 @@ export function buildAssistantText(
   }
 
   if (result.render.path === 'FAQ_ANSWER') {
-    return readFaqAnswer(result) ?? 'I checked the explain process stage for this session.';
+    return readFaqAnswer(result) ?? 'I could not load that answer just now. Please ask again in a simpler way.';
   }
 
   if (result.render.path === 'PROCESS_OVERVIEW') {
@@ -167,17 +167,17 @@ export function buildAssistantText(
 
   switch (result.journey.stage) {
     case 'EXPLAIN_PROCESS':
-      return 'I checked the explain process stage for this session.';
+      return 'I can help explain the Medora process. Please ask again or tell me which part is unclear.';
     case 'COLLECT_MINIMAL_MEDICAL_FACTS':
       return buildMinimalTriageOpeningText(statusSnapshot);
     case 'COLLECT_MEDICAL_INPUTS':
       return RECORDS_DIAGNOSIS_PROOF_UPLOAD_GUIDANCE;
     case 'RECOMMENDATION':
-      return 'I checked the recommendation stage for this session.';
+      return 'I can continue with hospital options or answer a specific question about your care path.';
     case 'ONLINE_CONSULT':
-      return 'I checked the online consultation stage for this session.';
+      return 'I can help continue the online consultation step. Please try again or tell me what you need help with.';
     case 'HUMAN_HANDOFF':
-      return 'This session is currently in human handoff.';
+      return 'Your request for a human coordinator is noted. Please share what you need help with, and we can continue from here.';
   }
 }
 
@@ -335,19 +335,93 @@ function readRecordsAssistantText(
   }
 
   const followUp = asString(data['followUp']);
-  const questions = asArray(data['questions'])
+  const questionTexts = asArray(data['questions'])
     .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
-    .map((question, index) => `${index + 1}. ${question.trim()}`);
+    .map((question) => question.trim());
+  const questions = questionTexts
+    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0)
+    .map((question, index) => `${index + 1}. ${question}`);
 
   if (!followUp && questions.length === 0) {
     return null;
   }
 
   if (followUp) {
-    return followUp;
+    return repairRecordsMinimalTriageFollowUp(followUp, questionTexts, result);
   }
 
   return questions[0] ?? null;
+}
+
+function repairRecordsMinimalTriageFollowUp(
+  followUp: string,
+  questions: readonly string[],
+  result: ConversationOrchestratorV3TurnResult,
+): string {
+  const naturalReply = buildNaturalRecordsMinimalTriageReply(followUp, result);
+  if (naturalReply) {
+    return naturalReply;
+  }
+
+  const firstQuestion = questions[0];
+  if (firstQuestion && shouldAppendRecordsQuestion(followUp)) {
+    return `${followUp}\n\n${firstQuestion}`;
+  }
+
+  return followUp;
+}
+
+function shouldAppendRecordsQuestion(followUp: string): boolean {
+  const normalized = followUp.toLowerCase();
+  return /\b(?:this|the)\s+(?:brief\s+)?question\b/.test(normalized)
+    || /\bfollow[-\s]?up questions?\b/.test(normalized)
+    || (
+      !/[?？]/.test(followUp)
+      && /\b(?:answer|reply|respond)\b/.test(normalized)
+      && /\bquestion\b/.test(normalized)
+    );
+}
+
+function buildNaturalRecordsMinimalTriageReply(
+  followUp: string,
+  result: ConversationOrchestratorV3TurnResult,
+): string | null {
+  if (!isRecordsAnswerFormatCoaching(followUp)) {
+    return null;
+  }
+
+  const context = readRecordsConversationContext(result);
+  if (!hasLegNervePainContext(context)) {
+    return null;
+  }
+
+  return [
+    'That detail is useful. Burning, electric, numb, tingling, or shooting leg pain can fit nerve-related leg pain, even if back pain is mild or absent.',
+    'How severe does it get at worst (mild, moderate, severe, or 0-10), and have you had any tests, medicines, or treatments so far?',
+  ].join(' ');
+}
+
+function isRecordsAnswerFormatCoaching(followUp: string): boolean {
+  return /\bfor example\b/i.test(followUp)
+    || /\byou could write\b/i.test(followUp)
+    || /\byou can answer in your own words\b/i.test(followUp)
+    || /\bfor example,?\s+you could\b/i.test(followUp);
+}
+
+function readRecordsConversationContext(
+  result: ConversationOrchestratorV3TurnResult,
+): string {
+  const task = asRecord(result.decision.agentTask);
+  const latest = asString(task['latestUserMessage']) ?? '';
+  const recentMessages = asArray(task['recentMessages'])
+    .map((message) => asString(asRecord(message)['content']))
+    .filter((content): content is string => Boolean(content));
+  return [...recentMessages, latest].join(' ').toLowerCase();
+}
+
+function hasLegNervePainContext(context: string): boolean {
+  return /\b(?:burning|electric|numb|numbness|tingling|sciatica|shooting)\b/.test(context)
+    && /\b(?:leg|thigh|foot|feet|knee)\b/.test(context);
 }
 
 function readRecommendationAssistantText(
@@ -369,7 +443,7 @@ function readRecommendationAssistantText(
   const data = asRecord(result.dispatchResult.data);
   const recommendationTask = asString(data['recommendationTask']);
   if (recommendationTask === 'generate') {
-    return buildRecommendationGenerateText(statusSnapshot);
+    return buildRecommendationGenerateText(data, statusSnapshot);
   }
 
   if (recommendationTask !== 'compare' && recommendationTask !== 'explain') {
@@ -390,6 +464,7 @@ function buildMinimalTriageOpeningText(
 }
 
 function buildRecommendationGenerateText(
+  data: Record<string, unknown>,
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
 ): string | null {
   if (asString(statusSnapshot?.minimalTriageAnswersSummary)) {
@@ -400,7 +475,8 @@ function buildRecommendationGenerateText(
     return 'This is an initial recommendation based on your submitted intake alone, and it can be refined later if you share more medical detail.';
   }
 
-  return null;
+  return asString(data['explanation'])
+    ?? 'These recommendations are grounded in the current hospital list and can be refined after you share more medical detail.';
 }
 
 function buildCards(

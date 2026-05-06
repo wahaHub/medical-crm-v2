@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildLegacyCaseImageUrl,
+  mapCaseAssetsToMedia,
   buildSurgeonMutation,
   mapCaseAssetsToImages,
   mapSurgeonRowToMaterialsSurgeon,
@@ -103,6 +104,101 @@ describe('materials compatibility helpers', () => {
 
     expect(images).toEqual([
       { url: 'https://example.com/cover.jpg' },
+    ]);
+  });
+
+  it('preserves video case_media entries when building mixed case media', () => {
+    const media = mapCaseAssetsToMedia({
+      caseMedia: [
+        { media_url: 'https://example.com/intro.mp4', media_type: 'video', thumbnail_url: 'https://example.com/intro.jpg', sort_order: 1 },
+        { media_url: 'https://example.com/cover.jpg', media_type: 'image', sort_order: 2 },
+      ],
+    });
+
+    expect(media).toEqual([
+      {
+        type: 'video',
+        url: 'https://example.com/intro.mp4',
+        thumbnailUrl: 'https://example.com/intro.jpg',
+      },
+      {
+        type: 'image',
+        url: 'https://example.com/cover.jpg',
+        thumbnailUrl: null,
+      },
+    ]);
+  });
+
+  it('converts relative table-backed case media thumbnails to absolute URLs', () => {
+    const media = mapCaseAssetsToMedia({
+      caseMedia: [
+        {
+          media_url: '/hospitals/h-1/cases/demo/case-video.mp4',
+          media_type: 'video',
+          thumbnail_url: '/hospitals/h-1/cases/demo/case-video.jpg',
+          sort_order: 1,
+        },
+      ],
+      isRegularHospital: false,
+    });
+
+    expect(media[0]?.url).toMatch(/^https?:\/\//);
+    expect(media[0]?.url).toContain('/hospitals/h-1/cases/demo/case-video.mp4');
+    expect(media[0]?.thumbnailUrl).toMatch(/^https?:\/\//);
+    expect(media[0]?.thumbnailUrl).toContain('/hospitals/h-1/cases/demo/case-video.jpg');
+  });
+
+  it('converts relative json-backed case media thumbnails to absolute regular-hospital URLs', () => {
+    const media = mapCaseAssetsToMedia({
+      caseRow: {
+        mediaItems: [
+          {
+            type: 'video',
+            url: 'hospital_photos/public/h-1/cases/demo/case-video.mp4',
+            thumbnailUrl: 'hospital_photos/public/h-1/cases/demo/case-video.jpg',
+          },
+        ],
+      },
+      isRegularHospital: true,
+    });
+
+    expect(media[0]?.url).toMatch(/^https?:\/\//);
+    expect(media[0]?.url).toContain('/hospital_photos/public/h-1/cases/demo/case-video.mp4');
+    expect(media[0]?.thumbnailUrl).toMatch(/^https?:\/\//);
+    expect(media[0]?.thumbnailUrl).toContain('/hospital_photos/public/h-1/cases/demo/case-video.jpg');
+  });
+
+  it('merges case_images and case_media by global sort order for mixed media', () => {
+    const media = mapCaseAssetsToMedia({
+      caseImages: [
+        { image_url: 'https://example.com/after.jpg', sort_order: 1 },
+      ],
+      caseMedia: [
+        { media_url: 'https://example.com/intro.mp4', media_type: 'video', sort_order: 0 },
+      ],
+    });
+
+    expect(media).toEqual([
+      { type: 'video', url: 'https://example.com/intro.mp4', thumbnailUrl: null },
+      { type: 'image', url: 'https://example.com/after.jpg', thumbnailUrl: null },
+    ]);
+  });
+
+  it('preserves image-video-image ordering across case_images and case_media', () => {
+    const media = mapCaseAssetsToMedia({
+      caseImages: [
+        { image_url: 'https://example.com/before.jpg', sort_order: 0 },
+        { image_url: 'https://example.com/after.jpg', sort_order: 2 },
+      ],
+      caseMedia: [
+        { media_url: 'https://example.com/progress.mp4', media_type: 'video', sort_order: 1 },
+      ],
+    });
+
+    expect(media).toEqual([
+      { type: 'image', url: 'https://example.com/before.jpg', thumbnailUrl: null },
+      { type: 'video', url: 'https://example.com/progress.mp4', thumbnailUrl: null },
+      { type: 'image', url: 'https://example.com/after.jpg', thumbnailUrl: null },
     ]);
   });
 

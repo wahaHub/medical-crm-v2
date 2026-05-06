@@ -123,7 +123,14 @@ export interface MaterialsBeforeAfterCase {
   surgeonName: string | null;
   description: string | null;
   images: Array<{ url: string }>;
+  media: MaterialsCaseMediaItem[];
   translations?: Record<string, Record<string, unknown>>;
+}
+
+export interface MaterialsCaseMediaItem {
+  type: 'image' | 'video';
+  url: string;
+  thumbnailUrl?: string | null;
 }
 
 export interface MaterialsReviewMedia {

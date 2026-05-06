@@ -70,6 +70,7 @@ import type {
   MaterialsProcedureDTO,
   MaterialsSurgeonDTO,
   MaterialsBeforeAfterCaseDTO,
+  MaterialsBeforeAfterCaseMediaDTO,
 } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth-context';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
@@ -110,6 +111,13 @@ export async function uploadMaterialAsset(file: File, materialKind: string): Pro
   }
 
   return result.asset;
+}
+
+export const CASE_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4';
+const CASE_MEDIA_ALLOWED_MIME_TYPES = new Set(CASE_MEDIA_ACCEPT.split(','));
+
+export function isSupportedCaseMediaFile(file: File): boolean {
+  return CASE_MEDIA_ALLOWED_MIME_TYPES.has(file.type);
 }
 
 export type SaveProgressStatus = 'pending' | 'uploading' | 'saving' | 'done' | 'failed';
@@ -4983,14 +4991,26 @@ function BeforeAfterTab() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {cases.map((c) => {
-            const coverImage = c.images[0]?.url ?? '';
+            const coverMedia = c.media?.[0] ?? (c.images[0]?.url
+              ? { type: 'image' as const, url: c.images[0].url, thumbnailUrl: null }
+              : null);
+            const mediaCount = c.media?.length ?? c.images.length;
 
             return (
               <div key={c.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 <div className="h-40 bg-slate-100 relative">
-                  {coverImage ? (
+                  {coverMedia?.type === 'video' ? (
+                    <video
+                      src={coverMedia.url}
+                      poster={coverMedia.thumbnailUrl || undefined}
+                      className="w-full h-full object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : coverMedia?.url ? (
                     <img
-                      src={coverImage}
+                      src={coverMedia.url}
                       alt={c.procedureName || tx('hospital.materials.cases.caseCoverAlt', 'Case cover')}
                       className="w-full h-full object-cover"
                     />
@@ -5021,9 +5041,9 @@ function BeforeAfterTab() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">
-                        {tx('hospital.materials.cases.photosLabel', 'Photos:')}
+                        {tx('hospital.materials.cases.mediaLabel', 'Media:')}
                       </span>
-                      <span className="font-medium text-slate-900">{c.images.length}</span>
+                      <span className="font-medium text-slate-900">{mediaCount}</span>
                     </div>
                     {c.description && <p className="text-xs text-slate-500 mt-1">{c.description}</p>}
                   </div>
@@ -5077,8 +5097,8 @@ function BeforeAfterModal({
   const queryClient = useQueryClient();
   const [procedureName, setProcedureName] = useState('');
   const [surgeonName, setSurgeonName] = useState('');
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [pendingImageFiles, setPendingImageFiles] = useState<Map<string, File>>(new Map());
+  const [mediaItems, setMediaItems] = useState<MaterialsBeforeAfterCaseMediaDTO[]>([]);
+  const [pendingMediaFiles, setPendingMediaFiles] = useState<Map<string, File>>(new Map());
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [flashTargetKey, setFlashTargetKey] = useState<string | null>(null);
@@ -5088,7 +5108,7 @@ function BeforeAfterModal({
     items: [],
     canDismiss: false,
   });
-  const imagesInputRef = useRef<HTMLInputElement>(null);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
   const imageSectionRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
   const tx = (key: string, fallback: string, values?: Record<string, string | number>) =>
@@ -5097,30 +5117,37 @@ function BeforeAfterModal({
   useEffect(() => {
     setProcedureName(existing?.procedureName ?? '');
     setSurgeonName(existing?.surgeonName ?? '');
-    setImageUrls(existing?.images.map((img) => img.url) ?? []);
-    setPendingImageFiles(new Map());
+    setMediaItems(existing?.media?.length
+      ? existing.media
+      : existing?.images.map((img) => ({ type: 'image' as const, url: img.url, thumbnailUrl: null })) ?? []);
+    setPendingMediaFiles(new Map());
     setDescription(existing?.description ?? '');
   }, [existing]);
 
-  const addImagesFromFiles = async (files: FileList | null) => {
+  const addMediaFromFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const fileArr = Array.from(files);
-    const previewUrls = fileArr.map((file) => URL.createObjectURL(file));
-    setImageUrls((prev) => [...prev, ...previewUrls]);
-    setPendingImageFiles((prev) => {
+    const fileArr = Array.from(files).filter(isSupportedCaseMediaFile);
+    if (fileArr.length === 0) return;
+    const previewItems = fileArr.map((file) => ({
+      type: file.type.startsWith('video/') ? 'video' as const : 'image' as const,
+      url: URL.createObjectURL(file),
+      thumbnailUrl: null,
+    }));
+    setMediaItems((prev) => [...prev, ...previewItems]);
+    setPendingMediaFiles((prev) => {
       const next = new Map(prev);
-      previewUrls.forEach((url, index) => {
-        next.set(url, fileArr[index]!);
+      previewItems.forEach((item, index) => {
+        next.set(item.url, fileArr[index]!);
       });
       return next;
     });
   };
 
-  const removeImageAt = (idx: number) => {
-    setImageUrls((prev) => {
-      const target = prev[idx];
+  const removeMediaAt = (idx: number) => {
+    setMediaItems((prev) => {
+      const target = prev[idx]?.url;
       if (target) {
-        setPendingImageFiles((files) => {
+        setPendingMediaFiles((files) => {
           const next = new Map(files);
           next.delete(target);
           return next;
@@ -5133,9 +5160,9 @@ function BeforeAfterModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const pendingEntries = imageUrls
-      .map((url, index) => ({ url, index, file: pendingImageFiles.get(url) }))
-      .filter((entry): entry is { url: string; index: number; file: File } => Boolean(entry.file && isLocalPreviewUrl(entry.url)));
+    const pendingEntries = mediaItems
+      .map((item, index) => ({ item, index, file: pendingMediaFiles.get(item.url) }))
+      .filter((entry): entry is { item: MaterialsBeforeAfterCaseMediaDTO; index: number; file: File } => Boolean(entry.file && isLocalPreviewUrl(entry.item.url)));
 
     setSaveProgress({
       open: true,
@@ -5145,11 +5172,11 @@ function BeforeAfterModal({
       canDismiss: false,
       items: [
         ...pendingEntries.map((entry, index) => ({
-          id: `upload-case-image-${index}`,
-          label: tx('hospital.materials.cases.uploadImageTask', 'Upload case image: {fileName}', {
+          id: `upload-case-media-${index}`,
+          label: tx('hospital.materials.cases.uploadMediaTask', 'Upload case media: {fileName}', {
             fileName: entry.file.name,
           }),
-          targetKey: 'case-images',
+          targetKey: 'case-media',
           status: 'pending' as const,
         })),
         {
@@ -5163,17 +5190,20 @@ function BeforeAfterModal({
       ],
     });
     try {
-      const nextImageUrls = [...imageUrls];
+      const nextMediaItems = [...mediaItems];
       const uploadResults = await Promise.allSettled(
         pendingEntries.map(async (entry, index) => {
-          const taskId = `upload-case-image-${index}`;
+          const taskId = `upload-case-media-${index}`;
           setSaveProgress((prev) => ({
             ...prev,
             items: prev.items.map((item) => (item.id === taskId ? { ...item, status: 'uploading' } : item)),
           }));
           try {
             const asset = await uploadMaterialAsset(entry.file, 'case');
-            nextImageUrls[entry.index] = asset.storageKey;
+            nextMediaItems[entry.index] = {
+              ...entry.item,
+              url: asset.storageKey,
+            };
             setSaveProgress((prev) => ({
               ...prev,
               items: prev.items.map((item) => (item.id === taskId ? { ...item, status: 'done' } : item)),
@@ -5188,7 +5218,7 @@ function BeforeAfterModal({
             setSaveProgress((prev) => ({
               ...prev,
               canDismiss: true,
-              failedTargetKey: 'case-images',
+              failedTargetKey: 'case-media',
               items: prev.items.map((item) => (
                 item.id === taskId ? { ...item, status: 'failed', error: message } : item
               )),
@@ -5207,15 +5237,21 @@ function BeforeAfterModal({
         items: prev.items.map((item) => (item.id === 'save-case' ? { ...item, status: 'saving' } : item)),
       }));
 
-      const images = nextImageUrls
-        .map((url) => ({ url: url.trim() }))
-        .filter((img) => img.url.length > 0 && !isLocalPreviewUrl(img.url));
+      const media = nextMediaItems
+        .map((item) => ({
+          type: item.type,
+          url: item.url.trim(),
+          thumbnailUrl: item.thumbnailUrl?.trim() || null,
+        }))
+        .filter((item) => item.url.length > 0 && !isLocalPreviewUrl(item.url));
+      const images = media.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
 
       const payload: Record<string, unknown> = {
         procedureName: procedureName.trim() || undefined,
         surgeonName: surgeonName.trim() || null,
         description: description.trim() || null,
         images,
+        media,
       };
       if (existing) {
         await updateBeforeAfterCase(existing.id, payload);
@@ -5223,7 +5259,7 @@ function BeforeAfterModal({
         await createBeforeAfterCase(payload);
       }
       await queryClient.invalidateQueries({ queryKey: ['materials', 'cases'] });
-      setPendingImageFiles(new Map());
+      setPendingMediaFiles(new Map());
       setSaveProgress((prev) => ({
         ...prev,
         items: prev.items.map((item) => (item.id === 'save-case' ? { ...item, status: 'done' } : item)),
@@ -5271,7 +5307,7 @@ function BeforeAfterModal({
       <UploadProgressModal
         state={saveProgress}
         onDismiss={() => {
-          const failedKey = saveProgress.failedTargetKey ?? 'case-images';
+          const failedKey = saveProgress.failedTargetKey ?? 'case-media';
           setSaveProgress({
             open: false,
             title: '',
@@ -5306,20 +5342,20 @@ function BeforeAfterModal({
           <label className="block text-sm font-medium text-slate-700 mb-1">{tx('hospital.materials.cases.caseDescriptionLabel', 'Case Description')}</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder={tx('hospital.materials.cases.caseDescriptionPlaceholder', 'Describe the procedure and outcome...')} className={`${inputClass} resize-none`} />
         </div>
-        <div ref={imageSectionRef} className={`space-y-3 ${getFlashClass(flashTargetKey === 'case-images')}`}>
+        <div ref={imageSectionRef} className={`space-y-3 ${getFlashClass(flashTargetKey === 'case-media')}`}>
           <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-slate-700">{tx('hospital.materials.cases.casePhotosLabel', 'Case Photos')}</label>
-            <span className="text-xs text-slate-500">{tx('hospital.materials.cases.firstImageIsCover', 'First image is cover')}</span>
+            <label className="block text-sm font-medium text-slate-700">{tx('hospital.materials.cases.caseMediaLabel', 'Case Media')}</label>
+            <span className="text-xs text-slate-500">{tx('hospital.materials.cases.firstMediaIsCover', 'First media is cover')}</span>
           </div>
 
           <input
             type="file"
-            ref={imagesInputRef}
-            accept="image/*"
+            ref={mediaInputRef}
+            accept={CASE_MEDIA_ACCEPT}
             multiple
             className="hidden"
             onChange={async (e) => {
-              await addImagesFromFiles(e.target.files);
+              await addMediaFromFiles(e.target.files);
               e.target.value = '';
             }}
           />
@@ -5327,37 +5363,41 @@ function BeforeAfterModal({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => imagesInputRef.current?.click()}
+              onClick={() => mediaInputRef.current?.click()}
               className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium flex items-center gap-1.5 hover:bg-blue-100 transition-colors"
             >
-              <Upload size={12} /> {tx('hospital.materials.cases.uploadPhotos', 'Upload Photos')}
+              <Upload size={12} /> {tx('hospital.materials.cases.uploadMedia', 'Upload Media')}
             </button>
           </div>
 
-          {imageUrls.length === 0 ? (
+          {mediaItems.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-              {tx('hospital.materials.cases.uploadHint', 'Upload multiple photos to build the case gallery.')}
+              {tx('hospital.materials.cases.uploadHint', 'Upload photos or videos to build the case gallery.')}
             </div>
           ) : (
             <div className="space-y-2">
-              {imageUrls.map((url, idx) => (
-                <div key={`${idx}-${url}`} className="flex items-start gap-2">
+              {mediaItems.map((item, idx) => (
+                <div key={`${idx}-${item.url}`} className="flex items-start gap-2">
                   <div className="w-16 h-16 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center text-slate-300">
-                    {url ? <img src={url} alt={tx('hospital.materials.cases.casePhotoAlt', 'Case photo {index}', { index: idx + 1 })} className="w-full h-full object-cover" /> : <ImageIcon size={18} />}
+                    {item.url && item.type === 'video' ? (
+                      <video src={item.url} className="w-full h-full object-cover" muted playsInline />
+                    ) : item.url ? (
+                      <img src={item.url} alt={tx('hospital.materials.cases.casePhotoAlt', 'Case photo {index}', { index: idx + 1 })} className="w-full h-full object-cover" />
+                    ) : <ImageIcon size={18} />}
                   </div>
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-500">{idx === 0 ? tx('hospital.materials.cases.coverPhoto', 'Cover photo') : tx('hospital.materials.cases.photoIndex', 'Photo {index}', { index: idx + 1 })}</span>
+                      <span className="text-xs text-slate-500">{idx === 0 ? tx('hospital.materials.cases.coverMedia', 'Cover media') : tx('hospital.materials.cases.mediaIndex', 'Media {index}', { index: idx + 1 })}</span>
                       <span className="text-xs text-slate-400">
-                        {pendingImageFiles.has(url)
+                        {pendingMediaFiles.has(item.url)
                           ? tx('hospital.materials.cases.readyToUploadOnSave', 'Ready to upload on save')
-                          : tx('hospital.materials.cases.savedImage', 'Saved image')}
+                          : tx('hospital.materials.cases.savedMedia', 'Saved media')}
                       </span>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeImageAt(idx)}
+                    onClick={() => removeMediaAt(idx)}
                     className="p-2 text-slate-400 hover:text-rose-500"
                     aria-label={tx('hospital.materials.cases.removePhoto', 'Remove photo {index}', { index: idx + 1 })}
                   >

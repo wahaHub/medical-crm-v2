@@ -12,6 +12,7 @@ import { ConflictError, NotFoundError } from '@medical-crm/utils';
 import {
   buildSurgeonMutation,
   mapCaseAssetsToImages,
+  mapCaseAssetsToMedia,
   mapSurgeonRowToMaterialsSurgeon,
   slugifyProcedureName,
   shouldIgnoreCaseMediaError,
@@ -672,6 +673,14 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
           caseNumber: row.case_number as string | null,
           hospitalId,
         }),
+        media: mapCaseAssetsToMedia({
+          caseRow: row,
+          caseImages: caseImagesById.get(row.id as string) ?? [],
+          caseMedia: caseMediaById.get(row.id as string) ?? [],
+          procedureSlug: linkedProcedure?.slug ?? (procedureName ? slugifyProcedureName(procedureName) : null),
+          caseNumber: row.case_number as string | null,
+          hospitalId,
+        }),
       };
     });
   }
@@ -719,13 +728,14 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
 
     if (error) throw error;
 
-    // Insert case images
-    if (data.images.length > 0) {
-      const imageRows = data.images.map((img, idx) => ({
-        case_id: row!.id,
-        image_url: img.url,
-        sort_order: idx,
-      }));
+    const media = data.media ?? data.images.map((image) => ({ type: 'image' as const, url: image.url, thumbnailUrl: null }));
+    const images = media.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
+    if (images.length > 0) {
+      const imageRows = media.flatMap((item, index) => (
+        item.type === 'image'
+          ? [{ case_id: row!.id, image_url: item.url, sort_order: index }]
+          : []
+      ));
 
       const { error: imgError } = await this.supabase
         .from('case_images')
@@ -734,13 +744,31 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       if (imgError) throw imgError;
     }
 
+    const videoMedia = media.filter((item) => item.type === 'video');
+    if (videoMedia.length > 0) {
+      const mediaRows = media.flatMap((item, index) => (
+        item.type === 'video'
+          ? [{
+              case_id: row!.id,
+              media_url: item.url,
+              media_type: item.type,
+              thumbnail_url: item.thumbnailUrl ?? null,
+              sort_order: index,
+            }]
+          : []
+      ));
+      const { error: mediaError } = await this.supabase.from('case_media').insert(mediaRows);
+      if (mediaError) throw mediaError;
+    }
+
     return {
       id: row!.id,
       hospitalId: row!.hospital_id ?? data.hospitalId,
       procedureName: data.procedureName,
       surgeonName: row!.provider_name,
       description: row!.description,
-      images: data.images,
+      images,
+      media,
       translations: (row!.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
@@ -786,51 +814,165 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
 
-    // If images are provided, replace all existing images
-    if (updates.images !== undefined) {
-      // Delete existing images
-      await this.supabase
-        .from('case_images')
-        .delete()
-        .eq('case_id', id);
-
-      // Insert new images
-      if (updates.images.length > 0) {
-        const imageRows = updates.images.map((img, idx) => ({
-          case_id: id,
-          image_url: img.url,
-          sort_order: idx,
-        }));
-
-        const { error: imgError } = await this.supabase
+    const nextMedia = updates.media ?? updates.images?.map((image) => ({ type: 'image' as const, url: image.url, thumbnailUrl: null }));
+    if (nextMedia !== undefined) {
+      const nextImages = nextMedia.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
+      const [existingImagesResult, existingMediaResult] = await Promise.all([
+        this.supabase
           .from('case_images')
-          .insert(imageRows);
+          .select('image_url, sort_order')
+          .eq('case_id', id)
+          .order('sort_order', { ascending: true }),
+        this.supabase
+          .from('case_media')
+          .select('media_url, media_type, thumbnail_url, sort_order')
+          .eq('case_id', id)
+          .order('sort_order', { ascending: true }),
+      ]);
 
-        if (imgError) throw imgError;
+      if (existingImagesResult.error) throw existingImagesResult.error;
+      if (existingMediaResult.error && !shouldIgnoreCaseMediaError(existingMediaResult.error)) {
+        throw existingMediaResult.error;
       }
 
-      // Update image_count
-      await this.supabase
-        .from('procedure_cases')
-        .update({ image_count: updates.images.length })
-        .eq('id', id)
-        .eq('hospital_id', hospitalId);
+      const previousImageRows = ((existingImagesResult.data ?? []) as Array<{ image_url: string; sort_order?: number | null }>).map((item) => ({
+        case_id: id,
+        image_url: item.image_url,
+        sort_order: item.sort_order ?? 0,
+      }));
+      const previousMediaRows = ((existingMediaResult.data ?? []) as Array<{ media_url: string; media_type?: string | null; thumbnail_url?: string | null; sort_order?: number | null }>).map((item) => ({
+        case_id: id,
+        media_url: item.media_url,
+        media_type: item.media_type ?? 'image',
+        thumbnail_url: item.thumbnail_url ?? null,
+        sort_order: item.sort_order ?? 0,
+      }));
+
+      const restorePreviousMedia = async (): Promise<void> => {
+        const { error: restoreDeleteImagesError } = await this.supabase
+          .from('case_images')
+          .delete()
+          .eq('case_id', id);
+        if (restoreDeleteImagesError) throw restoreDeleteImagesError;
+
+        const { error: restoreDeleteMediaError } = await this.supabase
+          .from('case_media')
+          .delete()
+          .eq('case_id', id);
+        if (restoreDeleteMediaError && !shouldIgnoreCaseMediaError(restoreDeleteMediaError)) {
+          throw restoreDeleteMediaError;
+        }
+
+        if (previousImageRows.length > 0) {
+          const { error: restoreImagesError } = await this.supabase
+            .from('case_images')
+            .insert(previousImageRows);
+          if (restoreImagesError) throw restoreImagesError;
+        }
+
+        if (previousMediaRows.length > 0) {
+          const { error: restoreMediaError } = await this.supabase
+            .from('case_media')
+            .insert(previousMediaRows);
+          if (restoreMediaError && !shouldIgnoreCaseMediaError(restoreMediaError)) {
+            throw restoreMediaError;
+          }
+        }
+
+        await this.supabase
+          .from('procedure_cases')
+          .update({ image_count: previousImageRows.length })
+          .eq('id', id)
+          .eq('hospital_id', hospitalId);
+      };
+
+      try {
+        const { error: deleteImagesError } = await this.supabase
+          .from('case_images')
+          .delete()
+          .eq('case_id', id);
+        if (deleteImagesError) throw deleteImagesError;
+
+        const { error: deleteMediaError } = await this.supabase
+          .from('case_media')
+          .delete()
+          .eq('case_id', id);
+        if (deleteMediaError && (updates.media !== undefined || !shouldIgnoreCaseMediaError(deleteMediaError))) {
+          throw deleteMediaError;
+        }
+
+        if (nextImages.length > 0) {
+          const imageRows = nextMedia.flatMap((item, index) => (
+            item.type === 'image'
+              ? [{ case_id: id, image_url: item.url, sort_order: index }]
+              : []
+          ));
+
+          const { error: imgError } = await this.supabase
+            .from('case_images')
+            .insert(imageRows);
+
+          if (imgError) throw imgError;
+        }
+
+        const videoMedia = nextMedia.filter((item) => item.type === 'video');
+        if (videoMedia.length > 0) {
+          const mediaRows = nextMedia.flatMap((item, index) => (
+            item.type === 'video'
+              ? [{
+                  case_id: id,
+                  media_url: item.url,
+                  media_type: item.type,
+                  thumbnail_url: item.thumbnailUrl ?? null,
+                  sort_order: index,
+                }]
+              : []
+          ));
+          const { error: mediaError } = await this.supabase.from('case_media').insert(mediaRows);
+          if (mediaError) throw mediaError;
+        }
+
+        const { error: imageCountError } = await this.supabase
+          .from('procedure_cases')
+          .update({ image_count: nextImages.length })
+          .eq('id', id)
+          .eq('hospital_id', hospitalId);
+        if (imageCountError) throw imageCountError;
+      } catch (replacementError) {
+        await restorePreviousMedia();
+        throw replacementError;
+      }
     }
 
     // Fetch current images if not replaced
     let images: Array<{ url: string }>;
-    if (updates.images !== undefined) {
-      images = updates.images;
+    let media;
+    if (nextMedia !== undefined) {
+      media = nextMedia;
+      images = nextMedia.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
     } else {
-      const { data: imgData } = await this.supabase
+      const [imgResult, mediaResult] = await Promise.all([
+        this.supabase
         .from('case_images')
         .select('image_url, sort_order')
         .eq('case_id', id)
-        .order('sort_order', { ascending: true });
+          .order('sort_order', { ascending: true }),
+        this.supabase
+          .from('case_media')
+          .select('media_url, media_type, thumbnail_url, sort_order')
+          .eq('case_id', id)
+          .order('sort_order', { ascending: true }),
+      ]);
+      if (imgResult.error) throw imgResult.error;
+      if (mediaResult.error && !shouldIgnoreCaseMediaError(mediaResult.error)) {
+        throw mediaResult.error;
+      }
 
-      images = (imgData ?? []).map((img) => ({
-        url: img.image_url,
-      }));
+      media = mapCaseAssetsToMedia({
+        caseImages: imgResult.data ?? [],
+        caseMedia: mediaResult.error && shouldIgnoreCaseMediaError(mediaResult.error) ? [] : mediaResult.data ?? [],
+      });
+      images = media.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
     }
 
     const proc = (row as Record<string, unknown>).procedures as { procedure_name: string } | null;
@@ -841,6 +983,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       surgeonName: row.provider_name,
       description: row.description,
       images,
+      media,
       translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }

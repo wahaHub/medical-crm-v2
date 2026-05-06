@@ -1,4 +1,4 @@
-import type { MaterialsBeforeAfterCase, MaterialsSurgeon } from '@medical-crm/domain';
+import type { MaterialsBeforeAfterCase, MaterialsCaseMediaItem, MaterialsSurgeon } from '@medical-crm/domain';
 
 type SurgeonBio = {
   intro?: string;
@@ -42,6 +42,8 @@ interface LegacyCaseMediaRow {
   image_type?: 'before' | 'after' | 'combined' | null;
   type?: 'before' | 'after' | 'combined' | null;
   url?: string | null;
+  thumbnail_url?: string | null;
+  thumbnailUrl?: string | null;
   sort_order?: number | null;
 }
 
@@ -59,6 +61,10 @@ function toAbsoluteCaseUrl(url: string, isRegularHospital: boolean): string {
   if (!base) return url;
   const normalizedPath = url.startsWith('/') ? url : `/${url}`;
   return `${base}${normalizedPath}`;
+}
+
+function toOptionalAbsoluteCaseUrl(url: string | null | undefined, isRegularHospital: boolean): string | null {
+  return url ? toAbsoluteCaseUrl(url, isRegularHospital) : null;
 }
 
 export function shouldIgnoreCaseMediaError(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
@@ -166,6 +172,132 @@ export function buildLegacyCaseImageUrl({
 }
 
 export function mapCaseAssetsToImages({
+  ...input
+}: Parameters<typeof mapCaseAssetsToMedia>[0]): MaterialsBeforeAfterCase['images'] {
+  return mapCaseAssetsToMedia(input)
+    .filter((item) => item.type === 'image')
+    .map((item) => ({ url: item.url }));
+}
+
+export function mapCaseAssetsToMedia({
+  caseRow,
+  caseImages,
+  caseMedia,
+  procedureSlug,
+  caseNumber,
+  hospitalId,
+  isRegularHospital = false,
+}: {
+  caseRow?: Record<string, unknown> | null;
+  caseImages?: LegacyCaseImageRow[] | null;
+  caseMedia?: LegacyCaseMediaRow[] | null;
+  procedureSlug?: string | null;
+  caseNumber?: string | null;
+  hospitalId?: string | null;
+  isRegularHospital?: boolean;
+}): MaterialsCaseMediaItem[] {
+  const isImageType = (value?: string | null): boolean => {
+    const mediaType = value?.toLowerCase();
+    return mediaType === 'image'
+      || mediaType === 'photo'
+      || mediaType === 'before'
+      || mediaType === 'after'
+      || mediaType === 'combined';
+  };
+  const isVideoType = (value?: string | null): boolean => value?.toLowerCase() === 'video';
+
+  const mediaItems: MaterialsCaseMediaItem[] = [];
+  const seen = new Set<string>();
+  const pushMedia = (item: MaterialsCaseMediaItem): void => {
+    const key = `${item.type}:${item.url}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    mediaItems.push(item);
+  };
+
+  const tableMedia = [
+    ...sortByOrder(caseImages ?? []).map((img) => ({
+      sort_order: img.sort_order ?? 0,
+      media: {
+        type: 'image' as const,
+        url: toAbsoluteCaseUrl(img.image_url, isRegularHospital),
+        thumbnailUrl: null,
+      },
+    })),
+    ...sortByOrder(caseMedia ?? [])
+      .map((item): { sort_order: number; media: MaterialsCaseMediaItem } | null => {
+        const directUrl = item.image_url ?? item.media_url ?? item.url;
+        if (!directUrl) return null;
+        const directType = item.image_url ? 'image' : (item.image_type ?? item.type ?? item.media_type);
+        const type: MaterialsCaseMediaItem['type'] | null = isVideoType(directType) ? 'video' : isImageType(directType) ? 'image' : null;
+        if (!type) return null;
+        return {
+          sort_order: item.sort_order ?? 0,
+          media: {
+            type,
+            url: toAbsoluteCaseUrl(directUrl, isRegularHospital),
+            thumbnailUrl: toOptionalAbsoluteCaseUrl(item.thumbnail_url ?? item.thumbnailUrl, isRegularHospital),
+          },
+        };
+      })
+      .filter((item): item is { sort_order: number; media: MaterialsCaseMediaItem } => item !== null),
+  ].sort((a, b) => a.sort_order - b.sort_order);
+
+  for (const item of tableMedia) {
+    pushMedia(item.media);
+  }
+
+  if (mediaItems.length > 0) {
+    return mediaItems;
+  }
+
+  const mediaItemsValue = caseRow?.mediaItems ?? caseRow?.media_items;
+  const rowMediaItems = Array.isArray(mediaItemsValue) ? mediaItemsValue : [];
+  for (const item of rowMediaItems) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as LegacyCaseMediaRow;
+    const url = row.url ?? row.image_url ?? row.media_url;
+    const typeValue = row.type ?? row.image_type ?? row.media_type;
+    if (!url) continue;
+    const type = isVideoType(typeValue) ? 'video' : isImageType(typeValue) || !typeValue ? 'image' : null;
+    if (!type) continue;
+    pushMedia({
+      type,
+      url: toAbsoluteCaseUrl(url, isRegularHospital),
+      thumbnailUrl: toOptionalAbsoluteCaseUrl(row.thumbnail_url ?? row.thumbnailUrl, isRegularHospital),
+    });
+  }
+
+  const combinedImage = caseRow?.before_after_image ?? caseRow?.beforeAfterImage;
+  if (typeof combinedImage === 'string' && combinedImage.trim().length > 0) {
+    pushMedia({
+      type: 'image',
+      url: toAbsoluteCaseUrl(combinedImage, isRegularHospital),
+      thumbnailUrl: null,
+    });
+  }
+
+  if (mediaItems.length > 0) {
+    return mediaItems;
+  }
+
+  if (procedureSlug && caseNumber && hospitalId) {
+    return [{
+      type: 'image',
+      url: buildLegacyCaseImageUrl({
+        procedureSlug,
+        caseNumber,
+        hospitalId,
+        isRegularHospital,
+      }),
+      thumbnailUrl: null,
+    }];
+  }
+
+  return [];
+}
+
+export function mapCaseAssetsToImagesLegacy({
   caseRow,
   caseImages,
   caseMedia,

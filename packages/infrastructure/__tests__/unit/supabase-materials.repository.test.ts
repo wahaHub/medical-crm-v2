@@ -91,6 +91,151 @@ function makePackageCreateMockSupabase() {
   };
 }
 
+function makeBeforeAfterCaseMutationMockSupabase(input: {
+  caseMediaInsertError?: { code?: string; message: string };
+  caseMediaInsertErrors?: Array<{ code?: string; message: string } | null>;
+  caseMediaDeleteError?: { code?: string; message: string };
+  existingCaseImages?: Array<{ image_url: string; sort_order?: number | null }>;
+  existingCaseMedia?: Array<{ media_url: string; media_type?: string | null; thumbnail_url?: string | null; sort_order?: number | null }>;
+  caseMediaSelectError?: { code?: string; message: string };
+} = {}) {
+  const procedureSelectSingle = vi.fn()
+    .mockResolvedValueOnce({ data: { id: 'procedure-1' }, error: null })
+    .mockResolvedValue({ data: { id: 'procedure-1' }, error: null });
+
+  const procedureSelect = vi.fn(() => ({
+    ilike: vi.fn(() => ({
+      limit: vi.fn(() => ({
+        single: procedureSelectSingle,
+      })),
+    })),
+  }));
+
+  const procedureCasesInsert = vi.fn((payload: Record<string, unknown>) => ({
+    select: vi.fn(() => ({
+      single: vi.fn().mockResolvedValue({
+        data: {
+          id: 'case-1',
+          hospital_id: payload.hospital_id,
+          provider_name: payload.provider_name,
+          description: payload.description,
+          translations: {},
+        },
+        error: null,
+      }),
+    })),
+  }));
+
+  const procedureCasesUpdate = vi.fn((payload: Record<string, unknown>) => ({
+    eq: vi.fn(() => ({
+      eq: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn().mockResolvedValue({
+            data: {
+              id: 'case-1',
+              hospital_id: 'hospital-1',
+              procedure_id: 'procedure-1',
+              provider_name: payload.provider_name ?? 'Dr Chen',
+              description: payload.description ?? 'Updated',
+              translations: {},
+              procedures: { procedure_name: 'Rhinoplasty' },
+            },
+            error: null,
+          }),
+        })),
+      })),
+    })),
+  }));
+
+  const procedureCasesImageCountUpdate = vi.fn(() => ({
+    eq: vi.fn(() => ({
+      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })),
+  }));
+
+  const procedureCasesUpdateRouter = vi.fn((payload: Record<string, unknown>) => (
+    'image_count' in payload
+      ? procedureCasesImageCountUpdate(payload)
+      : procedureCasesUpdate(payload)
+  ));
+
+  const caseImagesInsert = vi.fn().mockResolvedValue({ error: null });
+  const caseImagesDelete = vi.fn(() => ({
+    eq: vi.fn().mockResolvedValue({ error: null }),
+  }));
+  const caseImagesSelect = vi.fn(() => ({
+    eq: vi.fn(() => ({
+      order: vi.fn().mockResolvedValue({ data: input.existingCaseImages ?? [], error: null }),
+    })),
+  }));
+  const caseMediaInsertErrors = input.caseMediaInsertErrors
+    ? [...input.caseMediaInsertErrors]
+    : input.caseMediaInsertError !== undefined
+      ? [input.caseMediaInsertError]
+      : [];
+  const caseMediaInsert = vi.fn().mockImplementation(() => Promise.resolve({
+    error: caseMediaInsertErrors.length > 0 ? caseMediaInsertErrors.shift() : null,
+  }));
+  const caseMediaDelete = vi.fn(() => ({
+    eq: vi.fn().mockResolvedValue({ error: input.caseMediaDeleteError ?? null }),
+  }));
+  const caseMediaSelect = vi.fn(() => ({
+    eq: vi.fn(() => ({
+      order: vi.fn().mockResolvedValue({
+        data: input.existingCaseMedia ?? [],
+        error: input.caseMediaSelectError ?? null,
+      }),
+    })),
+  }));
+
+  const from = vi.fn((table: string) => {
+    if (table === 'procedures') {
+      return {
+        select: procedureSelect,
+        insert: vi.fn(() => ({
+          select: vi.fn(() => ({
+            single: vi.fn().mockResolvedValue({ data: { id: 'procedure-1' }, error: null }),
+          })),
+        })),
+      };
+    }
+
+    if (table === 'procedure_cases') {
+      return {
+        insert: procedureCasesInsert,
+        update: procedureCasesUpdateRouter,
+      };
+    }
+
+    if (table === 'case_images') {
+      return {
+        select: caseImagesSelect,
+        insert: caseImagesInsert,
+        delete: caseImagesDelete,
+      };
+    }
+
+    if (table === 'case_media') {
+      return {
+        select: caseMediaSelect,
+        insert: caseMediaInsert,
+        delete: caseMediaDelete,
+      };
+    }
+
+    throw new Error(`Unexpected table access in test: ${table}`);
+  });
+
+  return {
+    client: { from } as unknown as SupabaseClient,
+    caseImagesInsert,
+    caseMediaInsert,
+    caseMediaDelete,
+    caseImagesSelect,
+    caseMediaSelect,
+  };
+}
+
 function makeUpdateMockSupabase(input: {
   table: 'hospital_material_reviews' | 'hospital_material_packages';
   row: Record<string, unknown>;
@@ -564,5 +709,148 @@ describe('SupabaseMaterialsRepository reviews/packages reads', () => {
         }),
       ],
     }));
+  });
+});
+
+describe('SupabaseMaterialsRepository before/after cases mixed media', () => {
+  it('preserves original mixed indexes when creating case image and video rows', async () => {
+    const mock = makeBeforeAfterCaseMutationMockSupabase();
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await repo.createBeforeAfterCase({
+      hospitalId: 'hospital-1',
+      procedureName: 'Rhinoplasty',
+      surgeonName: 'Dr Chen',
+      description: 'Case story',
+      images: [{ url: 'https://example.com/photo.jpg' }],
+      media: [
+        { type: 'video', url: 'https://example.com/intro.mp4', thumbnailUrl: null },
+        { type: 'image', url: 'https://example.com/photo.jpg', thumbnailUrl: null },
+      ],
+    });
+
+    expect(mock.caseImagesInsert).toHaveBeenCalledWith([
+      { case_id: 'case-1', image_url: 'https://example.com/photo.jpg', sort_order: 1 },
+    ]);
+    expect(mock.caseMediaInsert).toHaveBeenCalledWith([
+      {
+        case_id: 'case-1',
+        media_url: 'https://example.com/intro.mp4',
+        media_type: 'video',
+        thumbnail_url: null,
+        sort_order: 0,
+      },
+    ]);
+  });
+
+  it('preserves original mixed indexes when updating case image and video rows', async () => {
+    const mock = makeBeforeAfterCaseMutationMockSupabase();
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      media: [
+        { type: 'image', url: 'https://example.com/before.jpg', thumbnailUrl: null },
+        { type: 'video', url: 'https://example.com/progress.mp4', thumbnailUrl: 'https://example.com/thumb.jpg' },
+        { type: 'image', url: 'https://example.com/after.jpg', thumbnailUrl: null },
+      ],
+    });
+
+    expect(mock.caseImagesInsert).toHaveBeenCalledWith([
+      { case_id: 'case-1', image_url: 'https://example.com/before.jpg', sort_order: 0 },
+      { case_id: 'case-1', image_url: 'https://example.com/after.jpg', sort_order: 2 },
+    ]);
+    expect(mock.caseMediaInsert).toHaveBeenCalledWith([
+      {
+        case_id: 'case-1',
+        media_url: 'https://example.com/progress.mp4',
+        media_type: 'video',
+        thumbnail_url: 'https://example.com/thumb.jpg',
+        sort_order: 1,
+      },
+    ]);
+  });
+
+  it('rejects when creating a video case cannot write case_media rows', async () => {
+    const error = { code: '42501', message: 'permission denied for table case_media' };
+    const mock = makeBeforeAfterCaseMutationMockSupabase({ caseMediaInsertError: error });
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await expect(repo.createBeforeAfterCase({
+      hospitalId: 'hospital-1',
+      procedureName: 'Rhinoplasty',
+      surgeonName: 'Dr Chen',
+      description: 'Case story',
+      images: [],
+      media: [
+        { type: 'video', url: 'https://example.com/intro.mp4', thumbnailUrl: null },
+      ],
+    })).rejects.toEqual(error);
+  });
+
+  it('rejects when updating a video case cannot write case_media rows', async () => {
+    const error = { code: '42703', message: 'column case_media.media_url does not exist' };
+    const mock = makeBeforeAfterCaseMutationMockSupabase({ caseMediaInsertError: error });
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await expect(repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      media: [
+        { type: 'video', url: 'https://example.com/progress.mp4', thumbnailUrl: null },
+      ],
+    })).rejects.toEqual(error);
+  });
+
+  it('restores previous media rows when updating video media fails after replacement starts', async () => {
+    const error = { code: '42703', message: 'column case_media.media_url does not exist' };
+    const mock = makeBeforeAfterCaseMutationMockSupabase({
+      caseMediaInsertErrors: [error, null],
+      existingCaseImages: [
+        { image_url: 'https://example.com/old-before.jpg', sort_order: 0 },
+      ],
+      existingCaseMedia: [
+        { media_url: 'https://example.com/old-progress.mp4', media_type: 'video', thumbnail_url: 'https://example.com/old-thumb.jpg', sort_order: 1 },
+      ],
+    });
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await expect(repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      media: [
+        { type: 'video', url: 'https://example.com/new-progress.mp4', thumbnailUrl: null },
+      ],
+    })).rejects.toEqual(error);
+
+    expect(mock.caseImagesInsert).toHaveBeenLastCalledWith([
+      { case_id: 'case-1', image_url: 'https://example.com/old-before.jpg', sort_order: 0 },
+    ]);
+    expect(mock.caseMediaInsert).toHaveBeenLastCalledWith([
+      {
+        case_id: 'case-1',
+        media_url: 'https://example.com/old-progress.mp4',
+        media_type: 'video',
+        thumbnail_url: 'https://example.com/old-thumb.jpg',
+        sort_order: 1,
+      },
+    ]);
+  });
+
+  it('rejects when replacing explicit media cannot delete stale case_media rows', async () => {
+    const error = { code: '42501', message: 'permission denied for table case_media' };
+    const mock = makeBeforeAfterCaseMutationMockSupabase({ caseMediaDeleteError: error });
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await expect(repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      media: [
+        { type: 'image', url: 'https://example.com/replacement.jpg', thumbnailUrl: null },
+      ],
+    })).rejects.toEqual(error);
+  });
+
+  it('rejects non-compat case_media read failures after text-only updates', async () => {
+    const error = { code: 'XX000', message: 'unexpected db error' };
+    const mock = makeBeforeAfterCaseMutationMockSupabase({ caseMediaSelectError: error });
+    const repo = new SupabaseMaterialsRepository(mock.client);
+
+    await expect(repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      description: 'Only text changed',
+    })).rejects.toEqual(error);
   });
 });

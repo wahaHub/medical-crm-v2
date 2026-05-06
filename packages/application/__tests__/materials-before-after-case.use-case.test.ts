@@ -17,6 +17,7 @@ function makeRepo(): IMaterialsRepository {
     surgeonName: '王医生',
     description: '案例描述',
     images: [{ url: 'https://example.com/case.png' }],
+    media: [{ type: 'image', url: 'https://example.com/case.png', thumbnailUrl: null }],
   };
 
   return {
@@ -84,6 +85,31 @@ describe('before/after case materials translation tasks', () => {
     });
   });
 
+  it('passes mixed image and video media through case creation', async () => {
+    const repo = makeRepo();
+    const mockResolveHospitalType = vi.fn().mockResolvedValue('REGULAR');
+    const mockTranslationTaskService = { enqueue: vi.fn() };
+    const useCase = new CreateBeforeAfterCaseUseCase(repo, mockResolveHospitalType, mockTranslationTaskService as any);
+
+    await useCase.execute('hospital-1', {
+      procedureName: '双眼皮修复',
+      surgeonName: '王医生',
+      description: '案例描述',
+      media: [
+        { type: 'image', url: 'https://example.com/case.png', thumbnailUrl: null },
+        { type: 'video', url: 'https://example.com/case.mp4', thumbnailUrl: 'https://example.com/case-thumb.jpg' },
+      ],
+    }, actor);
+
+    expect(repo.createBeforeAfterCase).toHaveBeenCalledWith(expect.objectContaining({
+      images: [{ url: 'https://example.com/case.png' }],
+      media: [
+        { type: 'image', url: 'https://example.com/case.png', thumbnailUrl: null },
+        { type: 'video', url: 'https://example.com/case.mp4', thumbnailUrl: 'https://example.com/case-thumb.jpg' },
+      ],
+    }));
+  });
+
   it('enqueues updated procedure_name for case updates', async () => {
     const repo = makeRepo();
     const mockResolveHospitalType = vi.fn().mockResolvedValue('REGULAR');
@@ -102,5 +128,25 @@ describe('before/after case materials translation tasks', () => {
         procedure_name: '提眉术',
       },
     });
+  });
+
+  it('passes mixed image and video media through case updates', async () => {
+    const repo = makeRepo();
+    const mockResolveHospitalType = vi.fn().mockResolvedValue('REGULAR');
+    const mockTranslationTaskService = { enqueue: vi.fn() };
+    const useCase = new UpdateBeforeAfterCaseUseCase(repo, mockResolveHospitalType, mockTranslationTaskService as any);
+
+    await useCase.execute('hospital-1', 'case-1', {
+      media: [
+        { type: 'video', url: 'https://example.com/case.mp4', thumbnailUrl: null },
+      ],
+    }, actor);
+
+    expect(repo.updateBeforeAfterCase).toHaveBeenCalledWith('case-1', 'hospital-1', expect.objectContaining({
+      images: [],
+      media: [
+        { type: 'video', url: 'https://example.com/case.mp4', thumbnailUrl: null },
+      ],
+    }));
   });
 });

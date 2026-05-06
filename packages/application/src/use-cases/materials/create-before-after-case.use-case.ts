@@ -1,4 +1,4 @@
-import type { IMaterialsRepository, MaterialsBeforeAfterCase } from '@medical-crm/domain';
+import type { IMaterialsRepository, MaterialsBeforeAfterCase, MaterialsCaseMediaItem } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
@@ -8,6 +8,19 @@ export interface CreateBeforeAfterCaseInput {
   surgeonName?: string | null;
   description?: string | null;
   images?: Array<{ url: string }>;
+  media?: MaterialsCaseMediaItem[];
+}
+
+function normalizeCaseMedia(input: CreateBeforeAfterCaseInput): MaterialsCaseMediaItem[] {
+  if (input.media !== undefined) {
+    return input.media;
+  }
+
+  return (input.images ?? []).map((image) => ({
+    type: 'image' as const,
+    url: image.url,
+    thumbnailUrl: null,
+  }));
 }
 
 export class CreateBeforeAfterCaseUseCase {
@@ -22,12 +35,14 @@ export class CreateBeforeAfterCaseUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
+    const media = normalizeCaseMedia(input);
     const saved = await this.materialsRepo.createBeforeAfterCase({
       hospitalId,
       procedureName: input.procedureName,
       surgeonName: input.surgeonName ?? null,
       description: input.description ?? null,
-      images: input.images ?? [],
+      images: media.filter((item) => item.type === 'image').map((item) => ({ url: item.url })),
+      media,
     });
 
     const hospitalType = await this.resolveHospitalType(hospitalId);

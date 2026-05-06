@@ -56,6 +56,11 @@ const isValidDateOnly = (value: string): boolean => {
 const requiredString = (max: number) => z.string().trim().min(1).max(max);
 const optionalString = (max: number) => z.string().trim().max(max).nullable().optional();
 const optionalDateOnly = z.string().refine(isValidDateOnly, 'Invalid date').nullable().optional();
+const caseMediaItemSchema = z.object({
+  type: z.enum(['image', 'video']),
+  url: z.string(),
+  thumbnailUrl: z.string().nullable().optional(),
+});
 
 const reviewMediaSchema = z.object({
   id: z.string().uuid().optional(),
@@ -577,6 +582,7 @@ const createBeforeAfterCaseRoute = createRoute({
             images: z.array(z.object({
               url: z.string(),
             })).optional(),
+            media: z.array(caseMediaItemSchema).optional(),
           }),
         },
       },
@@ -613,6 +619,7 @@ const updateBeforeAfterCaseRoute = createRoute({
             images: z.array(z.object({
               url: z.string(),
             })).optional(),
+            media: z.array(caseMediaItemSchema).optional(),
           }),
         },
       },

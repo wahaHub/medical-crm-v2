@@ -392,6 +392,12 @@ export interface FaqItem {
 }
 
 /** Materials before/after case — matches MaterialsBeforeAfterCase domain type */
+export interface MaterialsBeforeAfterCaseMediaDTO {
+  type: 'image' | 'video';
+  url: string;
+  thumbnailUrl?: string | null;
+}
+
 export interface MaterialsBeforeAfterCaseDTO {
   id: string;
   hospitalId: string;
@@ -399,6 +405,7 @@ export interface MaterialsBeforeAfterCaseDTO {
   surgeonName: string | null;
   description: string | null;
   images: Array<{ url: string }>;
+  media: MaterialsBeforeAfterCaseMediaDTO[];
 }
 
 /** Materials review media item */

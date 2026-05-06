@@ -12,6 +12,7 @@ import { ConflictError, NotFoundError } from '@medical-crm/utils';
 import {
   buildSurgeonMutation,
   mapCaseAssetsToImages,
+  mapCaseAssetsToMedia,
   mapSurgeonRowToMaterialsSurgeon,
   slugifyProcedureName,
   shouldIgnoreCaseMediaError,
@@ -600,6 +601,15 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
           hospitalId,
           isRegularHospital: true,
         }),
+        media: mapCaseAssetsToMedia({
+          caseRow: row,
+          caseImages: caseImagesById.get(row.id as string) ?? [],
+          caseMedia: caseMediaById.get(row.id as string) ?? [],
+          procedureSlug: procedureName ? slugifyProcedureName(procedureName) : null,
+          caseNumber: row.case_number as string | null,
+          hospitalId,
+          isRegularHospital: true,
+        }),
       };
     });
   }
@@ -624,11 +634,13 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     if (error) throw error;
 
     // Regular hospitals store case photos in case_media, not case_images.
-    if (data.images.length > 0) {
-      const mediaRows = data.images.map((img, idx) => ({
+    const media = data.media ?? data.images.map((image) => ({ type: 'image' as const, url: image.url, thumbnailUrl: null }));
+    if (media.length > 0) {
+      const mediaRows = media.map((item, idx) => ({
         case_id: row!.id,
-        media_url: img.url,
-        media_type: 'image',
+        media_url: item.url,
+        media_type: item.type,
+        thumbnail_url: item.thumbnailUrl ?? null,
         sort_order: idx,
       }));
 
@@ -646,6 +658,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       surgeonName: row!.provider_name,
       description: row!.description,
       images: data.images,
+      media,
       translations: (row!.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }
@@ -671,21 +684,22 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     }
     if (!row) throw new NotFoundError(`Before/After case ${id} not found for hospital ${hospitalId}`);
 
-    // If images are provided, replace all existing media images.
-    if (updates.images !== undefined) {
+    const nextMedia = updates.media ?? updates.images?.map((image) => ({ type: 'image' as const, url: image.url, thumbnailUrl: null }));
+    if (nextMedia !== undefined) {
       const { error: deleteMediaError } = await this.supabase
         .from('case_media')
         .delete()
         .eq('case_id', id);
-      if (deleteMediaError && !shouldIgnoreCaseMediaError(deleteMediaError)) {
+      if (deleteMediaError && (updates.media !== undefined || !shouldIgnoreCaseMediaError(deleteMediaError))) {
         throw deleteMediaError;
       }
 
-      if (updates.images.length > 0) {
-        const mediaRows = updates.images.map((img, idx) => ({
+      if (nextMedia.length > 0) {
+        const mediaRows = nextMedia.map((item, idx) => ({
           case_id: id,
-          media_url: img.url,
-          media_type: 'image',
+          media_url: item.url,
+          media_type: item.type,
+          thumbnail_url: item.thumbnailUrl ?? null,
           sort_order: idx,
         }));
         const { error: imgError } = await this.supabase.from('case_media').insert(mediaRows);
@@ -694,27 +708,30 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
       await this.supabase
         .from('procedure_cases')
-        .update({ image_count: updates.images.length })
+        .update({ image_count: nextMedia.filter((item) => item.type === 'image').length })
         .eq('id', id)
         .eq('hospital_id', hospitalId);
     }
 
     // Fetch current images
     let images: Array<{ url: string }>;
-    if (updates.images !== undefined) {
-      images = updates.images;
+    let media;
+    if (nextMedia !== undefined) {
+      media = nextMedia;
+      images = nextMedia.filter((item) => item.type === 'image').map((item) => ({ url: item.url }));
     } else {
       const { data: mediaData, error: mediaError } = await this.supabase
         .from('case_media')
-        .select('media_url, media_type, sort_order')
+        .select('media_url, media_type, thumbnail_url, sort_order')
         .eq('case_id', id)
         .order('sort_order', { ascending: true });
       if (mediaError && !shouldIgnoreCaseMediaError(mediaError)) throw mediaError;
 
-      images = (mediaData ?? [])
-        .filter((item) => (item.media_type ?? '').toLowerCase() === 'image')
+      media = mapCaseAssetsToMedia({ caseMedia: mediaData ?? [], isRegularHospital: true });
+      images = media
+        .filter((item) => item.type === 'image')
         .map((item) => ({
-          url: item.media_url ?? '',
+          url: item.url,
         }))
         .filter((item) => item.url.length > 0);
     }
@@ -726,6 +743,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       surgeonName: row.provider_name,
       description: row.description,
       images,
+      media,
       translations: (row.translations as Record<string, Record<string, unknown>> | null) ?? {},
     };
   }

@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { buildPackageMutationPayload } from '../components/materials/package-editor';
 import { buildReviewMutationPayload } from '../components/materials/reviews-tab';
 import {
+  CASE_MEDIA_ACCEPT,
   extractSafeUserErrorDetail,
   formatUserFacingError,
+  isSupportedCaseMediaFile,
 } from '../components/materials-tabs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -52,6 +54,10 @@ function readReviewsTabSource() {
 
 function readPackagesTabSource() {
   return readFileSync(join(ROOT, 'apps/hospital/src/components/materials/packages-tab.tsx'), 'utf8');
+}
+
+function readMaterialsTabsSource() {
+  return readFileSync(join(ROOT, 'apps/hospital/src/components/materials-tabs.tsx'), 'utf8');
 }
 
 function readLocaleBundle(locale: 'en' | 'zh' | 'fr' | 'de' | 'es' | 'bn') {
@@ -234,6 +240,26 @@ describe('materials tabs hook ordering', () => {
     expect(source).toContain('process: MaterialsPackageProcessDTO[]');
     expect(source).toContain('cases: MaterialsPackageCaseDTO[]');
     expect(source).toContain('reviews: MaterialsPackageReviewDTO[]');
+  });
+
+  it('allows case studies to upload and save mixed image and video media', () => {
+    const typesSource = readMaterialsApiTypesSource();
+    const tabsSource = readMaterialsTabsSource();
+
+    expect(typesSource).toContain('export interface MaterialsBeforeAfterCaseMediaDTO');
+    expect(typesSource).toContain("type: 'image' | 'video'");
+    expect(typesSource).toContain('media: MaterialsBeforeAfterCaseMediaDTO[]');
+    expect(tabsSource).toContain('accept={CASE_MEDIA_ACCEPT}');
+    expect(tabsSource).toContain('const coverMedia = c.media?.[0]');
+    expect(tabsSource).toContain('media,');
+    expect(tabsSource).toContain('<video');
+  });
+
+  it('keeps case media file selection aligned with upload policy mime types', () => {
+    expect(CASE_MEDIA_ACCEPT).toBe('image/jpeg,image/png,image/webp,video/mp4');
+    expect(isSupportedCaseMediaFile(new File(['x'], 'case.mp4', { type: 'video/mp4' }))).toBe(true);
+    expect(isSupportedCaseMediaFile(new File(['x'], 'case.mov', { type: 'video/quicktime' }))).toBe(false);
+    expect(isSupportedCaseMediaFile(new File(['x'], 'case.webp', { type: 'image/webp' }))).toBe(true);
   });
 
   it('builds review save payloads with durable storage keys while keeping display urls in editor state', () => {

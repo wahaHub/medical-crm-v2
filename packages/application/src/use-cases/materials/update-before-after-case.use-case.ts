@@ -1,4 +1,4 @@
-import type { IMaterialsRepository, MaterialsBeforeAfterCase } from '@medical-crm/domain';
+import type { IMaterialsRepository, MaterialsBeforeAfterCase, MaterialsCaseMediaItem } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
@@ -8,6 +8,18 @@ export interface UpdateBeforeAfterCaseInput {
   surgeonName?: string | null;
   description?: string | null;
   images?: Array<{ url: string }>;
+  media?: MaterialsCaseMediaItem[];
+}
+
+function normalizeCaseUpdate(input: UpdateBeforeAfterCaseInput): UpdateBeforeAfterCaseInput {
+  if (input.media === undefined) {
+    return input;
+  }
+
+  return {
+    ...input,
+    images: input.media.filter((item) => item.type === 'image').map((item) => ({ url: item.url })),
+  };
 }
 
 export class UpdateBeforeAfterCaseUseCase {
@@ -22,7 +34,7 @@ export class UpdateBeforeAfterCaseUseCase {
       throw new ForbiddenError('Access denied to this hospital');
     }
 
-    const saved = await this.materialsRepo.updateBeforeAfterCase(caseId, hospitalId, input);
+    const saved = await this.materialsRepo.updateBeforeAfterCase(caseId, hospitalId, normalizeCaseUpdate(input));
 
     const hospitalType = await this.resolveHospitalType(hospitalId);
     const sourceDb = hospitalType === 'REGULAR' ? 'supabase_china' as const : 'supabase_beauty' as const;

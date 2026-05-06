@@ -93,6 +93,66 @@ function makePackageCreateMockSupabase() {
   };
 }
 
+function makeBeforeAfterCaseUpdateMockSupabase(input: {
+  caseMediaDeleteError?: { code?: string; message: string };
+} = {}) {
+  const procedureCasesUpdate = vi.fn((payload: Record<string, unknown>) => {
+    if ('image_count' in payload) {
+      return {
+        eq: vi.fn(() => ({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        })),
+      };
+    }
+
+    return {
+      eq: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          select: vi.fn(() => ({
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: 'case-1',
+                hospital_id: 'hospital-1',
+                procedure_name: payload.procedure_name ?? 'Knee replacement',
+                provider_name: payload.provider_name ?? 'Dr Chen',
+                description: payload.description ?? 'Updated',
+                translations: {},
+              },
+              error: null,
+            }),
+          })),
+        })),
+      })),
+    };
+  });
+
+  const caseMediaDelete = vi.fn(() => ({
+    eq: vi.fn().mockResolvedValue({ error: input.caseMediaDeleteError ?? null }),
+  }));
+  const caseMediaInsert = vi.fn().mockResolvedValue({ error: null });
+
+  const from = vi.fn((table: string) => {
+    if (table === 'procedure_cases') {
+      return { update: procedureCasesUpdate };
+    }
+
+    if (table === 'case_media') {
+      return {
+        delete: caseMediaDelete,
+        insert: caseMediaInsert,
+      };
+    }
+
+    throw new Error(`Unexpected table access in test: ${table}`);
+  });
+
+  return {
+    client: { from } as unknown as SupabaseClient,
+    caseMediaDelete,
+    caseMediaInsert,
+  };
+}
+
 function makeUpdateMockSupabase(input: {
   table: 'hospital_material_reviews' | 'hospital_material_packages';
   row: Record<string, unknown>;
@@ -552,5 +612,19 @@ describe('ChinaMedicalMaterialsRepository reviews/packages reads', () => {
         }),
       ],
     }));
+  });
+});
+
+describe('ChinaMedicalMaterialsRepository before/after cases mixed media', () => {
+  it('rejects explicit media replacement when deleting stale case_media rows fails', async () => {
+    const error = { code: '42501', message: 'permission denied for table case_media' };
+    const mock = makeBeforeAfterCaseUpdateMockSupabase({ caseMediaDeleteError: error });
+    const repo = new ChinaMedicalMaterialsRepository(mock.client);
+
+    await expect(repo.updateBeforeAfterCase('case-1', 'hospital-1', {
+      media: [],
+    })).rejects.toEqual(error);
+
+    expect(mock.caseMediaInsert).not.toHaveBeenCalled();
   });
 });

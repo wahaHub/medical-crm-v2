@@ -111,6 +111,7 @@ export type {
   MaterialsProcedure,
   MaterialsSurgeon,
   MaterialsBeforeAfterCase,
+  MaterialsCaseMediaItem,
 } from './ports/materials-repository.port.js';
 
 // Phase 2: TransactionRunner

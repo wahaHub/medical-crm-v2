@@ -3,7 +3,6 @@ import type {
   ConsultStatusInput,
   FaqCategorySearchInput,
   FaqGetByIdsInput,
-  FaqItemRecord,
   FaqSearchInput,
   HandoffCreateInput,
   RecommendationGenerateInput,
@@ -19,7 +18,6 @@ import {
   FaqLlmAdapter,
   type FaqAnswerResult,
   type FaqLlmRunMetadata,
-  type FaqPlan,
 } from './faq-llm-adapter.js';
 import {
   RecordsLlmAdapter,
@@ -93,25 +91,14 @@ export class FaqAgent {
     const faqTask = task?.agent === 'FaqAgent'
       ? { ...task, latestUserMessage }
       : createFallbackFaqWorkerTask(latestUserMessage);
-    const plan = await this.adapter.plan({
-      task: faqTask,
-    });
-    const category = await this.resolveCategory(plan, input);
-    const effectivePlan = category ? { ...plan, category } : plan;
-    const searchResult = await this.gateway.faq.search({
-      category: effectivePlan.category ?? input.category,
-      query: effectivePlan.query,
-      locale: input.locale,
-      sessionId: input.sessionId,
-      hospitalId: input.hospitalId,
-    });
-    const matches = searchResult.status === 'ok' ? searchResult.data.hits : [];
-    const details = await this.loadFaqDetails(matches, input);
     const answer = await this.adapter.answer({
       task: faqTask,
-      plan: effectivePlan,
-      matches,
-      details,
+      plan: {
+        query: latestUserMessage,
+        reason: 'faq retrieval disabled; answer from loaded domain skill context',
+      },
+      matches: [],
+      details: [],
     });
 
     return {
@@ -120,55 +107,6 @@ export class FaqAgent {
     };
   }
 
-  private async resolveCategory(inputPlan: FaqPlan, input: FaqAgentInput): Promise<string | undefined> {
-    if (inputPlan.category) {
-      return inputPlan.category;
-    }
-
-    if (input.category) {
-      return input.category;
-    }
-
-    const result = await this.gateway.faq.categorySearch({
-      query: inputPlan.query,
-      locale: input.locale,
-      sessionId: input.sessionId,
-      hospitalId: input.hospitalId,
-    });
-
-    if (result.status !== 'ok') {
-      return undefined;
-    }
-
-    return result.data.categories[0]?.name;
-  }
-
-  private async loadFaqDetails(
-    matches: FaqItemRecord[],
-    input: FaqAgentInput,
-  ): Promise<FaqItemRecord[]> {
-    const ids = matches
-      .map((match) => match.id)
-      .filter((id) => id.trim().length > 0)
-      .slice(0, 3);
-
-    if (ids.length === 0) {
-      return [];
-    }
-
-    const result = await this.gateway.faq.getByIds({
-      ids,
-      locale: input.locale,
-      sessionId: input.sessionId,
-      hospitalId: input.hospitalId,
-    });
-
-    if (result.status !== 'ok') {
-      return [];
-    }
-
-    return result.data.items;
-  }
 }
 
 export class RecordsAgent {

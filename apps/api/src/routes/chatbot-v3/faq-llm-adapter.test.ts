@@ -95,7 +95,7 @@ describe('FaqLlmAdapter', () => {
       details: [],
     })).resolves.toEqual({
       answer: 'Grounded answer',
-      citedFaqIds: ['faq-1'],
+      citedFaqIds: [],
       confidence: 'high',
     });
     expect(adapter.getLastRunMetadata()).toMatchObject({
@@ -370,6 +370,205 @@ describe('FaqLlmAdapter', () => {
     });
   });
 
+  it('allows policy-grounded skill answers from the LLM instead of discarding them as FAQ failures', async () => {
+    const run = vi.fn(async () => ({
+      answer: 'You can start with only the most important diagnosis or CT summary; you do not need to upload everything at once.',
+      citedFaqIds: [],
+      confidence: 'high',
+      policyGrounded: true,
+    }));
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: 'faq-answer-should-not-run',
+        run,
+      },
+    });
+    const task: FaqWorkerTask = {
+      ...createFaqTask('I have a CT report but I do not want upload here, is it safe?'),
+      primaryAction: { type: 'ANSWER', target: 'policy', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'policy_skill',
+        role: 'primary',
+        reasonCode: 'privacy_hesitation',
+        sectionIds: ['privacy_records_low_friction_path'],
+        readIntentTypes: ['SERVICE_PREREQUISITES'],
+        policyText: ['If the user hesitates to share records or information, ask only for the most important info or records or diagnosis only.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'medical records privacy', reason: 'privacy hesitation' },
+      matches: [],
+      details: [],
+    });
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(result.answer).toContain('do not need to upload everything at once');
+    expect(result.policyGrounded).toBe(true);
+    expect(result.answer).not.toContain('The usual Medora path');
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
+  });
+
+  it('does not borrow policy grounding from fallback for an ungrounded LLM answer', async () => {
+    const adapter = new FaqLlmAdapter({
+      answer: {
+        promptVersion: 'faq-answer-ungrounded-skill-answer',
+        run: vi.fn(async () => ({
+          answer: 'Yes, any payment method should work.',
+          citedFaqIds: [],
+          confidence: 'high',
+        })),
+      },
+    });
+    const task: FaqWorkerTask = {
+      ...createFaqTask('Can I pay with any method?'),
+      primaryAction: { type: 'ANSWER', target: 'payment', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'payment_skill',
+        role: 'primary',
+        reasonCode: 'payment_channel_question',
+        sectionIds: ['payment_channels'],
+        readIntentTypes: ['PAYMENT_POLICY'],
+        policyText: ['Payment channel details depend on hospital and Medora service arrangement.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'any payment method', reason: 'payment channel' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result).toEqual({
+      answer: 'Yes, any payment method should work.',
+      citedFaqIds: [],
+      confidence: 'high',
+    });
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
+  });
+
+  it('answers insurance direct-billing questions with an insurance boundary instead of the generic consult path', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('I have insurance but not sure direct billing, my card says Cigna but employer changed vendor?'),
+      primaryAction: { type: 'ANSWER', target: 'payment', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'payment_skill',
+        role: 'primary',
+        reasonCode: 'insurance_payment_question',
+        sectionIds: ['insurance_boundary'],
+        readIntentTypes: ['PAYMENT_POLICY'],
+        policyText: ['Insurance questions should be explained by a human; Medora does not provide claims support.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'insurance direct billing Cigna employer vendor', reason: 'insurance boundary' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('direct billing');
+    expect(result.answer).toContain('insurer');
+    expect(result.answer).toContain('human');
+    expect(result.answer).not.toContain('The usual Medora path');
+  });
+
+  it('answers payment-channel questions without turning them into insurance copy', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('Can I pay with international card or Alipay?'),
+      primaryAction: { type: 'ANSWER', target: 'payment', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'payment_skill',
+        role: 'primary',
+        reasonCode: 'payment_channel_question',
+        sectionIds: ['payment_channels'],
+        readIntentTypes: ['PAYMENT_POLICY'],
+        policyText: ['Payment channel details depend on hospital and Medora service arrangement.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'international card Alipay', reason: 'payment channel' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('payment channel');
+    expect(result.answer).toContain('hospital');
+    expect(result.answer).not.toContain('For insurer coverage');
+  });
+
+  it('answers airport taxi logistics directly while keeping medical booking order clear', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('I am flying from Shenzhen to Shanghai that morning, is taxi from airport long?'),
+      primaryAction: { type: 'ANSWER', target: 'travel', mode: 'faq' },
+      loadedSkillSections: [{
+        skillId: 'travel_skill',
+        role: 'primary',
+        reasonCode: 'airport_transport_question',
+        sectionIds: ['airport_pickup_transport'],
+        readIntentTypes: ['TRAVEL_SUPPORT'],
+        policyText: ['Medora can coordinate airport pickup and local transport after hospital and appointment direction are clearer.'],
+        retrievalGuidance: [],
+        handlingGuidance: [],
+      }],
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'Shanghai airport taxi time', reason: 'airport transport' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('airport');
+    expect(result.answer).toContain('traffic');
+    expect(result.answer).toContain('pickup');
+    expect(result.answer).not.toContain('The medical path should come first');
+  });
+
+  it('treats post-ER specialist help as in-scope instead of an out-of-scope redirect', async () => {
+    const adapter = new FaqLlmAdapter();
+    const task: FaqWorkerTask = {
+      ...createFaqTask('If I go ER can your clinic still help me later with specialist?'),
+      ...resolveFaqTaskPolicy({
+        primaryAction: { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' },
+      }),
+    };
+
+    const result = await adapter.answer({
+      task,
+      plan: { query: 'ER later specialist help', reason: 'service scope' },
+      matches: [],
+      details: [],
+    });
+
+    expect(result.answer).toContain('After urgent care');
+    expect(result.answer).toContain('specialist');
+    expect(result.answer).not.toContain('outside Medora');
+  });
+
   it('answers early nerve-pain doctor requests as guidance instead of pretending a doctor match is ready', async () => {
     const adapter = new FaqLlmAdapter();
     const task: FaqWorkerTask = {
@@ -550,7 +749,7 @@ describe('FaqLlmAdapter', () => {
 });
 
 describe('FaqAgent', () => {
-  it('lets the FAQ worker choose category and query, then calls faq tools before returning an answer', async () => {
+  it('answers from loaded domain skill context without calling FAQ retrieval tools', async () => {
     const categorySearch = vi.fn(async () => ({
       categories: [{ name: 'Online Consultation', sortOrder: 1 }],
     }));
@@ -589,10 +788,11 @@ describe('FaqAgent', () => {
       },
       answer: {
         promptVersion: 'faq-answer-test',
-        run: vi.fn(async ({ details }) => ({
-          answer: details[0].answer,
-          citedFaqIds: [details[0].id],
+        run: vi.fn(async () => ({
+          answer: 'Online consultation timing is confirmed by the coordinator after the case direction is clear.',
+          citedFaqIds: [],
           confidence: 'high',
+          policyGrounded: true,
         })),
       },
     });
@@ -610,44 +810,37 @@ describe('FaqAgent', () => {
       },
     });
 
-    expect(categorySearch).toHaveBeenCalledWith({
-      hospitalId: 'hospital-123',
-      query: 'online consultation timing',
-      sessionId: 'session-faq-1',
-    }, expect.any(Object));
-    expect(search).toHaveBeenCalledWith({
-      category: 'Online Consultation',
-      hospitalId: 'hospital-123',
-      query: 'online consultation timing',
-      sessionId: 'session-faq-1',
-    }, expect.any(Object));
-    expect(getByIds).toHaveBeenCalledWith({
-      hospitalId: 'hospital-123',
-      ids: ['faq-1'],
-      sessionId: 'session-faq-1',
-    }, expect.any(Object));
+    expect(adapter.getLastRunMetadata()).toMatchObject({
+      fallbackUsed: false,
+      schemaValidationFailed: false,
+    });
+    expect(categorySearch).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
+    expect(getByIds).not.toHaveBeenCalled();
     expect(result).toEqual({
       status: 'ok',
       data: {
-        answer: 'Online consultations are usually arranged within 24 hours.',
-        citedFaqIds: ['faq-1'],
+        answer: 'Online consultation timing is confirmed by the coordinator after the case direction is clear.',
+        citedFaqIds: [],
         confidence: 'high',
+        policyGrounded: true,
       },
     });
   });
 
   it('falls back safely when the faq answer output is invalid', async () => {
+    const search = vi.fn(async () => ({
+      hits: [{
+        id: 'faq-2',
+        question: 'Can I schedule a consult after records review?',
+        answer: 'Yes. We can help arrange the consult after your records are reviewed.',
+        category: 'Online Consultation',
+      }],
+    }));
     const gateway = createToolGateway({
       handlers: {
         faq: {
-          search: vi.fn(async () => ({
-            hits: [{
-              id: 'faq-2',
-              question: 'Can I schedule a consult after records review?',
-              answer: 'Yes. We can help arrange the consult after your records are reviewed.',
-              category: 'Online Consultation',
-            }],
-          })),
+          search,
         },
       },
     });
@@ -685,10 +878,11 @@ describe('FaqAgent', () => {
     expect(result).toEqual({
       status: 'ok',
       data: {
-        answer: expect.stringContaining('I can help'),
-        citedFaqIds: ['faq-2'],
-        confidence: 'medium',
+        answer: expect.stringContaining('could not find an exact FAQ answer'),
+        citedFaqIds: [],
+        confidence: 'low',
       },
     });
+    expect(search).not.toHaveBeenCalled();
   });
 });

@@ -234,6 +234,19 @@ function composeRedirectFallbackAnswer(task: FaqWorkerTask | undefined): FaqAnsw
   }
 
   if (task.responseMode === 'out_of_scope_redirect') {
+    const normalized = buildMedicalSafetyContext(task);
+    if (/\b(?:er|emergency|urgent care)\b/.test(normalized) && /\b(?:later|after|still|follow[-\s]?up|specialist|doctor)\b/.test(normalized)) {
+      return {
+        answer: [
+          'After urgent care or ER rules out immediate danger, Medora can still help with the next specialist step in China.',
+          'We can help organize your records, arrange online consultation where appropriate, and coordinate hospital or specialist review based on what the ER or local doctor finds.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
     return {
       answer: [
         'That request is outside Medora\'s current medical travel support scope.',
@@ -277,6 +290,30 @@ function composeSkillGroundedFallbackAnswer(task: FaqWorkerTask | undefined): Fa
   }
 
   if (skillIds.has('payment_skill') || actionTarget === 'payment') {
+    if (/\b(?:insurance|insurer|direct billing|cigna|claim|claims|reimbursement|coverage)\b/.test(normalized)) {
+      return {
+        answer: [
+          'Insurance and direct billing depend on your insurer, plan, employer vendor, and the hospital payment rules, so Medora cannot confirm coverage or claim approval in chat.',
+          'A human coordinator can explain the payment boundary and help ask the hospital about available documents or medical liability insurance where relevant, but claims support must be handled with your insurer.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
+    if (/\b(?:card|credit card|debit card|visa|mastercard|amex|alipay|wechat|wire|bank transfer|pay|payment channel)\b/.test(normalized)) {
+      return {
+        answer: [
+          'The available payment channel depends on the hospital and on whether the charge is a hospital medical fee or a Medora service fee.',
+          'A coordinator can confirm the exact card, Alipay, bank transfer, or hospital payment options once the hospital and service arrangement are clear.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
     return {
       answer: [
         'Payment details depend on the hospital and service arrangement.',
@@ -290,6 +327,18 @@ function composeSkillGroundedFallbackAnswer(task: FaqWorkerTask | undefined): Fa
   }
 
   if (skillIds.has('travel_skill') || actionTarget === 'travel') {
+    if (/\b(?:airport|flight|taxi|pickup|pick up|transport|shenzhen|shanghai|pudong|hongqiao)\b/.test(normalized)) {
+      return {
+        answer: [
+          'Airport taxi time depends on the arrival airport, hospital area, time of day, and traffic.',
+          'Medora can coordinate airport pickup or local transport once the appointment location and timing are clearer, and we can keep the flight plan aligned with the medical schedule.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
     return {
       answer: [
         'Medora can support treatment-related logistics such as appointment itinerary, airport pickup, local transport, hotels near the hospital, interpretation, and practical stay coordination.',
@@ -302,6 +351,19 @@ function composeSkillGroundedFallbackAnswer(task: FaqWorkerTask | undefined): Fa
   }
 
   if (skillIds.has('policy_skill') || actionTarget === 'policy' || actionTarget === 'consult') {
+    if (/\b(?:privacy|safe|secure|upload|send|share|ct report|report|records?|medical things|bring it|do not want|don't want|hesitat)\b/.test(normalized)) {
+      return {
+        answer: [
+          'You do not need to upload everything at once.',
+          'If you are uncomfortable sharing medical records here, you can start with only the most important information: diagnosis or suspected issue, key report name, main finding, and what you want help with.',
+          'For formal doctor review or booking, Medora may still need enough records or a clear summary so the case can be reviewed properly.',
+        ].join(' '),
+        citedFaqIds: [],
+        confidence: 'medium',
+        policyGrounded: true,
+      };
+    }
+
     return {
       answer: [
         'The usual Medora path is to clarify the condition, collect the most useful records or summary, arrange the required online consultation before coming to China, and then coordinate hospital, appointment, travel, treatment, and follow-up steps as appropriate.',
@@ -460,28 +522,27 @@ function sanitizeFaqAnswerResult(
   schemaValidationFailed: boolean;
 } {
   const record = asRecord(raw);
-  if (fallback.policyGrounded === true) {
-    return {
-      answer: fallback,
-      fallbackUsed: true,
-      schemaValidationFailed: true,
-    };
-  }
-
   const normalizedAnswer = normalizeString(record.answer);
   const answer = normalizedAnswer ?? fallback.answer;
   const citedFaqIds = sanitizeFaqIds(record.citedFaqIds);
   const normalizedConfidence = normalizeConfidence(record.confidence);
-  const confidence = normalizedConfidence ?? fallback.confidence;
-  const normalizedIds = citedFaqIds.length > 0 ? citedFaqIds : fallback.citedFaqIds;
+  const answerFellBack = normalizedAnswer === null;
+  const confidence = answerFellBack ? fallback.confidence : normalizedConfidence ?? fallback.confidence;
+  const normalizedIds = answerFellBack
+    ? fallback.citedFaqIds
+    : citedFaqIds;
+  const policyGrounded = answerFellBack
+    ? fallback.policyGrounded === true
+    : record.policyGrounded === true;
   const hasInvalidFaqIds = hasInvalidCitedFaqIds(record.citedFaqIds);
-  const fallbackUsed = normalizedAnswer === null || normalizedConfidence === null || hasInvalidFaqIds;
+  const fallbackUsed = answerFellBack || normalizedConfidence === null || hasInvalidFaqIds;
 
   return {
     answer: {
       answer,
       citedFaqIds: normalizedIds,
       confidence,
+      ...(policyGrounded ? { policyGrounded: true } : {}),
     },
     fallbackUsed,
     schemaValidationFailed: fallbackUsed,

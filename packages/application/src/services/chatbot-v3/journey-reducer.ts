@@ -249,6 +249,10 @@ export function decidePrimaryAction(input: {
 }
 
 function decideRequestedAction(event: SupervisorEvent, facts: DomainFacts): PrimaryAction {
+  if (hasUrgentMedicalSafetySignal(event.metadata?.rawText)) {
+    return { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' };
+  }
+
   if (event.target === 'service_scope') {
     return { type: 'REDIRECT', target: 'service_scope', reasonCode: 'out_of_scope' };
   }

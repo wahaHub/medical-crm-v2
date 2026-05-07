@@ -706,22 +706,22 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
     policySections: [
       {
         id: 'medical_safety_boundary',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['medical_advice'] },
         text: 'For medical advice questions, do not make a diagnosis, choose treatment, prescribe medication, give dosing, or guarantee outcomes. Classify the user need into the safest subtype and preserve the Medora next step.',
       },
       {
         id: 'medical_preliminary_orientation',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['medical_advice'] },
         text: 'Be useful without pretending to be the treating doctor: acknowledge the concern, give cautious preliminary orientation or possible specialty direction when facts support it, name what would help confirm it, prioritize urgent local care for red flags, and otherwise invite Medora online consultation, expert review, second opinion, record review, or hospital coordination.',
       },
       {
         id: 'medical_red_flags',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['medical_advice'] },
         text: 'For possible red flags such as chest pain, breathing trouble, stroke-like symptoms, sudden weakness, severe bleeding, severe allergic reaction, severe abdominal pain, uncontrolled pain, fainting, confusion, high fever after surgery, severe post-op swelling/pus/bleeding, or rapidly worsening symptoms, advise local emergency or urgent medical care first; Medora coordination can continue after immediate safety is addressed.',
       },
       {
         id: 'medical_advice_triage_or_urgency',
-        appliesTo: { eventTypes: ['USER_ASKED_QUESTION'] },
+        appliesTo: { targets: ['medical_advice'] },
         text: 'triage_or_urgency_question: for questions like "is this dangerous?" or "ER or appointment?", do not diagnose; give general safety triage principles, mention red-flag symptoms and local emergency care for urgent or worsening symptoms, then continue the Medora records/review path.',
       },
       {
@@ -759,7 +759,7 @@ export const DOMAIN_SKILL_REGISTRY: Record<DomainSkillId, DomainSkillPack> = {
       sections: [
         {
           id: 'service_scope',
-          appliesTo: { primaryActionTypes: ['REDIRECT'] },
+          appliesTo: { primaryActionTypes: ['REDIRECT'], targets: ['service_scope'] },
           readIntentTypes: ['SERVICE_SCOPE'],
           searchGuidance: 'Use service scope for out-of-scope or restricted-service boundaries; do not perform medical lookup.',
         },

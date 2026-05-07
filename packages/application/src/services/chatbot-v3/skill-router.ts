@@ -76,8 +76,19 @@ function primaryRouteFor(input: {
     return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
   }
 
-  if (input.event.target === 'service_scope' || input.turnPlan.primaryAction.type === 'REDIRECT') {
+  if (input.turnPlan.primaryAction.type === 'REDIRECT') {
+    if (
+      input.turnPlan.primaryAction.reasonCode === 'medical_safety'
+      || input.turnPlan.primaryAction.target === 'medical_advice'
+    ) {
+      return { skillId: 'medical_advice_skill', sectionTarget: 'medical_advice' };
+    }
+
     return { skillId: 'service_scope_skill', sectionTarget: input.event.target ?? 'service_scope' };
+  }
+
+  if (input.event.target === 'service_scope') {
+    return { skillId: 'service_scope_skill', sectionTarget: 'service_scope' };
   }
 
   if (input.turnPlan.primaryAction.type === 'ESCALATE' || input.event.eventType === 'USER_REQUESTED_HUMAN') {

@@ -238,6 +238,27 @@ describe('buildSkillPolicy', () => {
     });
   });
 
+  it.each(['handoff', 'service_scope'] as const)(
+    'routes medical-safety redirects from %s action requests to the medical advice skill',
+    (target) => {
+      expect(requests({
+        event: event({ eventType: 'USER_REQUESTED_ACTION', target, modifier: 'request_action' }),
+        turnPlan: plan({
+          primaryAction: { type: 'REDIRECT', target: 'medical_advice', reasonCode: 'medical_safety' },
+          followUpAction: { type: 'NONE' },
+        }),
+        agentRole: 'GeneralResponseAgent',
+      })[0]).toMatchObject({
+        skillId: 'medical_advice_skill',
+        role: 'primary',
+        sectionHints: {
+          target: 'medical_advice',
+          primaryActionType: 'REDIRECT',
+        },
+      });
+    },
+  );
+
   it('routes provided contact information to human handoff via the contact alias', () => {
     expect(requests({
       event: event({ eventType: 'USER_PROVIDED_INFORMATION', target: 'contact', modifier: 'provide' }),

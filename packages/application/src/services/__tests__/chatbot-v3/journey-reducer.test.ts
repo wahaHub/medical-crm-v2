@@ -276,6 +276,31 @@ describe('reduceJourney', () => {
     expect(result.state.primaryStage).toBe('RECOMMENDATION');
   });
 
+  it('prioritizes urgent chest-pressure safety even when the user asks to book an appointment', () => {
+    const result = reduceJourney({
+      state: state('COLLECT_MINIMAL_MEDICAL_FACTS'),
+      facts: facts(),
+      event: {
+        eventType: 'USER_REQUESTED_ACTION',
+        target: 'handoff',
+        modifier: 'request_action',
+        confidence: 0.9,
+        source: 'llm',
+        metadata: {
+          rawText: 'I have chest pressure sometimes, not now maybe earlier today, can I book for next Friday?',
+        },
+      },
+    });
+
+    expect(result.turnPlan.primaryAction).toEqual({
+      type: 'REDIRECT',
+      target: 'medical_advice',
+      reasonCode: 'medical_safety',
+    });
+    expect(result.sidePathType).toBe('safety');
+    expect(result.state.primaryStage).toBe('COLLECT_MINIMAL_MEDICAL_FACTS');
+  });
+
   it('treats legacy next-step question targets as workflow progression', () => {
     const result = reduceJourney({
       state: state('RECOMMENDATION'),

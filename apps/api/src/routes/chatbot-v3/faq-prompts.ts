@@ -31,8 +31,9 @@ export function buildFaqPlanPrompt(input: FaqPlanInput): string {
 export function buildFaqAnswerPrompt(input: FaqAnswerInput): string {
   return [
     `version=${FAQ_ANSWER_PROMPT_VERSION}`,
-    'role=FAQ answer worker',
-    'instructions=Answer using only the retrieved faq matches. Cite ids that support the answer.',
+    'role=domain-skill answer worker',
+    'instructions=Answer using loaded skill sections, response contract, recent context, and any retrieved faq matches. FAQ retrieval may be disabled; when no faq match supports the answer, use the loaded domain skill policy and set policyGrounded=true.',
+    'Return a JSON object with answer, citedFaqIds, confidence, and optional policyGrounded.',
     `current_stage=${renderCurrentStage(input.task)}`,
     `primary_stage=${renderPrimaryStage(input.task)}`,
     `intent=${input.task.intent ?? 'unknown'}`,

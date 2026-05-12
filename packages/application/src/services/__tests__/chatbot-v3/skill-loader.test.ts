@@ -442,6 +442,35 @@ describe('loadSkillSections', () => {
     expect(loaded.skillSections[0]?.handlingGuidance.join('\n')).toContain('Do not blanket dismiss');
   });
 
+  it('loads medical red-flag policy for medical-safety redirects without service-scope retrieval', () => {
+    const loaded = loadSkillSections({
+      requests: [
+        {
+          skillId: 'medical_advice_skill',
+          role: 'primary',
+          reasonCode: 'medical_safety',
+          sectionHints: {
+            eventType: 'USER_REQUESTED_ACTION',
+            target: 'medical_advice',
+            modifier: 'request_action',
+            primaryActionType: 'REDIRECT',
+          },
+        },
+      ],
+    });
+
+    expect(loaded.skillSections).toHaveLength(1);
+    expect(loaded.skillSections[0]?.sectionIds).toEqual(expect.arrayContaining([
+      'medical_safety_boundary',
+      'medical_preliminary_orientation',
+      'medical_red_flags',
+      'medical_advice_triage_or_urgency',
+    ]));
+    expect(loaded.skillSections[0]?.readIntentTypes).not.toContain('SERVICE_SCOPE');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('chest pain');
+    expect(loaded.skillSections[0]?.policyText.join('\n')).toContain('local emergency or urgent medical care first');
+  });
+
   it('loads detailed process guidance for canonical policy detours', () => {
     const loaded = loadSkillSections({
       requests: [

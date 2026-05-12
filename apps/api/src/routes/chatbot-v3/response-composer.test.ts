@@ -1262,6 +1262,171 @@ describe('ResponseComposer', () => {
     expect(response.messages[0]?.text).not.toContain('recommendation stage');
   });
 
+  it('does not render generic hospital recommendation fallback for a direct doctor request', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Can you just recommend a doctor for nerve pain? I do not know what department, maybe bone?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'resource',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'user asked for doctor recommendation',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [
+              {
+                hospitalId: 'hospital-1',
+                name: 'Shanghai Hospital',
+                reason: 'Neurology and spine-related care',
+              },
+            ],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('specific doctor recommendation');
+    expect(response.messages[0]?.text).toContain('records');
+    expect(response.messages[0]?.text).not.toContain('These recommendations are grounded');
+    expect(response.cards).toEqual([]);
+  });
+
+  it.each([
+    'Can you recommend the best neurologist?',
+    'Which spine surgeon should I see?',
+    '请帮我推荐神经科专家',
+  ])('suppresses recommendation cards for direct provider matching wording: %s', (message) => {
+    const response = composeResponse({
+      body: createRequest({ message }),
+      result: createResult({
+        suggestion: {
+          intent: 'resource',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'user asked for provider matching',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [{
+              hospitalId: 'hospital-1',
+              name: 'Shanghai Hospital',
+              reason: 'Neurology and spine-related care',
+            }],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).toContain('specific doctor recommendation');
+    expect(response.cards).toEqual([]);
+  });
+
+  it('keeps normal hospital recommendation cards for hospital matching wording', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Which hospital is best for nerve pain?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'resource',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'user asked for hospital recommendation',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [{
+              hospitalId: 'hospital-1',
+              name: 'Shanghai Hospital',
+              reason: 'Neurology and spine-related care',
+            }],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+  });
+
+  it('keeps hospital recommendation cards when the user asks Medora team to find a hospital', () => {
+    const response = composeResponse({
+      body: createRequest({
+        message: 'Can your team recommend a hospital for nerve pain?',
+      }),
+      result: createResult({
+        suggestion: {
+          intent: 'resource',
+          suggestedStage: 'RECOMMENDATION',
+          reason: 'user asked for hospital recommendation',
+        },
+        decision: {
+          action: 'STAY',
+          from: { stage: 'COLLECT_MINIMAL_MEDICAL_FACTS', phase: 'active' },
+          to: { stage: 'RECOMMENDATION', phase: 'active' },
+          dispatchAgent: 'RecommendationAgent',
+          dispatchSource: 'journey-runtime-authority',
+        },
+        journey: { stage: 'RECOMMENDATION', phase: 'active' },
+        dispatchResult: {
+          status: 'ok',
+          data: {
+            recommendations: [{
+              hospitalId: 'hospital-1',
+              name: 'Shanghai Hospital',
+              reason: 'Neurology and spine-related care',
+            }],
+            recommendationTask: 'generate',
+          },
+        },
+      }),
+      sessionStatusSnapshot: null,
+    });
+
+    expect(response.messages[0]?.text).not.toContain('specific doctor recommendation');
+    expect(response.cards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        cardType: 'RECOMMENDATION_LIST',
+      }),
+    ]));
+  });
+
   it('does not expose recommendation submit actions when no candidates are available', () => {
     const response = composeResponse({
       body: createRequest({

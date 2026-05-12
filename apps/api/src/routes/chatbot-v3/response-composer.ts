@@ -49,7 +49,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
     input.sessionStatusSnapshot,
     input.result.writeIntents?.statusPatch,
   );
-  const assistantText = buildAssistantText(input.result, effectiveStatusSnapshot);
+  const assistantText = buildAssistantText(input.result, effectiveStatusSnapshot, input.body.message);
   const visibleJourney = buildVisibleJourney(
     input.result.journey,
     input.sessionStatusSnapshot,
@@ -62,7 +62,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
       text: assistantText,
     }],
     turnOutcome: input.result.turnOutcome,
-    cards: buildCards(input.body, input.result, visibleJourney, effectiveStatusSnapshot),
+    cards: buildCards(input.body, input.result, visibleJourney, effectiveStatusSnapshot, input.body.message),
     journey: visibleJourney,
     handoff: {
       required: visibleJourney.stage === 'HUMAN_HANDOFF'
@@ -129,6 +129,7 @@ export function composeResponse(input: ResponseComposerInput): ChatbotV3ChatResp
 export function buildAssistantText(
   result: ConversationOrchestratorV3TurnResult,
   statusSnapshot?: Partial<AiChatStatusSnapshot> | null | undefined,
+  latestUserMessage?: string,
 ): string {
   const guidanceFamily = classifyGuidanceFamily(result);
   if (guidanceFamily) {
@@ -160,7 +161,7 @@ export function buildAssistantText(
     return recordsAssistantText;
   }
 
-  const recommendationAssistantText = readRecommendationAssistantText(result, statusSnapshot);
+  const recommendationAssistantText = readRecommendationAssistantText(result, statusSnapshot, latestUserMessage);
   if (recommendationAssistantText) {
     return recommendationAssistantText;
   }
@@ -427,6 +428,7 @@ function hasLegNervePainContext(context: string): boolean {
 function readRecommendationAssistantText(
   result: ConversationOrchestratorV3TurnResult,
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  latestUserMessage?: string,
 ): string | null {
   if (result.decision.dispatchAgent !== 'RecommendationAgent') {
     return null;
@@ -443,7 +445,7 @@ function readRecommendationAssistantText(
   const data = asRecord(result.dispatchResult.data);
   const recommendationTask = asString(data['recommendationTask']);
   if (recommendationTask === 'generate') {
-    return buildRecommendationGenerateText(data, statusSnapshot);
+    return buildRecommendationGenerateText(data, statusSnapshot, latestUserMessage);
   }
 
   if (recommendationTask !== 'compare' && recommendationTask !== 'explain') {
@@ -466,7 +468,12 @@ function buildMinimalTriageOpeningText(
 function buildRecommendationGenerateText(
   data: Record<string, unknown>,
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  latestUserMessage?: string,
 ): string | null {
+  if (isDirectDoctorRecommendationRequest(latestUserMessage)) {
+    return 'For a specific doctor recommendation, please share relevant medical records first; if you do not have records yet, a short symptom summary is enough to start, and our human team can review before matching a suitable doctor.';
+  }
+
   if (asString(statusSnapshot?.minimalTriageAnswersSummary)) {
     return 'This recommendation is based on your submitted intake and the follow-up medical details you just shared.';
   }
@@ -479,11 +486,34 @@ function buildRecommendationGenerateText(
     ?? 'These recommendations are grounded in the current hospital list and can be refined after you share more medical detail.';
 }
 
+function isDirectDoctorRecommendationRequest(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const explicitHospitalTarget = /\b(?:hospital|clinic|medical center)\b/i.test(value)
+    || /(?:医院|诊所|医疗中心)/.test(value);
+  const strongProviderOrSpecialty = /\b(?:doctor|specialist|physician|surgeon|department|neurologist|oncologist|cardiologist|orthop(?:a)?edist|spine surgeon|neurosurgeon|thoracic surgeon|urologist|dermatologist|hematologist|gastroenterologist|endocrinologist|rheumatologist|ent|pulmonologist|respiratory specialist)\b/i
+    .test(value)
+    || /(?:医生|专家|医师|主任|科室|神经|脊柱|肿瘤|心内|心脏|心血管|骨科|胸外|呼吸|消化|血液|泌尿|皮肤|风湿|内分泌|耳鼻喉)/.test(value);
+  const providerTeamPhrase = /\b(?:doctor|specialist|surgical|clinical) team\b/i.test(value)
+    || /(?:医生团队|专家团队|手术团队|临床团队)/.test(value);
+  const matchingRequest = /\b(?:recommend|best|match|which|who|find|arrange|see|choose)\b/i.test(value)
+    || /(?:推荐|最好|最佳|匹配|哪个|哪位|找|安排|看哪|选哪)/.test(value);
+
+  if (explicitHospitalTarget && !strongProviderOrSpecialty) {
+    return false;
+  }
+
+  return (strongProviderOrSpecialty || providerTeamPhrase) && matchingRequest;
+}
+
 function buildCards(
   body: ChatbotV3ChatRequest,
   result: ConversationOrchestratorV3TurnResult,
   visibleJourney: ConversationOrchestratorV3TurnResult['journey'],
   statusSnapshot: Partial<AiChatStatusSnapshot> | null | undefined,
+  latestUserMessage?: string,
 ): ChatbotV3Card[] {
   if (isFaqMiss(result)) {
     return [];
@@ -518,6 +548,10 @@ function buildCards(
         actions: [],
       }];
     case 'RECOMMENDATION': {
+      if (isDirectDoctorBoundaryRecommendation(result, latestUserMessage)) {
+        return [];
+      }
+
       const candidates = readRecommendations(result.dispatchResult);
       if (result.decision.dispatchAgent === 'FaqAgent' && candidates.length === 0) {
         return [];
@@ -552,6 +586,19 @@ function buildCards(
         actions: [],
       }];
   }
+}
+
+function isDirectDoctorBoundaryRecommendation(
+  result: ConversationOrchestratorV3TurnResult,
+  latestUserMessage?: string,
+): boolean {
+  if (result.decision.dispatchAgent !== 'RecommendationAgent' || result.dispatchResult?.status !== 'ok') {
+    return false;
+  }
+
+  const data = asRecord(result.dispatchResult.data);
+  return asString(data['recommendationTask']) === 'generate'
+    && isDirectDoctorRecommendationRequest(latestUserMessage);
 }
 
 function buildRecommendationActions(

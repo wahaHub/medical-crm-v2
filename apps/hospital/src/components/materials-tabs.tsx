@@ -2239,7 +2239,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
             />
           )
         ) : (
-          <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+          <div className={`px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 ${opts?.rows ? 'whitespace-pre-wrap break-words' : ''}`}>
             {selectedOption?.label ?? form[key] ?? (
               <span className="text-slate-400">
                 {opts?.placeholder ?? t('hospital.materials.fields.notSet', undefined, 'Not set')}
@@ -3341,7 +3341,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                         <div className="flex-1">
                           <h4 className="font-medium text-slate-800">{equip.name}</h4>
                           {equip.description && (
-                            <p className="text-sm text-slate-600 mt-1">{equip.description}</p>
+                            <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap break-words">{equip.description}</p>
                           )}
                         </div>
                       </div>

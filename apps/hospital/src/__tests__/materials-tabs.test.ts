@@ -270,6 +270,13 @@ describe('materials tabs hook ordering', () => {
     expect(tabsSource).toContain('throw new Error(await readUploadError(putRes, file.name));');
   });
 
+  it('preserves authored line breaks when rendering saved hospital info text', () => {
+    const tabsSource = readMaterialsTabsSource();
+
+    expect(tabsSource).toContain('whitespace-pre-wrap break-words');
+    expect(tabsSource).toContain('text-sm text-slate-600 mt-1 whitespace-pre-wrap break-words');
+  });
+
   it('builds review save payloads with durable storage keys while keeping display urls in editor state', () => {
     const payload = buildReviewMutationPayload({
       id: 'review-1',

@@ -117,4 +117,19 @@ describe('Security middleware', () => {
     const res = await app.request('/nonexistent');
     expect(res.status).toBe(404);
   });
+
+  it('preserves downstream errors through rate limiting middleware', async () => {
+    const { Hono } = await import('hono');
+    const { applySecurityMiddleware } = await import('../middleware/security');
+    const testApp = new Hono();
+    applySecurityMiddleware(testApp);
+    testApp.get('/boom', () => {
+      throw new Error('downstream failure');
+    });
+    testApp.onError((err, c) => c.json({ error: err.message }, 500));
+
+    const res = await testApp.request('/boom');
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'downstream failure' });
+  });
 });

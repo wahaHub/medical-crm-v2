@@ -1,4 +1,5 @@
 import type { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { rateLimiter } from 'hono-rate-limiter';
@@ -41,6 +42,31 @@ function getClientIp(c: { req: { header: (name: string) => string | undefined } 
   return c.req.header('x-real-ip') ?? 'unknown';
 }
 
+function safeRateLimiter(options: Parameters<typeof rateLimiter>[0]): MiddlewareHandler {
+  const limiter = rateLimiter({
+    ...options,
+    skipFailedRequests: true,
+  });
+
+  return async (c, next) => {
+    let downstreamError: unknown;
+    const response = await limiter(c, async () => {
+      try {
+        await next();
+      } catch (error) {
+        downstreamError = error;
+        throw error;
+      }
+    });
+
+    if (downstreamError) {
+      throw downstreamError;
+    }
+
+    return response;
+  };
+}
+
 export function applySecurityMiddleware(app: Hono) {
   const allowedOrigins = [
     process.env.ADMIN_ORIGIN,
@@ -63,13 +89,13 @@ export function applySecurityMiddleware(app: Hono) {
     xContentTypeOptions: 'nosniff',
     referrerPolicy: 'strict-origin-when-cross-origin',
   }));
-  app.use('*', rateLimiter({
+  app.use('*', safeRateLimiter({
     windowMs: 60_000,
     limit: 100,
     keyGenerator: getClientIp,
     standardHeaders: 'draft-7',
   }));
-  app.use('/auth/*', rateLimiter({
+  app.use('/auth/*', safeRateLimiter({
     windowMs: 300_000,
     limit: 5,
     keyGenerator: getClientIp,
@@ -83,7 +109,7 @@ export function applySecurityMiddleware(app: Hono) {
   });
 }
 
-export const perUserRateLimiter = rateLimiter({
+export const perUserRateLimiter = safeRateLimiter({
   windowMs: 60_000,
   limit: 200,
   keyGenerator: (c) => {

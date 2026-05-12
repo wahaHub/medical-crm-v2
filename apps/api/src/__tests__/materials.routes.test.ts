@@ -744,6 +744,34 @@ describe('Materials routes', () => {
       );
     });
 
+    it('normalizes common mp4 upload mime variants before policy validation', async () => {
+      mockResolveHospitalType.mockResolvedValue('REGULAR');
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);
+
+      const res = await app.request(`/api/v2/hospitals/${VALID_HOSPITAL_ID}/materials/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          materialKind: 'hospital_video',
+          fileName: 'Promotional Video of GHG.mp4',
+          mimeType: 'application/octet-stream',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyId: 'materials_regular_hospital_video',
+          ownerType: 'hospital_material',
+          ownerId: VALID_HOSPITAL_ID,
+          fileName: 'Promotional Video of GHG.mp4',
+          fileSize: 204800,
+          mimeType: 'video/mp4',
+        }),
+      );
+    });
+
     it('returns 201 with upload URL and asset for REGULAR hospital + package_cover materialKind', async () => {
       mockResolveHospitalType.mockResolvedValue('REGULAR');
       mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);

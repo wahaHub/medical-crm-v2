@@ -262,6 +262,14 @@ describe('materials tabs hook ordering', () => {
     expect(isSupportedCaseMediaFile(new File(['x'], 'case.webp', { type: 'image/webp' }))).toBe(true);
   });
 
+  it('uses signed upload fallback handling for materials media uploads', () => {
+    const tabsSource = readMaterialsTabsSource();
+
+    expect(tabsSource).toContain("import { readUploadError, uploadToSignedUrl } from '@/lib/direct-upload';");
+    expect(tabsSource).toContain('const putRes = await uploadToSignedUrl(result.upload.uploadUrl, file, result.asset.mimeType);');
+    expect(tabsSource).toContain('throw new Error(await readUploadError(putRes, file.name));');
+  });
+
   it('builds review save payloads with durable storage keys while keeping display urls in editor state', () => {
     const payload = buildReviewMutationPayload({
       id: 'review-1',

@@ -10,6 +10,7 @@ function isAllowedUploadTarget(url: URL): boolean {
 export async function POST(request: NextRequest): Promise<Response> {
   const formData = await request.formData();
   const uploadUrl = formData.get('uploadUrl');
+  const contentType = formData.get('contentType');
   const file = formData.get('file');
 
   if (typeof uploadUrl !== 'string' || !(file instanceof File)) {
@@ -27,10 +28,14 @@ export async function POST(request: NextRequest): Promise<Response> {
     return Response.json({ error: 'uploadUrl target is not allowed' }, { status: 400 });
   }
 
+  const resolvedContentType = typeof contentType === 'string' && contentType.trim().length > 0
+    ? contentType.trim()
+    : file.type || 'application/octet-stream';
+
   const upstream = await fetch(normalizedUrl.toString(), {
     method: 'PUT',
     headers: {
-      'Content-Type': file.type || 'application/octet-stream',
+      'Content-Type': resolvedContentType,
     },
     body: Buffer.from(await file.arrayBuffer()),
     cache: 'no-store',

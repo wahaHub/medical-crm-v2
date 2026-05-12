@@ -881,6 +881,20 @@ const materialsUploadInitSchema = z.object({
   mimeType: z.string().min(1),
 });
 
+function normalizeMaterialsUploadMimeType(fileName: string, mimeType: string): string {
+  const normalized = mimeType.trim().toLowerCase();
+  const extension = fileName.split('.').pop()?.toLowerCase();
+
+  if (
+    extension === 'mp4'
+    && ['application/octet-stream', 'application/mp4', 'video/x-m4v', 'video/mp4'].includes(normalized)
+  ) {
+    return 'video/mp4';
+  }
+
+  return normalized;
+}
+
 const materialsUploadRoute = createRoute({
   method: 'post',
   path: '/api/v2/hospitals/{hospitalId}/materials/upload',
@@ -918,7 +932,7 @@ app.openapi(materialsUploadRoute, async (c) => {
     ownerId: hospitalId,
     fileName: body.fileName,
     fileSize: body.fileSize,
-    mimeType: body.mimeType,
+    mimeType: normalizeMaterialsUploadMimeType(body.fileName, body.mimeType),
   });
 
   return c.json({

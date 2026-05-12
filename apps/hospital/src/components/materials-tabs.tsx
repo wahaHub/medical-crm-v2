@@ -73,6 +73,7 @@ import type {
   MaterialsBeforeAfterCaseMediaDTO,
 } from '@/lib/api-types';
 import { useAuth } from '@/lib/auth-context';
+import { readUploadError, uploadToSignedUrl } from '@/lib/direct-upload';
 import { useHospitalI18n } from '@/lib/hospital-i18n';
 import { sanitizeDepartmentStats } from '@/lib/materials-payload';
 import { ReviewsTab } from '@/components/materials/reviews-tab';
@@ -100,14 +101,10 @@ export async function uploadMaterialAsset(file: File, materialKind: string): Pro
     mimeType: file.type || 'application/octet-stream',
   });
 
-  const putRes = await fetch(result.upload.uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-    body: file,
-  });
+  const putRes = await uploadToSignedUrl(result.upload.uploadUrl, file, result.asset.mimeType);
 
   if (!putRes.ok) {
-    throw new Error(`Upload failed for "${file.name}" (status ${putRes.status})`);
+    throw new Error(await readUploadError(putRes, file.name));
   }
 
   return result.asset;

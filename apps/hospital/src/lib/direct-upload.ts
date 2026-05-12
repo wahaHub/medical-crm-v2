@@ -1,6 +1,7 @@
-async function uploadViaProxy(uploadUrl: string, file: File): Promise<Response> {
+async function uploadViaProxy(uploadUrl: string, file: File, contentType: string): Promise<Response> {
   const formData = new FormData();
   formData.append('uploadUrl', uploadUrl);
+  formData.append('contentType', contentType);
   formData.append('file', file, file.name);
 
   return fetch('/api/media/upload', {
@@ -9,12 +10,13 @@ async function uploadViaProxy(uploadUrl: string, file: File): Promise<Response> 
   });
 }
 
-export async function uploadToSignedUrl(uploadUrl: string, file: File): Promise<Response> {
+export async function uploadToSignedUrl(uploadUrl: string, file: File, contentType?: string): Promise<Response> {
+  const resolvedContentType = contentType || file.type || 'application/octet-stream';
   try {
     return await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
-        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Type': resolvedContentType,
       },
       body: file,
     });
@@ -23,7 +25,7 @@ export async function uploadToSignedUrl(uploadUrl: string, file: File): Promise<
       throw error;
     }
 
-    return uploadViaProxy(uploadUrl, file);
+    return uploadViaProxy(uploadUrl, file, resolvedContentType);
   }
 }
 

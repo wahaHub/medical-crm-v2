@@ -12,17 +12,62 @@ interface HospitalDetailPageProps {
 export default async function HospitalDetailPage({ params }: HospitalDetailPageProps) {
   const { id } = await params;
 
-  const res = await apiFetch(`/api/v2/hospitals/${id}`);
+  let res: Response;
+  try {
+    res = await apiFetch(`/api/v2/hospitals/${id}`);
+  } catch (error) {
+    console.error('[HospitalDetailPage] Fetch failed:', error);
+    return (
+      <div className="p-8">
+        <PageHeader title="Error" />
+        <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-6">
+          <h2 className="text-lg font-semibold text-red-800">Failed to connect to API</h2>
+          <p className="mt-2 text-sm text-red-600">The API server may be down or unreachable.</p>
+          <Link href="/hospitals" className="mt-4 inline-block">
+            <Button variant="outline" size="sm">← Back to Hospitals</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (res.status === 404) {
     notFound();
   }
 
   if (!res.ok) {
-    throw new Error(`Failed to load hospital: ${res.status}`);
+    return (
+      <div className="p-8">
+        <PageHeader title="Error" />
+        <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-6">
+          <h2 className="text-lg font-semibold text-red-800">Failed to load hospital</h2>
+          <p className="mt-2 text-sm text-red-600">Status: {res.status}</p>
+          <Link href="/hospitals" className="mt-4 inline-block">
+            <Button variant="outline" size="sm">← Back to Hospitals</Button>
+          </Link>
+        </div>
+      </div>
+    );
   }
 
-  const hospital = (await res.json()) as HospitalSummary;
+  let hospital: HospitalSummary;
+  try {
+    hospital = await res.json() as HospitalSummary;
+  } catch (error) {
+    console.error('[HospitalDetailPage] JSON parse failed:', error);
+    return (
+      <div className="p-8">
+        <PageHeader title="Error" />
+        <div className="mt-4 rounded-xl bg-red-50 border border-red-200 p-6">
+          <h2 className="text-lg font-semibold text-red-800">Invalid API response</h2>
+          <p className="mt-2 text-sm text-red-600">The API returned an unexpected response format.</p>
+          <Link href="/hospitals" className="mt-4 inline-block">
+            <Button variant="outline" size="sm">← Back to Hospitals</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

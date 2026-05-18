@@ -24,6 +24,7 @@ export interface TransactionalEmailPayload {
   intro?: string[];
   summaryItems?: SummaryItem[];
   body?: string[];
+  redLines?: string[];
   primaryAction?: ActionLink;
   secondaryAction?: ActionLink;
   conversationTitle?: string;
@@ -109,7 +110,11 @@ export function buildTransactionalEmail(payload: TransactionalEmailPayload) {
     .join('');
 
   const bodyHtml = (payload.body ?? [])
-    .map((line) => `<p style="margin: 0 0 14px;">${escapeHtml(line)}</p>`)
+    .map((line) => {
+      const isRed = payload.redLines?.includes(line);
+      const style = isRed ? 'margin: 0 0 14px; color: #dc2626; font-weight: 600;' : 'margin: 0 0 14px;';
+      return `<p style="${style}">${escapeHtml(line)}</p>`;
+    })
     .join('');
 
   const summaryHtml = payload.summaryItems?.length

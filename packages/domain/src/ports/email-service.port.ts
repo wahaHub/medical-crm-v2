@@ -5,6 +5,12 @@ export interface IEmailService {
     registrationUrl: string;
     locale?: string | null;
   }): Promise<void>;
+  sendHospitalPasswordReset(params: {
+    to: string;
+    hospitalName: string;
+    resetUrl: string;
+    locale?: string | null;
+  }): Promise<void>;
   sendPatientMagicLink(params: {
     to: string;
     magicLink: string;

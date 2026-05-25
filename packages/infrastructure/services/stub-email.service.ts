@@ -10,6 +10,15 @@ export class StubEmailService implements IEmailService {
     console.log(`[STUB EMAIL] Hospital invitation to ${params.to} for ${params.hospitalName} (${params.locale ?? 'default'}): ${params.registrationUrl}`);
   }
 
+  async sendHospitalPasswordReset(params: {
+    to: string;
+    hospitalName: string;
+    resetUrl: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Hospital password reset to ${params.to} for ${params.hospitalName} (${params.locale ?? 'default'}): ${params.resetUrl}`);
+  }
+
   async sendPatientMagicLink(params: {
     to: string;
     magicLink: string;

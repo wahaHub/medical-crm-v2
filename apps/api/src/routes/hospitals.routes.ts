@@ -8,6 +8,9 @@ import {
   updateHospitalStatusSchema,
   generateRegistrationTokenSchema,
   registerHospitalUserSchema,
+  forgotHospitalPasswordSchema,
+  resetHospitalPasswordSchema,
+  validateHospitalPasswordResetTokenSchema,
   caseListQuerySchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
@@ -201,6 +204,60 @@ app.openapi(registerHospitalUserRoute, async (c) => {
   const svc = getServices();
   const result = await svc.registerHospitalUser.execute(body);
   return c.json(result, 201);
+});
+
+const requestHospitalPasswordResetRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/auth/hospital/forgot-password',
+  request: {
+    body: {
+      content: { 'application/json': { schema: forgotHospitalPasswordSchema } },
+      required: true,
+    },
+  },
+  responses: { 202: { description: 'Password reset email requested' } },
+});
+
+app.openapi(requestHospitalPasswordResetRoute, async (c) => {
+  const body = c.req.valid('json');
+  const svc = getServices();
+  const result = await svc.requestHospitalPasswordReset.execute(body);
+  return c.json(result, 202);
+});
+
+const validateHospitalPasswordResetTokenRoute = createRoute({
+  method: 'get',
+  path: '/api/v2/auth/hospital/reset-password',
+  request: {
+    query: validateHospitalPasswordResetTokenSchema,
+  },
+  responses: { 200: { description: 'Password reset token is valid' } },
+});
+
+app.openapi(validateHospitalPasswordResetTokenRoute, async (c) => {
+  const query = c.req.valid('query');
+  const svc = getServices();
+  const result = await svc.validateHospitalPasswordResetToken.execute(query.token);
+  return c.json(result, 200);
+});
+
+const resetHospitalPasswordRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/auth/hospital/reset-password',
+  request: {
+    body: {
+      content: { 'application/json': { schema: resetHospitalPasswordSchema } },
+      required: true,
+    },
+  },
+  responses: { 204: { description: 'Password reset complete' } },
+});
+
+app.openapi(resetHospitalPasswordRoute, async (c) => {
+  const body = c.req.valid('json');
+  const svc = getServices();
+  await svc.resetHospitalPassword.execute(body);
+  return c.body(null, 204);
 });
 
 export default app;

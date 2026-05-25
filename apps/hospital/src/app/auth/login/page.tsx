@@ -51,6 +51,12 @@ export default function LoginPage() {
         undefined,
         'Go to Admin Portal'
       )}
+      forgotPasswordHref="/auth/forgot-password"
+      forgotPasswordLabel={t(
+        'hospital.login.forgotPassword',
+        undefined,
+        'Forgot password?'
+      )}
     />
   );
 }

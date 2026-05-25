@@ -54,7 +54,23 @@ export const registerHospitalUserSchema = z.object({
   password: z.string().min(8).max(100),
 });
 
+export const forgotHospitalPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const validateHospitalPasswordResetTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
+export const resetHospitalPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8).max(100),
+});
+
 export type UpdateHospitalInput = z.infer<typeof updateHospitalSchema>;
 export type UpdateHospitalStatusInput = z.infer<typeof updateHospitalStatusSchema>;
 export type GenerateRegistrationTokenInput = z.infer<typeof generateRegistrationTokenSchema>;
 export type RegisterHospitalUserInput = z.infer<typeof registerHospitalUserSchema>;
+export type ForgotHospitalPasswordInput = z.infer<typeof forgotHospitalPasswordSchema>;
+export type ValidateHospitalPasswordResetTokenInput = z.infer<typeof validateHospitalPasswordResetTokenSchema>;
+export type ResetHospitalPasswordInput = z.infer<typeof resetHospitalPasswordSchema>;

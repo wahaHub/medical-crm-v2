@@ -1,6 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
+import { buildHospitalPasswordResetEmail } from './hospital-password-reset-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
 import { buildAdminNewCaseEmail } from './admin-new-case-email.template.js';
@@ -76,6 +77,28 @@ export class SmtpEmailService implements IEmailService {
       hospitalName: params.hospitalName,
       registrationUrl: params.registrationUrl,
       expiresInHours: 72,
+      locale: params.locale,
+    });
+
+    await this.transporter.sendMail({
+      from: this.from,
+      to: params.to,
+      subject: content.subject,
+      text: content.text,
+      html: content.html,
+    });
+  }
+
+  async sendHospitalPasswordReset(params: {
+    to: string;
+    hospitalName: string;
+    resetUrl: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildHospitalPasswordResetEmail({
+      hospitalName: params.hospitalName,
+      resetUrl: params.resetUrl,
+      expiresInMinutes: 60,
       locale: params.locale,
     });
 

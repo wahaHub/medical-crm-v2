@@ -28,6 +28,9 @@ const mockServices = {
   getHospitalCases: { execute: vi.fn() },
   generateRegistrationToken: { execute: vi.fn() },
   registerHospitalUser: { execute: vi.fn() },
+  requestHospitalPasswordReset: { execute: vi.fn() },
+  validateHospitalPasswordResetToken: { execute: vi.fn() },
+  resetHospitalPassword: { execute: vi.fn() },
 };
 
 vi.mock('../composition-root.js', () => ({
@@ -379,6 +382,69 @@ describe('Hospital routes', () => {
 
       expect(res.status).toBe(400);
       expect(mockServices.registerHospitalUser.execute).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Hospital password reset public routes
+  // -----------------------------------------------------------------------
+  describe('hospital password reset public routes', () => {
+    it('requests a reset email and returns 202 without leaking account status', async () => {
+      mockServices.requestHospitalPasswordReset.execute.mockResolvedValue({ ok: true });
+
+      const res = await app.request('/api/v2/auth/hospital/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'staff@hospital.com' }),
+      });
+
+      expect(res.status).toBe(202);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(mockServices.requestHospitalPasswordReset.execute).toHaveBeenCalledWith({
+        email: 'staff@hospital.com',
+      });
+    });
+
+    it('rejects invalid reset request email', async () => {
+      const res = await app.request('/api/v2/auth/hospital/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'not-an-email' }),
+      });
+
+      expect(res.status).toBe(400);
+      expect(mockServices.requestHospitalPasswordReset.execute).not.toHaveBeenCalled();
+    });
+
+    it('validates a reset token and returns account context', async () => {
+      const payload = {
+        email: 'staff@hospital.com',
+        hospitalName: 'Test Hospital',
+        expiresAt: '2026-05-25T08:00:00.000Z',
+      };
+      mockServices.validateHospitalPasswordResetToken.execute.mockResolvedValue(payload);
+
+      const res = await app.request('/api/v2/auth/hospital/reset-password?token=reset-token');
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(payload);
+      expect(mockServices.validateHospitalPasswordResetToken.execute).toHaveBeenCalledWith('reset-token');
+    });
+
+    it('resets a hospital password and returns 204', async () => {
+      mockServices.resetHospitalPassword.execute.mockResolvedValue(undefined);
+
+      const res = await app.request('/api/v2/auth/hospital/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: 'reset-token', password: 'password123' }),
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServices.resetHospitalPassword.execute).toHaveBeenCalledWith({
+        token: 'reset-token',
+        password: 'password123',
+      });
     });
   });
 });

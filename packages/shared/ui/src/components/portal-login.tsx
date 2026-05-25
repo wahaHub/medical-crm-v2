@@ -26,6 +26,8 @@ export type PortalLoginProps = {
   invalidCredentialsMessage?: string;
   unauthorizedMessage?: string;
   alternatePortalLabel?: string;
+  forgotPasswordHref?: string;
+  forgotPasswordLabel?: string;
 };
 
 export function PortalLogin({
@@ -44,6 +46,8 @@ export function PortalLogin({
   invalidCredentialsMessage = 'Invalid credentials',
   unauthorizedMessage = 'This account is not authorized for this portal',
   alternatePortalLabel,
+  forgotPasswordHref,
+  forgotPasswordLabel = 'Forgot password?',
 }: PortalLoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -134,9 +138,19 @@ export function PortalLogin({
             </div>
 
             <div>
-              <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700">
-                {passwordLabel}
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                  {passwordLabel}
+                </label>
+                {forgotPasswordHref && (
+                  <a
+                    href={forgotPasswordHref}
+                    className="text-xs font-semibold text-teal-700 hover:text-teal-800"
+                  >
+                    {forgotPasswordLabel}
+                  </a>
+                )}
+              </div>
               <input
                 id="password"
                 type="password"

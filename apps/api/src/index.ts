@@ -7,7 +7,11 @@ import { isTransientDatabaseError } from '@medical-crm/infrastructure/database/r
 import routes from './routes/index.js';
 import internalRoutes from './routes/internal.routes.js';
 import resendInboundRoutes from './routes/resend-inbound.routes.js';
-import { registerHospitalUserSchema } from '@medical-crm/validation';
+import {
+  forgotHospitalPasswordSchema,
+  registerHospitalUserSchema,
+  resetHospitalPasswordSchema,
+} from '@medical-crm/validation';
 import { getServices } from './composition-root.js';
 
 const app = new Hono();
@@ -36,6 +40,33 @@ app.get('/api/v2/auth/hospital/register', async (c) => {
   const svc = getServices();
   const result = await svc.validateRegistrationToken.execute(token);
   return c.json(result);
+});
+
+// Public: request hospital password reset email (no auth required)
+app.post('/api/v2/auth/hospital/forgot-password', async (c) => {
+  const raw = await c.req.json();
+  const body = forgotHospitalPasswordSchema.parse(raw);
+  const svc = getServices();
+  const result = await svc.requestHospitalPasswordReset.execute(body);
+  return c.json(result, 202);
+});
+
+// Public: validate hospital password reset token (no auth required)
+app.get('/api/v2/auth/hospital/reset-password', async (c) => {
+  const token = c.req.query('token');
+  if (!token) return c.json({ error: 'Token is required' }, 400);
+  const svc = getServices();
+  const result = await svc.validateHospitalPasswordResetToken.execute(token);
+  return c.json(result);
+});
+
+// Public: complete hospital password reset (no auth required)
+app.post('/api/v2/auth/hospital/reset-password', async (c) => {
+  const raw = await c.req.json();
+  const body = resetHospitalPasswordSchema.parse(raw);
+  const svc = getServices();
+  await svc.resetHospitalPassword.execute(body);
+  return c.body(null, 204);
 });
 
 // Public: patient onboarding + auth routes (no Keycloak auth)

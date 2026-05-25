@@ -280,6 +280,12 @@ export { RegisterHospitalUserUseCase } from './use-cases/hospitals/register-hosp
 export type { RegisterHospitalUserInput } from './use-cases/hospitals/register-hospital-user.use-case.js';
 export { ValidateRegistrationTokenUseCase } from './use-cases/hospitals/validate-registration-token.use-case.js';
 export type { TokenValidationResult } from './use-cases/hospitals/validate-registration-token.use-case.js';
+export { RequestHospitalPasswordResetUseCase } from './use-cases/hospitals/request-hospital-password-reset.use-case.js';
+export type { RequestHospitalPasswordResetInput } from './use-cases/hospitals/request-hospital-password-reset.use-case.js';
+export { ValidateHospitalPasswordResetTokenUseCase } from './use-cases/hospitals/validate-hospital-password-reset-token.use-case.js';
+export type { HospitalPasswordResetTokenValidationResult } from './use-cases/hospitals/validate-hospital-password-reset-token.use-case.js';
+export { ResetHospitalPasswordUseCase } from './use-cases/hospitals/reset-hospital-password.use-case.js';
+export type { ResetHospitalPasswordInput } from './use-cases/hospitals/reset-hospital-password.use-case.js';
 
 // Use Cases — Conversations
 export { CreateConversationUseCase } from './use-cases/conversations/create-conversation.use-case.js';

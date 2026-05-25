@@ -95,6 +95,7 @@ describe('authMiddleware', () => {
     const body = await res.json();
     expect(body).toEqual({
       userId: 'crm-user-123',
+      keycloakUserId: 'user-123',
       email: 'test@example.com',
       roles: ['hospital'],
       hospitalId: 'hospital-456',
@@ -102,6 +103,17 @@ describe('authMiddleware', () => {
   });
 
   it('falls back to email lookup and backfills keycloak user id', async () => {
+    const { jwtVerify } = await import('jose');
+    (jwtVerify as ReturnType<typeof vi.fn>).mockResolvedValue({
+      payload: {
+        sub: 'user-123',
+        email: 'test@example.com',
+        azp: 'portal-web',
+        realm_access: { roles: ['patient'] },
+        hospital_id: 'hospital-456',
+      },
+    });
+
     crmDbMock.select
       .mockImplementationOnce(() => ({
         from: () => ({
@@ -131,6 +143,7 @@ describe('authMiddleware', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.userId).toBe('crm-user-456');
+    expect(body.keycloakUserId).toBe('user-123');
     expect(crmDbMock.update).toHaveBeenCalledOnce();
   });
 

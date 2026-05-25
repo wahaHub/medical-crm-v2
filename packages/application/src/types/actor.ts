@@ -1,5 +1,6 @@
 export interface Actor {
   userId: string;
+  keycloakUserId?: string | null;
   email: string;
   role: 'ADMIN' | 'HOSPITAL' | 'PATIENT';
   hospitalId: string | null;
@@ -8,6 +9,7 @@ export interface Actor {
 /** Session type from @medical-crm/infrastructure/auth */
 export interface Session {
   userId: string;
+  keycloakUserId?: string | null;
   email: string;
   roles: string[];
   hospitalId: string | null;
@@ -36,6 +38,7 @@ export function toActor(session: Session): Actor {
   const role = ROLE_PRIORITY.find((r) => mappedRoles.includes(r)) ?? 'PATIENT';
   return {
     userId: session.userId,
+    keycloakUserId: session.keycloakUserId ?? null,
     email: session.email,
     role,
     hospitalId: session.hospitalId,

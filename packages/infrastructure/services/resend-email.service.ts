@@ -1,5 +1,6 @@
 import type { IEmailService } from '@medical-crm/domain';
 import { buildHospitalInvitationEmail } from './hospital-invitation-email.template.js';
+import { buildHospitalPasswordResetEmail } from './hospital-password-reset-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
 import { buildAdminNewCaseEmail } from './admin-new-case-email.template.js';
@@ -77,6 +78,22 @@ export class ResendEmailService implements IEmailService {
       const details = await response.text().catch(() => '');
       throw new Error(`Resend API failed: ${response.status}${details ? ` ${details}` : ''}`);
     }
+  }
+
+  async sendHospitalPasswordReset(params: {
+    to: string;
+    hospitalName: string;
+    resetUrl: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildHospitalPasswordResetEmail({
+      hospitalName: params.hospitalName,
+      resetUrl: params.resetUrl,
+      expiresInMinutes: 60,
+      locale: params.locale,
+    });
+
+    await this.sendRaw(params.to, content.subject, content.html, content.text);
   }
 
   async sendPatientMagicLink(params: {

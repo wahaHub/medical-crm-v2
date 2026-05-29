@@ -25,6 +25,7 @@ export interface UserProfile {
   patientSite?: 'beauty' | 'china' | null;
   preferredLanguage: string;
   hospitalId: string | null;
+  keycloakUserId?: string | null;
   notificationSettings: NotificationPreferences | null;
 }
 

@@ -548,6 +548,35 @@ export const hospitalRegistrationTokens = pgTable("hospital_registration_tokens"
 		}).onUpdate("cascade").onDelete("cascade"),
 ]);
 
+export const hospitalPasswordResetTokens = pgTable("hospital_password_reset_tokens", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	userId: uuid("user_id").notNull(),
+	hospitalId: uuid("hospital_id"),
+	keycloakUserId: varchar("keycloak_user_id", { length: 100 }).notNull(),
+	tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+	email: varchar({ length: 255 }).notNull(),
+	expiresAt: timestamp("expires_at", { precision: 6, mode: 'string' }).notNull(),
+	usedAt: timestamp("used_at", { precision: 6, mode: 'string' }),
+	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
+}, (table) => [
+	index("hospital_password_reset_tokens_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
+	index("hospital_password_reset_tokens_expires_at_idx").using("btree", table.expiresAt.asc().nullsLast().op("timestamp_ops")),
+	index("hospital_password_reset_tokens_token_hash_idx").using("btree", table.tokenHash.asc().nullsLast().op("text_ops")),
+	uniqueIndex("hospital_password_reset_tokens_token_hash_key").using("btree", table.tokenHash.asc().nullsLast().op("text_ops")),
+	index("hospital_password_reset_tokens_user_id_idx").using("btree", table.userId.asc().nullsLast().op("uuid_ops")),
+	foreignKey({
+			columns: [table.hospitalId],
+			foreignColumns: [hospitals.id],
+			name: "hospital_password_reset_tokens_hospital_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.userId],
+			foreignColumns: [users.id],
+			name: "hospital_password_reset_tokens_user_id_fkey"
+		}).onUpdate("cascade").onDelete("cascade"),
+]);
+
 export const messageTasks = pgTable("message_tasks", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	messageId: uuid("message_id").notNull(),

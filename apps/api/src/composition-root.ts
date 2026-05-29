@@ -46,6 +46,9 @@ import {
   GenerateRegistrationTokenUseCase,
   RegisterHospitalUserUseCase,
   ValidateRegistrationTokenUseCase,
+  RequestHospitalPasswordResetUseCase,
+  ValidateHospitalPasswordResetTokenUseCase,
+  ResetHospitalPasswordUseCase,
   CreateConversationUseCase,
   ListConversationsUseCase,
   GetConversationUseCase,
@@ -239,6 +242,7 @@ import {
   DrizzlePatientRepository,
   DrizzleHospitalManagementRepository,
   DrizzleRegistrationTokenRepository,
+  DrizzleHospitalPasswordResetTokenRepository,
   DrizzleUserRepository,
   DrizzleUserEmailLookupRepository,
   DrizzleNotificationRecipientRepository,
@@ -366,6 +370,9 @@ interface AppServices {
   generateRegistrationToken: GenerateRegistrationTokenUseCase;
   registerHospitalUser: RegisterHospitalUserUseCase;
   validateRegistrationToken: ValidateRegistrationTokenUseCase;
+  requestHospitalPasswordReset: RequestHospitalPasswordResetUseCase;
+  validateHospitalPasswordResetToken: ValidateHospitalPasswordResetTokenUseCase;
+  resetHospitalPassword: ResetHospitalPasswordUseCase;
 
   // use cases — conversations
   createConversation: CreateConversationUseCase;
@@ -696,6 +703,7 @@ export function getServices(): AppServices {
     const emailNotificationCooldownRepo: IEmailNotificationCooldownRepository = new DrizzleEmailNotificationCooldownRepository(crmDb);
     const hospitalManagementRepo = new DrizzleHospitalManagementRepository(crmDb);
     const registrationTokenRepo = new DrizzleRegistrationTokenRepository(crmDb);
+    const passwordResetTokenRepo = new DrizzleHospitalPasswordResetTokenRepository(crmDb);
     const userRepo = new DrizzleUserRepository(crmDb);
     const supabaseLegacyAdapter = new SupabaseStorageAdapter(mainSupabase);
 
@@ -845,6 +853,23 @@ export function getServices(): AppServices {
           if (process.env.NODE_ENV === 'development') {
             console.warn('[EMAIL] Hospital invitation delivery failed in development, falling back to preview log.', error);
             await fallbackEmailService.sendHospitalInvitation(params);
+            return;
+          }
+          throw error;
+        }
+      },
+      async sendHospitalPasswordReset(params: {
+        to: string;
+        hospitalName: string;
+        resetUrl: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendHospitalPasswordReset(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Hospital password-reset delivery failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendHospitalPasswordReset(params);
             return;
           }
           throw error;
@@ -1123,6 +1148,9 @@ export function getServices(): AppServices {
       generateRegistrationToken: new GenerateRegistrationTokenUseCase(hospitalManagementRepo, registrationTokenRepo, emailService, userRepo, keycloakAdmin),
       registerHospitalUser: new RegisterHospitalUserUseCase(registrationTokenRepo, keycloakAdmin, hospitalManagementRepo, userRepo),
       validateRegistrationToken: new ValidateRegistrationTokenUseCase(registrationTokenRepo, hospitalManagementRepo),
+      requestHospitalPasswordReset: new RequestHospitalPasswordResetUseCase(userRepo, hospitalManagementRepo, passwordResetTokenRepo, emailService),
+      validateHospitalPasswordResetToken: new ValidateHospitalPasswordResetTokenUseCase(passwordResetTokenRepo, hospitalManagementRepo),
+      resetHospitalPassword: new ResetHospitalPasswordUseCase(passwordResetTokenRepo, keycloakAdmin),
 
       createConversation: new CreateConversationUseCase(conversationRepo, caseRepo, hospitalRepo),
       listConversations: new ListConversationsUseCase(conversationRepo),

@@ -5,6 +5,7 @@ export { DrizzleHospitalRepository } from './drizzle-hospital.repository.js';
 export { DrizzlePatientRepository } from './drizzle-patient.repository.js';
 export { DrizzleHospitalManagementRepository } from './drizzle-hospital-management.repository.js';
 export { DrizzleRegistrationTokenRepository } from './drizzle-registration-token.repository.js';
+export { DrizzleHospitalPasswordResetTokenRepository } from './drizzle-hospital-password-reset-token.repository.js';
 export { DrizzleUserRepository } from './drizzle-user.repository.js';
 export { DrizzleUserEmailLookupRepository } from './drizzle-user-email-lookup.repository.js';
 export { DrizzleNotificationRecipientRepository } from './drizzle-notification-recipient.repository.js';

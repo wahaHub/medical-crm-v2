@@ -100,6 +100,11 @@ export function applySecurityMiddleware(app: Hono) {
     limit: 5,
     keyGenerator: getClientIp,
   }));
+  app.use('/api/v2/auth/hospital/forgot-password', safeRateLimiter({
+    windowMs: 900_000,
+    limit: 3,
+    keyGenerator: getClientIp,
+  }));
   app.use('*', async (c, next) => {
     const pathname = new URL(c.req.url).pathname;
     const maxSize = pathname === '/api/patient/uploads/proxy'

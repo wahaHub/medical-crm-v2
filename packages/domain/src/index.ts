@@ -35,6 +35,8 @@ export { CaseNumber } from './value-objects/case-number.js';
 // Phase 2BC Value objects
 export { RegistrationToken } from './value-objects/registration-token.js';
 export type { RegistrationTokenProps } from './value-objects/registration-token.js';
+export { HospitalPasswordResetToken } from './value-objects/hospital-password-reset-token.js';
+export type { HospitalPasswordResetTokenProps } from './value-objects/hospital-password-reset-token.js';
 
 // Phase 1 Entities
 export { Case } from './entities/case.entity.js';
@@ -79,6 +81,7 @@ export type { IStorageService, PresignedUploadResult, StorageBackend, IStorageAd
 // Phase 2BC Ports — Hospital
 export type { IHospitalManagementRepository, HospitalListQuery } from './ports/hospital-management-repository.port.js';
 export type { IRegistrationTokenRepository } from './ports/registration-token-repository.port.js';
+export type { IHospitalPasswordResetTokenRepository } from './ports/hospital-password-reset-token-repository.port.js';
 export type { IHospitalSyncService } from './ports/hospital-sync-service.port.js';
 export type { IKeycloakAdminService, KeycloakUser } from './ports/keycloak-admin-service.port.js';
 export type { IUserRepository, CreateUserInput, UserProfile, UpdateUserProfileInput, NotificationPreferences } from './ports/user-repository.port.js';

@@ -1,7 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
 import * as jose from 'jose';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { getServerEnv } from '@medical-crm/config';
 import { getCrmDb } from '../database/crm-client.js';
 import { users } from '../database/schema/index.js';
@@ -26,6 +26,7 @@ function getJWKS() {
 
 export type Session = {
   userId: string;
+  keycloakUserId: string;
   email: string;
   roles: string[];
   hospitalId: string | null;
@@ -34,6 +35,7 @@ export type Session = {
 type CrmIdentity = {
   id: string;
   hospitalId: string | null;
+  keycloakUserId: string | null;
 };
 
 function extractRoles(payload: jose.JWTPayload): string[] {
@@ -93,6 +95,7 @@ async function touchLastLogin(userId: string): Promise<void> {
 
 async function findCrmIdentityByKeycloakUserId(
   keycloakUserId: string,
+  email?: string,
 ): Promise<CrmIdentity | null> {
   const cached = crmIdentityCache.get(keycloakUserId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -118,7 +121,30 @@ async function findCrmIdentityByKeycloakUserId(
       .where(eq(users.keycloakUserId, keycloakUserId))
       .limit(1);
 
-    const identity = rows[0] ?? null;
+    let identity = rows[0] ?? null;
+    if (!identity && email) {
+      const emailRows = await getCrmDb()
+        .select({
+          id: users.id,
+          hospitalId: users.hospitalId,
+          keycloakUserId: users.keycloakUserId,
+        })
+        .from(users)
+        .where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`)
+        .limit(1);
+
+      identity = emailRows[0] ?? null;
+      if (identity && !identity.keycloakUserId) {
+        await getCrmDb()
+          .update(users)
+          .set({
+            keycloakUserId,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(users.id, identity.id));
+      }
+    }
+
     if (identity) {
       crmIdentityCache.set(keycloakUserId, {
         identity,
@@ -176,7 +202,7 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
     try {
       crmIdentity = await withTransientDatabaseRetry(
         'auth identity lookup',
-        () => findCrmIdentityByKeycloakUserId(keycloakUserId),
+        () => findCrmIdentityByKeycloakUserId(keycloakUserId, email),
       );
     } catch (err) {
       console.error('[Auth] CRM identity lookup failed:', err instanceof Error ? err.message : err);
@@ -195,6 +221,7 @@ export const authMiddleware = createMiddleware<{ Variables: { session: Session }
 
     c.set('session', {
       userId: crmIdentity.id,
+      keycloakUserId,
       email,
       roles,
       hospitalId:

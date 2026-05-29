@@ -86,6 +86,7 @@ export class DrizzleUserRepository implements IUserRepository {
         patientSite: users.patientSite,
         preferredLanguage: users.preferredLanguage,
         hospitalId: users.hospitalId,
+        keycloakUserId: users.keycloakUserId,
         notificationSettings: users.notificationSettings,
       })
       .from(users)
@@ -103,6 +104,7 @@ export class DrizzleUserRepository implements IUserRepository {
       patientSite: row.patientSite ?? null,
       preferredLanguage: row.preferredLanguage,
       hospitalId: row.hospitalId ?? null,
+      keycloakUserId: row.keycloakUserId ?? null,
       notificationSettings: (row.notificationSettings as NotificationPreferences | null) ?? null,
     };
   }
@@ -118,6 +120,7 @@ export class DrizzleUserRepository implements IUserRepository {
         patientSite: users.patientSite,
         preferredLanguage: users.preferredLanguage,
         hospitalId: users.hospitalId,
+        keycloakUserId: users.keycloakUserId,
         notificationSettings: users.notificationSettings,
       })
       .from(users)
@@ -135,6 +138,7 @@ export class DrizzleUserRepository implements IUserRepository {
       patientSite: row.patientSite ?? null,
       preferredLanguage: row.preferredLanguage,
       hospitalId: row.hospitalId ?? null,
+      keycloakUserId: row.keycloakUserId ?? null,
       notificationSettings: (row.notificationSettings as NotificationPreferences | null) ?? null,
     };
   }

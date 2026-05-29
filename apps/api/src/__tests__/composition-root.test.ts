@@ -21,6 +21,7 @@ vi.mock('@medical-crm/infrastructure/repositories', () => ({
   DrizzlePatientRepository: vi.fn(() => ({})),
   DrizzleHospitalManagementRepository: vi.fn(() => ({})),
   DrizzleRegistrationTokenRepository: vi.fn(() => ({})),
+  DrizzleHospitalPasswordResetTokenRepository: vi.fn(() => ({})),
   DrizzleUserRepository: vi.fn(() => ({})),
   DrizzleUserEmailLookupRepository: vi.fn(() => ({})),
   DrizzleConversationRepository: vi.fn(() => ({})),
@@ -135,6 +136,10 @@ vi.mock('@medical-crm/application', () => ({
   GetHospitalCasesUseCase: vi.fn(() => ({})),
   GenerateRegistrationTokenUseCase: vi.fn(() => ({})),
   RegisterHospitalUserUseCase: vi.fn(() => ({})),
+  ValidateRegistrationTokenUseCase: vi.fn(() => ({})),
+  RequestHospitalPasswordResetUseCase: vi.fn(() => ({})),
+  ValidateHospitalPasswordResetTokenUseCase: vi.fn(() => ({})),
+  ResetHospitalPasswordUseCase: vi.fn(() => ({})),
   // Conversations
   CreateConversationUseCase: vi.fn(() => ({})),
   ListConversationsUseCase: vi.fn(() => ({})),
@@ -266,7 +271,6 @@ vi.mock('@medical-crm/application', () => ({
   SaveHospitalSelectionsUseCase: vi.fn(() => ({})),
   CompleteSignupUseCase: vi.fn(() => ({})),
   // Patient use cases
-  ValidateRegistrationTokenUseCase: vi.fn(() => ({})),
   GetPatientCasesUseCase: vi.fn(() => ({})),
   GetPatientCaseDetailUseCase: vi.fn(() => ({})),
   GetPatientConversationsUseCase: vi.fn(() => ({})),
@@ -385,6 +389,10 @@ describe('composition root', () => {
     expect(services).toHaveProperty('getHospitalCases');
     expect(services).toHaveProperty('generateRegistrationToken');
     expect(services).toHaveProperty('registerHospitalUser');
+    expect(services).toHaveProperty('validateRegistrationToken');
+    expect(services).toHaveProperty('requestHospitalPasswordReset');
+    expect(services).toHaveProperty('validateHospitalPasswordResetToken');
+    expect(services).toHaveProperty('resetHospitalPassword');
 
     // Phase 2BC — conversations
     expect(services).toHaveProperty('createConversation');
@@ -558,8 +566,6 @@ describe('composition root', () => {
     expect(services).toHaveProperty('submitIntake');
     expect(services).toHaveProperty('selectHospitals');
 
-    // Validate registration token
-    expect(services).toHaveProperty('validateRegistrationToken');
   });
 
   it('configures Dify client with a 90s default timeout', async () => {

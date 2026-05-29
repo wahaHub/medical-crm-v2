@@ -15,6 +15,10 @@ export class ChangePasswordUseCase {
   ) {}
 
   async execute(input: ChangePasswordInput, actor: Actor): Promise<void> {
+    if (!actor.keycloakUserId) {
+      throw new ForbiddenError('Keycloak identity is missing for this user');
+    }
+
     // Verify current password via direct grant
     const valid = await this.keycloakAdmin.verifyPassword(
       actor.email,
@@ -28,6 +32,6 @@ export class ChangePasswordUseCase {
     }
 
     // Set new password via admin API
-    await this.keycloakAdmin.setPassword(actor.userId, input.newPassword);
+    await this.keycloakAdmin.setPassword(actor.keycloakUserId, input.newPassword);
   }
 }

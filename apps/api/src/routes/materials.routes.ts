@@ -71,6 +71,16 @@ const reviewMediaSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+const hospitalPdfDocumentSchema = z.object({
+  id: requiredString(120),
+  fileName: requiredString(240),
+  url: requiredString(2048),
+  storageKey: optionalString(500),
+  mimeType: optionalString(120),
+  fileSize: z.number().int().positive().optional(),
+  uploadedAt: optionalString(80),
+});
+
 const createReviewSchema = z.object({
   sortOrder: z.number().int().optional(),
   isActive: z.boolean().optional(),
@@ -260,6 +270,7 @@ const updateHospitalInfoRoute = createRoute({
               nameEn: z.string().optional(),
               distance: z.string(),
             })).optional(),
+            pdfDocuments: z.array(hospitalPdfDocumentSchema).optional(),
             videoTestimonials: z.array(z.object({
               id: z.string(),
               patientName: z.string(),
@@ -890,6 +901,13 @@ function normalizeMaterialsUploadMimeType(fileName: string, mimeType: string): s
     && ['application/octet-stream', 'application/mp4', 'video/x-m4v', 'video/mp4'].includes(normalized)
   ) {
     return 'video/mp4';
+  }
+
+  if (
+    extension === 'pdf'
+    && ['application/octet-stream', 'application/x-pdf', 'application/pdf'].includes(normalized)
+  ) {
+    return 'application/pdf';
   }
 
   return normalized;

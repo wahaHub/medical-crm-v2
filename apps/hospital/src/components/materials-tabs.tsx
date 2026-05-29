@@ -38,6 +38,8 @@ import {
   Play,
   MessageSquareQuote,
   Package,
+  FileText,
+  Download,
 } from 'lucide-react';
 import {
   Button,
@@ -1506,6 +1508,15 @@ const emptyTestimonialMap: PendingTestimonialMap = new Map();
 const emptyDeptImageMap: PendingDeptImageMap = new Map();
 type EditablePhoto = { previewUrl: string; storageKey: string | null };
 type EditableVideo = { previewUrl: string; storageKey: string | null };
+type EditablePdfDocument = {
+  id: string;
+  fileName: string;
+  previewUrl: string;
+  storageKey: string | null;
+  mimeType?: string;
+  fileSize?: number;
+  uploadedAt?: string;
+};
 
 function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular_hospital' }) {
   const { locale, t } = useHospitalI18n();
@@ -1529,8 +1540,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
   const [pendingHeroFile, setPendingHeroFile] = useState<File | null>(null);
   const [photos, setPhotos] = useState<EditablePhoto[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<Array<{ previewUrl: string; file: File }>>([]);
+  const [pdfDocuments, setPdfDocuments] = useState<EditablePdfDocument[]>([]);
+  const [pendingPdfDocuments, setPendingPdfDocuments] = useState<Array<{ previewUrl: string; file: File }>>([]);
   const [showHoursModal, setShowHoursModal] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [flashTargetKey, setFlashTargetKey] = useState<string | null>(null);
   const [saveProgress, setSaveProgress] = useState<SaveProgressState>({
@@ -1646,6 +1660,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     departmentImages: raw?.departmentImages ?? {},
     equipment: raw?.equipment ?? [],
     promotionalVideos: raw?.promotionalVideos ?? [],
+    pdfDocuments: raw?.pdfDocuments ?? [],
     videoTestimonials: raw?.videoTestimonials ?? [],
     province: raw?.province ?? '',
     city: raw?.city ?? '',
@@ -1708,6 +1723,16 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       previewUrl: url,
       storageKey: raw.photoStorageKeys?.[index] ?? null,
     })));
+    setPdfDocuments((raw.pdfDocuments ?? []).map((item: Record<string, unknown>, index: number) => ({
+      id: String(item['id'] ?? `pdf-${index}`),
+      fileName: String(item['fileName'] ?? `Document ${index + 1}.pdf`),
+      previewUrl: String(item['url'] ?? ''),
+      storageKey: (item['storageKey'] as string | null | undefined) ?? null,
+      mimeType: (item['mimeType'] as string | undefined) ?? undefined,
+      fileSize: (item['fileSize'] as number | undefined) ?? undefined,
+      uploadedAt: (item['uploadedAt'] as string | undefined) ?? undefined,
+    })));
+    setPendingPdfDocuments([]);
     setSelectedDepartments(raw.departments ?? []);
     setDeptDescriptions(raw.departmentDescriptions ?? {});
     setDeptKeyServices(raw.departmentKeyServices ?? {});
@@ -1771,6 +1796,24 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     });
     setHeroImageStorageKey(raw?.heroImageStorageKey ?? null);
     setPendingHeroFile(null);
+    setPendingPdfDocuments([]);
+    setPdfDocuments((info.pdfDocuments ?? []).map((item: {
+      id?: string;
+      fileName?: string;
+      url?: string;
+      storageKey?: string | null;
+      mimeType?: string;
+      fileSize?: number;
+      uploadedAt?: string;
+    }, index: number) => ({
+      id: item.id ?? `pdf-${index}`,
+      fileName: item.fileName ?? `Document ${index + 1}.pdf`,
+      previewUrl: item.url ?? '',
+      storageKey: item.storageKey ?? null,
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      uploadedAt: item.uploadedAt,
+    })));
     setAttractions(info.nearbyAttractions.map((a: { name: string; distance: string }, i: number) => ({ id: `attr-${i}`, name: a.name ?? '', distance: a.distance ?? '' })));
     if (info.departments.length) setSelectedDepartments(info.departments);
     setDeptDescriptions(info.departmentDescriptions ?? {});
@@ -1831,6 +1874,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
     let failedTargetKey: string | undefined;
     let nextHeroImage = heroImageStorageKey ?? (form.heroImage || null);
     const nextPhotos = [...photos];
+    const nextPdfDocuments = [...pdfDocuments];
     const nextPromotionalVideos = [...promotionalVideos];
     const nextVideoTestimonials = [...videoTestimonials];
     const nextDepartmentImages = { ...deptImages };
@@ -1874,6 +1918,29 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         run: async () => {
           const asset = await uploadMaterialAsset(file, 'gallery');
           nextPhotos[photoIndex] = { ...nextPhotos[photoIndex]!, storageKey: asset.storageKey };
+        },
+      });
+    });
+
+    pendingPdfDocuments.forEach(({ previewUrl, file }, index) => {
+      const documentIndex = nextPdfDocuments.findIndex((document) => document.previewUrl === previewUrl && !document.storageKey);
+      if (documentIndex === -1) return;
+      uploadTasks.push({
+        id: `upload-pdf-document-${index}`,
+        label: t(
+          'hospital.materials.save.uploadPdfDocument',
+          { fileName: file.name },
+          'Upload PDF document: {fileName}',
+        ),
+        targetKey: 'pdf-documents',
+        run: async () => {
+          const asset = await uploadMaterialAsset(file, 'hospital_pdf');
+          nextPdfDocuments[documentIndex] = {
+            ...nextPdfDocuments[documentIndex]!,
+            storageKey: asset.storageKey,
+            mimeType: asset.mimeType,
+            fileSize: asset.fileSize,
+          };
         },
       });
     });
@@ -2008,6 +2075,9 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       }
 
       const unresolvedPhoto = nextPhotos.find((photo) => !photo.storageKey && isLocalPreviewUrl(photo.previewUrl));
+      const unresolvedPdfDocument = nextPdfDocuments.find(
+        (document) => !document.storageKey && isLocalPreviewUrl(document.previewUrl),
+      );
       const unresolvedPromotionalVideo = nextPromotionalVideos.find(
         (video) => !video.storageKey && isLocalPreviewUrl(video.previewUrl),
       );
@@ -2034,6 +2104,11 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         unresolvedMedia = {
           targetKey: 'hospital-photos',
           message: t('hospital.materials.save.hospitalPhotoIncomplete', undefined, 'At least one hospital photo is still a local preview.'),
+        };
+      } else if (unresolvedPdfDocument) {
+        unresolvedMedia = {
+          targetKey: 'pdf-documents',
+          message: t('hospital.materials.save.pdfDocumentIncomplete', undefined, 'At least one PDF document is still a local preview.'),
         };
       } else if (unresolvedPromotionalVideo) {
         unresolvedMedia = {
@@ -2105,6 +2180,17 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
         paymentMethods,
         certifications: certifications.map((c) => ({ id: c.id, name: c.name, year: c.year, isActive: true })),
         followUpCare: followupCare,
+        pdfDocuments: nextPdfDocuments
+          .filter((document) => !isLocalPreviewUrl(document.previewUrl) || Boolean(document.storageKey))
+          .map((document) => ({
+            id: document.id,
+            fileName: document.fileName,
+            url: document.storageKey ?? document.previewUrl,
+            storageKey: document.storageKey,
+            mimeType: document.mimeType ?? 'application/pdf',
+            fileSize: document.fileSize,
+            uploadedAt: document.uploadedAt,
+          })),
         promotionalVideos: nextPromotionalVideos
           .map((video) => video.storageKey ?? video.previewUrl)
           .filter((value) => !isLocalPreviewUrl(value)),
@@ -2138,6 +2224,7 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       await queryClient.invalidateQueries({ queryKey: ['materials', 'info'] });
       setPendingHeroFile(null);
       setPendingPhotos([]);
+      setPendingPdfDocuments([]);
       setPendingVideos(new Map());
       setPendingTestimonials(new Map());
       setPendingTestimonial(null);
@@ -2181,6 +2268,34 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
       setPendingPhotos((prev) => [...prev, { previewUrl, file }]);
     });
     e.target.value = '';
+  };
+
+  const handlePdfSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files)
+      .filter((file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'))
+      .forEach((file) => {
+        const previewUrl = URL.createObjectURL(file);
+        const document: EditablePdfDocument = {
+          id: `pdf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          fileName: file.name,
+          previewUrl,
+          storageKey: null,
+          mimeType: file.type || 'application/pdf',
+          fileSize: file.size,
+          uploadedAt: new Date().toISOString(),
+        };
+        setPdfDocuments((prev) => [...prev, document]);
+        setPendingPdfDocuments((prev) => [...prev, { previewUrl, file }]);
+      });
+    e.target.value = '';
+  };
+
+  const formatFileSize = (value?: number) => {
+    if (!value || value <= 0) return '';
+    if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
   };
 
   const inputClass =
@@ -2549,6 +2664,115 @@ function HospitalInfoTab({ hospitalType }: { hospitalType: 'hospital' | 'regular
                 />
               </div>
             </div>
+          </div>
+
+          {/* PDF Documents */}
+          <div
+            ref={registerSectionRef('pdf-documents')}
+            className={`bg-white p-6 rounded-2xl border border-slate-200 shadow-sm ${getFlashClass(flashTargetKey === 'pdf-documents')}`}
+          >
+            <SectionHeader icon={FileText} title={t('hospital.materials.sections.pdfDocuments', undefined, 'PDF Documents')} />
+            <input type="file" ref={pdfInputRef} accept="application/pdf,.pdf" multiple className="hidden" onChange={handlePdfSelect} />
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-slate-500">
+                {t(
+                  'hospital.materials.pdfDocuments.description',
+                  undefined,
+                  'Upload brochures, service catalogs, fee guides, or hospital introduction PDFs for future patient preview and download.',
+                )}
+              </p>
+              {editing && (
+                <button
+                  type="button"
+                  onClick={() => pdfInputRef.current?.click()}
+                  className="text-xs font-medium text-blue-600 flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <Upload size={12} /> {t('hospital.materials.actions.uploadPdf', undefined, 'Upload PDF')}
+                </button>
+              )}
+            </div>
+            {((editing ? pdfDocuments : info.pdfDocuments).length > 0) ? (
+              <div className="space-y-3">
+                {(editing ? pdfDocuments : info.pdfDocuments).map((document: {
+                  id?: string;
+                  fileName?: string;
+                  url?: string;
+                  previewUrl?: string;
+                  fileSize?: number;
+                }, index: number) => {
+                  const href = document.previewUrl ?? document.url ?? '';
+                  const fileName = document.fileName ?? `Document ${index + 1}.pdf`;
+                  return (
+                    <div
+                      key={`${document.id ?? index}-${href}`}
+                      className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <div className="min-w-0 flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600">
+                          <FileText size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{fileName}</p>
+                          <p className="text-xs text-slate-500">
+                            {formatFileSize(document.fileSize) || t('hospital.materials.pdfDocuments.pdfFile', undefined, 'PDF file')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {href && (
+                          <>
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                            >
+                              <ExternalLink size={12} /> {t('hospital.materials.actions.previewPdf', undefined, 'Preview')}
+                            </a>
+                            <a
+                              href={href}
+                              download={fileName}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                            >
+                              <Download size={12} /> {t('hospital.materials.actions.downloadPdf', undefined, 'Download')}
+                            </a>
+                          </>
+                        )}
+                        {editing && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (href.startsWith('blob:')) {
+                                URL.revokeObjectURL(href);
+                                setPendingPdfDocuments((prev) => prev.filter((item) => item.previewUrl !== href));
+                              }
+                              setPdfDocuments((prev) => prev.filter((_, i) => i !== index));
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                          >
+                            <Trash2 size={12} /> {t('hospital.materials.actions.remove', undefined, 'Remove')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                className={`h-28 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 ${editing ? 'cursor-pointer hover:bg-slate-100 hover:border-blue-300' : ''}`}
+                onClick={editing ? () => pdfInputRef.current?.click() : undefined}
+              >
+                <div className="text-center">
+                  <FileText size={24} className="mx-auto mb-1" />
+                  <span className="text-xs">
+                    {editing
+                      ? t('hospital.materials.empty.clickToUploadPdf', undefined, 'Click to upload PDF documents')
+                      : t('hospital.materials.empty.noPdfUploaded', undefined, 'No PDF documents uploaded')}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Video Testimonials */}

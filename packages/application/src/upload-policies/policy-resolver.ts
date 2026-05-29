@@ -5,6 +5,7 @@ const MATERIALS_POLICY_MAP: Record<string, Record<string, UploadPolicyId>> = {
   COSMETIC: {
     hero: 'materials_beauty_hospital_image',
     gallery: 'materials_beauty_hospital_image',
+    hospital_pdf: 'materials_beauty_hospital_pdf',
     equipment: 'materials_beauty_hospital_image',
     hospital_video: 'materials_beauty_hospital_video',
     testimonial_video: 'materials_beauty_testimonial_video',
@@ -19,6 +20,7 @@ const MATERIALS_POLICY_MAP: Record<string, Record<string, UploadPolicyId>> = {
   REGULAR: {
     hero: 'materials_regular_hospital_image',
     gallery: 'materials_regular_hospital_image',
+    hospital_pdf: 'materials_regular_hospital_pdf',
     equipment: 'materials_regular_hospital_image',
     hospital_video: 'materials_regular_hospital_video',
     testimonial_video: 'materials_regular_testimonial_video',

@@ -772,6 +772,34 @@ describe('Materials routes', () => {
       );
     });
 
+    it('normalizes PDF octet-stream uploads and routes to hospital PDF policy', async () => {
+      mockResolveHospitalType.mockResolvedValue('REGULAR');
+      mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);
+
+      const res = await app.request(`/api/v2/hospitals/${VALID_HOSPITAL_ID}/materials/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validBody,
+          materialKind: 'hospital_pdf',
+          fileName: 'Hospital Brochure.pdf',
+          mimeType: 'application/octet-stream',
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          policyId: 'materials_regular_hospital_pdf',
+          ownerType: 'hospital_material',
+          ownerId: VALID_HOSPITAL_ID,
+          fileName: 'Hospital Brochure.pdf',
+          fileSize: 204800,
+          mimeType: 'application/pdf',
+        }),
+      );
+    });
+
     it('returns 201 with upload URL and asset for REGULAR hospital + package_cover materialKind', async () => {
       mockResolveHospitalType.mockResolvedValue('REGULAR');
       mockServices.mediaUpload.createUploadIntent.mockResolvedValue(uploadIntentResult);

@@ -175,6 +175,11 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       ?? []
     );
     const promotionalVideos = await resolveMediaRefs(rawPromotionalVideos, this.storage);
+    const rawPdfDocuments = (facilitiesInfo['pdfDocuments'] as MaterialsHospitalInfo['pdfDocuments'] | undefined) ?? [];
+    const pdfDocumentUrls = await resolveMediaRefs(
+      rawPdfDocuments.map((item) => item.url),
+      this.storage,
+    );
     const rawVideoTestimonials = (
       (facilitiesInfo['videoTestimonials'] as MaterialsHospitalInfo['videoTestimonials'] | undefined)
       ?? ((hospital as Record<string, unknown>)['video_testimonials'] as MaterialsHospitalInfo['videoTestimonials'] | undefined)
@@ -256,6 +261,11 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       departmentStats,
       promotionalVideos: promotionalVideos.map((item) => item.url),
       promotionalVideoStorageKeys: promotionalVideos.map((item) => item.storageKey),
+      pdfDocuments: rawPdfDocuments.map((item, index) => ({
+        ...item,
+        url: pdfDocumentUrls[index]?.url ?? item.url,
+        storageKey: pdfDocumentUrls[index]?.storageKey ?? item.storageKey ?? null,
+      })),
       videoTestimonials: rawVideoTestimonials.map((item, index) => ({
         ...item,
         videoUrl: testimonialVideoUrls[index]?.url ?? item.videoUrl,
@@ -312,6 +322,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
 
     if (
       updates.promotionalVideos !== undefined
+      || updates.pdfDocuments !== undefined
       || updates.videoTestimonials !== undefined
       || updates.operatingHours !== undefined
       || updates.hours !== undefined
@@ -346,6 +357,7 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
     if (updates.coreSpecialties !== undefined) { zhUpdates['core_specialties'] = updates.coreSpecialties; enUpdates['core_specialties'] = updates.coreSpecialties; }
     if (
       updates.promotionalVideos !== undefined
+      || updates.pdfDocuments !== undefined
       || updates.videoTestimonials !== undefined
       || updates.operatingHours !== undefined
       || updates.hours !== undefined
@@ -354,12 +366,14 @@ export class ChinaMedicalMaterialsRepository implements IMaterialsRepository {
       zhUpdates['facilities_info'] = {
         ...existingZhFacilitiesInfo,
         ...(updates.promotionalVideos !== undefined ? { promotionalVideos: updates.promotionalVideos } : {}),
+        ...(updates.pdfDocuments !== undefined ? { pdfDocuments: updates.pdfDocuments } : {}),
         ...(updates.videoTestimonials !== undefined ? { videoTestimonials: updates.videoTestimonials } : {}),
         ...(nextOperatingHours !== undefined ? { operatingHours: nextOperatingHours } : {}),
       };
       enUpdates['facilities_info'] = {
         ...existingEnFacilitiesInfo,
         ...(updates.promotionalVideos !== undefined ? { promotionalVideos: updates.promotionalVideos } : {}),
+        ...(updates.pdfDocuments !== undefined ? { pdfDocuments: updates.pdfDocuments } : {}),
         ...(updates.videoTestimonials !== undefined ? { videoTestimonials: updates.videoTestimonials } : {}),
         ...(nextOperatingHours !== undefined ? { operatingHours: nextOperatingHours } : {}),
       };

@@ -281,6 +281,15 @@ export interface MaterialsHospitalInfoDTO {
   departmentStats?: Record<string, { specialists?: number; annualPatients?: number }>;
   promotionalVideos?: string[];
   promotionalVideoStorageKeys?: Array<string | null>;
+  pdfDocuments?: Array<{
+    id: string;
+    fileName: string;
+    url: string;
+    storageKey?: string | null;
+    mimeType?: string;
+    fileSize?: number;
+    uploadedAt?: string;
+  }>;
 }
 
 /** Materials procedure — matches MaterialsProcedure domain type */

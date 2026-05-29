@@ -142,6 +142,11 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       ((crmMeta.promotionalVideos as string[] | undefined) ?? []) as Array<string | null | undefined>,
       this.storage,
     );
+    const rawPdfDocuments = (crmMeta.pdfDocuments as MaterialsHospitalInfo['pdfDocuments']) ?? [];
+    const pdfDocumentUrls = await resolveMediaRefs(
+      rawPdfDocuments.map((item) => item.url),
+      this.storage,
+    );
     const testimonialVideoUrls = await resolveMediaRefs(
       (((crmMeta.videoTestimonials as MaterialsHospitalInfo['videoTestimonials']) ?? []).map((item) => item.videoUrl)) as Array<string | null | undefined>,
       this.storage,
@@ -202,6 +207,11 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
       })),
       promotionalVideos: promotionalVideos.map((item) => item.url),
       promotionalVideoStorageKeys: promotionalVideos.map((item) => item.storageKey),
+      pdfDocuments: rawPdfDocuments.map((item, index) => ({
+        ...item,
+        url: pdfDocumentUrls[index]?.url ?? item.url,
+        storageKey: pdfDocumentUrls[index]?.storageKey ?? item.storageKey ?? null,
+      })),
       videoTestimonials: rawVideoTestimonials.map((item, index) => ({
         ...item,
         videoUrl: testimonialVideoUrls[index]?.url ?? item.videoUrl,
@@ -262,7 +272,7 @@ export class SupabaseMaterialsRepository implements IMaterialsRepository {
     // CRM metadata fields -> crm_metadata JSONB
     const crmMetadataFields = [
       'bedCount', 'patientCapacity', 'multilingualStaff', 'airportServices',
-      'followUpCare', 'amenities', 'certifications', 'promotionalVideos', 'videoTestimonials',
+      'followUpCare', 'amenities', 'certifications', 'promotionalVideos', 'pdfDocuments', 'videoTestimonials',
     ] as const;
     const crmMetadataUpdates: Record<string, unknown> = {};
     for (const field of crmMetadataFields) {

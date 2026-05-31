@@ -175,6 +175,7 @@ describe('GetPatientSessionStateUseCase', () => {
       },
       chatbotOrchestrationState: {
         conversationSummary: 'Patient prefers hospital-2 after reviewing the shortlist.',
+        processExplained: false,
       },
     });
     expect(mockPatientRepo.findById).toHaveBeenCalledWith('patient-1', 'beauty');
@@ -248,6 +249,7 @@ describe('GetPatientSessionStateUseCase', () => {
     });
     expect(result.chatbotOrchestrationState).toEqual({
       conversationSummary: '',
+      processExplained: false,
     });
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
@@ -389,6 +391,7 @@ describe('GetPatientSessionStateUseCase', () => {
     });
     expect(result.chatbotOrchestrationState).toEqual({
       conversationSummary: '',
+      processExplained: false,
     });
     expect(mockAiChatSessionRepo.save).toHaveBeenCalledOnce();
     expect(mockAiChatSessionRepo.save.mock.calls[0]?.[0]).toMatchObject({
@@ -926,6 +929,7 @@ describe('GetPatientSessionStateUseCase', () => {
     expect(result.selectedHospitalIds).toEqual(['hospital-1', 'hospital-2']);
     expect(result.chatbotOrchestrationState).toEqual({
       conversationSummary: 'Previously selected a hospital that is no longer active.',
+      processExplained: false,
     });
   });
 });

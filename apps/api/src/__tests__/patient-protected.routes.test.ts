@@ -317,6 +317,177 @@ describe('patientProtectedRoutes', () => {
     });
   });
 
+  it('persists process confirmation and creates the follow-up upload prompt message', async () => {
+    const sessionId = 'widget-chat:patient-1:case-1';
+    const aiChatSession = {
+      id: 'ai-session-1',
+      sessionId,
+      site: 'beauty',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        processExplained: false,
+        lastAssistantMessageAt: null,
+      },
+    };
+    const patchStatus = vi.fn().mockResolvedValue({
+      ...aiChatSession,
+      statusSnapshot: {
+        ...aiChatSession.statusSnapshot,
+        processExplained: true,
+        journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+        journeyCurrentPhase: 'active',
+      },
+    });
+    const create = vi.fn().mockImplementation(async (message) => message);
+    const saveConversation = vi.fn().mockImplementation(async (conversation) => conversation);
+    const saveMessage = vi.fn().mockImplementation(async (message) => message);
+    const conversation = {
+      id: 'conv-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      assistantMode: 'AI_ACTIVE',
+      updateLastMessage: vi.fn(),
+    };
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          conversation,
+        ]),
+        save: saveConversation,
+      },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(aiChatSession),
+        patchStatus,
+      },
+      aiChatMessageRepo: {
+        listRecentBySession: vi.fn().mockResolvedValue([]),
+        create,
+      },
+      patientRepo: {
+        findById: vi.fn().mockResolvedValue({ id: 'patient-1', preferredLanguage: 'zh' }),
+      },
+      messageRepo: {
+        save: saveMessage,
+      },
+    });
+
+    const res = await patientProtectedRoutes.request(`/sessions/${sessionId}/process-confirmation`, {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchStatus).toHaveBeenCalledWith(sessionId, 'beauty', expect.objectContaining({
+      processExplained: true,
+      journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+      journeyCurrentPhase: 'active',
+    }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      id: expect.any(String),
+      sessionId: 'ai-session-1',
+      role: 'ASSISTANT',
+      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+      metadata: expect.objectContaining({
+        processConfirmationMessage: true,
+        chatbotV3: expect.objectContaining({
+          journey: { stage: 'COLLECT_MEDICAL_INPUTS', phase: 'active' },
+          cards: [expect.objectContaining({ cardType: 'UPLOAD_RECORDS' })],
+        }),
+      }),
+    }));
+    expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      id: create.mock.calls[0]?.[0]?.id,
+      conversationId: 'conv-1',
+      senderRole: 'AI',
+      senderName: 'Medora AI',
+      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+      messageType: 'TEXT',
+      moderationStatus: 'ALLOWED',
+    }));
+    expect(conversation.updateLastMessage).toHaveBeenCalledWith(expect.objectContaining({
+      id: create.mock.calls[0]?.[0]?.id,
+      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+    }));
+    expect(saveConversation).toHaveBeenCalledWith(conversation);
+    expect(await res.json()).toEqual(expect.objectContaining({
+      ok: true,
+      status: 'confirmed',
+    }));
+  });
+
+  it('reuses the deterministic process confirmation message on duplicate inserts', async () => {
+    const sessionId = 'widget-chat:patient-1:case-1';
+    const aiChatSession = {
+      id: 'ai-session-duplicate',
+      sessionId,
+      site: 'beauty',
+      patientId: 'patient-1',
+      statusSnapshot: {
+        processExplained: true,
+        lastAssistantMessageAt: new Date('2026-05-31T00:00:00.000Z'),
+      },
+    };
+    const existingCreatedAt = new Date('2026-05-31T00:00:01.000Z');
+    const duplicateError = Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
+    const create = vi.fn().mockRejectedValue(duplicateError);
+    const updateMessage = vi.fn().mockResolvedValue({
+      id: 'existing-process-message',
+      sessionId: aiChatSession.id,
+      role: 'ASSISTANT',
+      content: 'Thank you for confirming the medical travel process.',
+      citations: [],
+      metadata: {
+        processConfirmationMessage: true,
+        processConfirmationMessageVersion: 'process-confirmation-v1',
+      },
+      createdAt: existingCreatedAt,
+    });
+    const saveMessage = vi.fn().mockImplementation(async (message) => message);
+    const conversation = {
+      id: 'conv-1',
+      caseId: 'case-1',
+      category: 'ADMIN_PATIENT',
+      hospitalId: null,
+      assistantMode: 'AI_ACTIVE',
+      updateLastMessage: vi.fn(),
+    };
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([conversation]),
+        save: vi.fn().mockImplementation(async (savedConversation) => savedConversation),
+      },
+      aiChatSessionRepo: {
+        findBySessionId: vi.fn().mockResolvedValue(aiChatSession),
+        patchStatus: vi.fn().mockResolvedValue(aiChatSession),
+      },
+      aiChatMessageRepo: {
+        listRecentBySession: vi.fn().mockResolvedValue([]),
+        create,
+        updateMessage,
+      },
+      patientRepo: {
+        findById: vi.fn().mockResolvedValue({ id: 'patient-1', preferredLanguage: 'en' }),
+      },
+      messageRepo: {
+        save: saveMessage,
+      },
+    });
+
+    const res = await patientProtectedRoutes.request(`/sessions/${sessionId}/process-confirmation`, {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    expect(create).toHaveBeenCalledOnce();
+    expect(updateMessage).toHaveBeenCalledWith(create.mock.calls[0]?.[0]?.id, {});
+    expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+      id: create.mock.calls[0]?.[0]?.id,
+      conversationId: 'conv-1',
+      content: 'Thank you for confirming the medical travel process.',
+      createdAt: existingCreatedAt,
+    }));
+  });
+
   it('triggers widget starter backfill on /me for select-hospitals restores', async () => {
     const execute = vi.fn().mockResolvedValue({
       id: 'patient-1',

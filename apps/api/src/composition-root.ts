@@ -327,7 +327,6 @@ interface AppServices {
   messageRepo: IMessageRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
-  conversationRepo: IConversationRepository;
   aiUserProfileRepo: IAiUserProfileRepository;
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
@@ -1081,7 +1080,6 @@ export function getServices(): AppServices {
     const contextBuilderService = new ContextBuilderService(
       aiChatSessionRepo,
       aiChatMessageRepo,
-      conversationRepo,
       aiUserProfileRepo,
       aiChatTimelineEventRepo,
       aiFollowupTriggerRepo,

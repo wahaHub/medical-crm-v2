@@ -52,6 +52,16 @@ export function resolvePrimaryJourneySnapshot(input: {
     return fromStored;
   }
 
+  const statusSnapshot = asRecord(input.statusSnapshot);
+  const journeyCurrentStage = asString(statusSnapshot['journeyCurrentStage']);
+  const journeyCurrentPhase = asString(statusSnapshot['journeyCurrentPhase']);
+  if (isJourneyStage(journeyCurrentStage) && isJourneyPhase(journeyCurrentPhase)) {
+    return {
+      currentStage: journeyCurrentStage,
+      currentPhase: journeyCurrentPhase,
+    };
+  }
+
   return input.fallback ?? {
     currentStage: 'EXPLAIN_PROCESS',
     currentPhase: 'active',

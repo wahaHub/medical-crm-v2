@@ -63,7 +63,7 @@ export async function seedWidgetStarterMessage(input: {
   const payload = {
     content: GENERIC_WIDGET_STARTER_CONTENT,
     nextAction: null,
-    shortlist: [],
+    shortlist: [] as Array<Record<string, unknown>>,
     writebackStatus: 'succeeded',
     metadata: {
       widgetStarterSeed: true,
@@ -72,7 +72,7 @@ export async function seedWidgetStarterMessage(input: {
       starterMode: 'static',
       blocks: [],
     },
-  } as const;
+  };
 
   if (existingStarterMessage) {
     await input.services.aiChatMessageRepo.updateMessage(existingStarterMessage.id, payload);

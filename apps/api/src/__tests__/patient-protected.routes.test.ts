@@ -290,6 +290,30 @@ describe('patientProtectedRoutes', () => {
     );
   });
 
+  it('persists process-guide confirmation on the active widget chat session', async () => {
+    const patchStatus = vi.fn().mockResolvedValue({
+      sessionId: 'widget-chat:patient-1:case-1',
+      statusSnapshot: { processExplained: true },
+    });
+    mockGetServices.mockReturnValue({
+      aiChatSessionRepo: { patchStatus },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/process-confirmation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(patchStatus).toHaveBeenCalledWith(
+      'widget-chat:patient-1:case-1',
+      'beauty',
+      { processExplained: true },
+    );
+    expect(await res.json()).toEqual({ ok: true, status: 'confirmed' });
+  });
+
   it('routes human-takeover care-team session sends through the formal message path', async () => {
     const getConversation = { execute: vi.fn().mockResolvedValue({ id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', assistantMode: 'HUMAN_TAKEOVER' }) };
     const sendMessage = {

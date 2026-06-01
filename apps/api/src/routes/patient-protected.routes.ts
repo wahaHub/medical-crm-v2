@@ -335,6 +335,25 @@ app.get('/sessions/:sessionId/messages', async (c) => {
   return c.json(result);
 });
 
+// POST /sessions/:sessionId/process-confirmation
+app.post('/sessions/:sessionId/process-confirmation', async (c) => {
+  const session = c.get('patientSession');
+  const site = c.get('patientSite');
+  const sessionId = c.req.param('sessionId');
+
+  if (!sessionId.startsWith(`widget-chat:${session.userId}:`)) {
+    throw new NotFoundError(`Patient session ${sessionId} not found`);
+  }
+
+  const { aiChatSessionRepo } = getServices();
+  const result = await aiChatSessionRepo.patchStatus(sessionId, site, { processExplained: true });
+  if (!result) {
+    throw new NotFoundError(`Patient session ${sessionId} not found`);
+  }
+
+  return c.json({ ok: true, status: 'confirmed' });
+});
+
 // POST /sessions/:sessionId/messages
 app.post('/sessions/:sessionId/messages', async (c) => {
   const body = sendPatientMessageSchema.parse(await c.req.json());

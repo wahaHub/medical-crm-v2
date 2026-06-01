@@ -56,6 +56,7 @@ export interface PatientSessionState {
   journeySnapshot: JourneySnapshot;
   chatbotOrchestrationState: {
     conversationSummary: string;
+    processExplained: boolean;
   };
 }
 
@@ -155,6 +156,7 @@ export class GetPatientSessionStateUseCase {
       journeySnapshot,
       chatbotOrchestrationState: {
         conversationSummary: aiChatSession?.statusSnapshot.conversationSummary ?? '',
+        processExplained: aiChatSession?.statusSnapshot.processExplained === true,
       },
     };
   }

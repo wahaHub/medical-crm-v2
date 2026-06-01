@@ -192,6 +192,7 @@ import {
   LoginWithPasswordUseCase,
   RestoreGuestSessionUseCase,
   GetPatientSessionStateUseCase,
+  UpdatePatientSessionProfileUseCase,
   SetPasswordUseCase,
   CreateFaqItemUseCase,
   ListFaqItemsUseCase,
@@ -577,6 +578,7 @@ interface AppServices {
   loginWithPassword: LoginWithPasswordUseCase;
   restoreGuestSession: RestoreGuestSessionUseCase;
   getPatientSessionState: GetPatientSessionStateUseCase;
+  updatePatientSessionProfile: UpdatePatientSessionProfileUseCase;
   setPassword: SetPasswordUseCase;
 
   // use cases — patient dashboard
@@ -1326,6 +1328,7 @@ export function getServices(): AppServices {
         aiChatMessageRepo,
         aiChatSessionRepo,
       ),
+      updatePatientSessionProfile: new UpdatePatientSessionProfileUseCase(caseRepo),
       setPassword: new SetPasswordUseCase(patientRepo),
 
       createFaqItem: new CreateFaqItemUseCase(faqRepo, translationTaskService, aiSyncTaskService),

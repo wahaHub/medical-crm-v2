@@ -76,6 +76,46 @@ describe('patientProtectedRoutes', () => {
     });
   });
 
+  it('updates patient profile fields on PATCH /me and returns the refreshed session state', async () => {
+    const updateExecute = vi.fn().mockResolvedValue(undefined);
+    const getExecute = vi.fn().mockResolvedValue({
+      id: 'patient-1',
+      patientId: 'patient-1',
+      name: 'Hao Wang',
+      email: 'liuxue8901@gmail.com',
+      age: '43',
+      patientCode: 'P001',
+      preferredLanguage: 'zh',
+      caseId: 'case-1',
+      nextStep: 'messages-ready',
+      selectedHospitalIds: [],
+      profileSubmitted: true,
+      chatUnlocked: true,
+    });
+    mockGetServices.mockReturnValue({
+      updatePatientSessionProfile: { execute: updateExecute },
+      getPatientSessionState: { execute: getExecute },
+    });
+
+    const res = await patientProtectedRoutes.request('/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ age: '43' }),
+      headers: { 'content-type': 'application/json' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(updateExecute).toHaveBeenCalledWith({
+      patientId: 'patient-1',
+      profile: { age: '43' },
+    });
+    expect(getExecute).toHaveBeenCalledWith({ patientId: 'patient-1', site: 'beauty' });
+    expect(await res.json()).toEqual(expect.objectContaining({
+      patientId: 'patient-1',
+      email: 'liuxue8901@gmail.com',
+      age: '43',
+    }));
+  });
+
   it('returns patient session summaries plus case authority meta on /conversations', async () => {
     const execute = vi.fn().mockResolvedValue({
       sessions: [

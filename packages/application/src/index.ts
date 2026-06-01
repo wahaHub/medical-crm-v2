@@ -570,6 +570,8 @@ export { VerifyMagicLinkUseCase, VerifyMagicLinkAuthError } from './use-cases/pa
 export { LoginWithPasswordUseCase } from './use-cases/patient-auth/login-with-password.use-case.js';
 export { RestoreGuestSessionUseCase, RestoreGuestSessionAuthError } from './use-cases/patient-auth/restore-guest-session.use-case.js';
 export { GetPatientSessionStateUseCase } from './use-cases/patient-auth/get-patient-session-state.use-case.js';
+export { UpdatePatientSessionProfileUseCase } from './use-cases/patient-auth/update-patient-session-profile.use-case.js';
+export type { PatientSessionProfileUpdate } from './use-cases/patient-auth/update-patient-session-profile.use-case.js';
 export { SetPasswordUseCase } from './use-cases/patient-auth/set-password.use-case.js';
 
 // DTOs — Dashboard

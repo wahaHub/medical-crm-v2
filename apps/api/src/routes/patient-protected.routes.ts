@@ -74,6 +74,20 @@ const submitPatientQCResponseSchema = z.object({
   templateId: z.string().uuid(),
   responses: z.unknown(),
 });
+const patientProfileUpdateSchema = z.object({
+  name: z.string().max(200).optional(),
+  phone: z.string().max(80).optional(),
+  age: z.string().max(40).optional(),
+  gender: z.string().max(80).optional(),
+  country: z.string().max(120).optional(),
+  whatsapp: z.string().max(120).optional(),
+  messenger: z.string().max(120).optional(),
+  department: z.string().max(160).optional(),
+  departmentCode: z.string().max(120).optional(),
+  disease: z.string().max(500).optional(),
+  destination: z.string().max(300).optional(),
+  treatmentTime: z.string().max(120).optional(),
+}).strict();
 
 const patientTicketTypeToDomain: Record<z.infer<typeof patientTicketTypeSchema>, string> = {
   GENERAL_SUPPORT: 'GENERAL_QUESTIONS',
@@ -203,6 +217,23 @@ app.get('/me', async (c) => {
     });
   }
 
+  return c.json(result);
+});
+
+// PATCH /me — update editable intake profile fields on the current patient case
+app.patch('/me', async (c) => {
+  const body = patientProfileUpdateSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const site = c.get('patientSite');
+  const services = getServices();
+  const { updatePatientSessionProfile, getPatientSessionState } = services;
+
+  await updatePatientSessionProfile.execute({
+    patientId: session.userId,
+    profile: body,
+  });
+
+  const result = await getPatientSessionState.execute({ patientId: session.userId, site });
   return c.json(result);
 });
 

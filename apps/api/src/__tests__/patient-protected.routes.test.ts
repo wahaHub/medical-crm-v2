@@ -381,6 +381,129 @@ describe('patientProtectedRoutes', () => {
     });
   });
 
+  it('allows mechanical attachment-only care-team sends while AI is still active', async () => {
+    const sendMessage = {
+      execute: vi.fn().mockResolvedValue({
+        message: {
+          id: 'msg-mechanical-upload',
+          conversationId: 'conv-1',
+          senderId: 'patient-1',
+          senderRole: 'PATIENT',
+          senderName: null,
+          content: '',
+          originalLanguage: null,
+          translatedContent: null,
+          messageType: 'FILE',
+          moderationStatus: 'ALLOWED',
+          attachments: [{
+            fileName: 'ct-scan.pdf',
+            mimeType: 'application/pdf',
+            fileSize: 24,
+            storageKey: 'medical-records/ct-scan.pdf',
+          }],
+          aiSummary: null,
+          createdAt: '2026-06-02T00:00:00.000Z',
+        },
+      }),
+    };
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
+        ]),
+      },
+      sendMessage,
+      caseRepo: { findById: vi.fn().mockResolvedValue({ id: 'case-1', patientId: 'patient-1' }) },
+      notifyAdminsOfPatientMessage: { execute: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages?mode=mechanical', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: '',
+        messageType: 'FILE',
+        attachments: [{
+          fileName: 'ct-scan.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 24,
+          storageKey: 'medical-records/ct-scan.pdf',
+        }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(sendMessage.execute).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({
+        content: '',
+        messageType: 'FILE',
+        attachments: [expect.objectContaining({ fileName: 'ct-scan.pdf' })],
+      }),
+      expect.objectContaining({ userId: 'patient-1', role: 'PATIENT' }),
+    );
+  });
+
+  it('still rejects mechanical care-team text sends while AI is active', async () => {
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
+        ]),
+      },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages?mode=mechanical', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'Please read this', messageType: 'TEXT' }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'Care-team AI is still active for this session',
+    });
+  });
+
+  it('allows mechanical care-team upload initialization while AI is still active', async () => {
+    const createUploadIntent = vi.fn().mockResolvedValue({
+      uploadUrl: 'https://example.r2.cloudflarestorage.com/upload/ct-scan.pdf',
+      storageKey: 'medical-records/ct-scan.pdf',
+      expiresIn: 900,
+      asset: {
+        fileName: 'ct-scan.pdf',
+        mimeType: 'application/pdf',
+        fileSize: 24,
+        storageKey: 'medical-records/ct-scan.pdf',
+      },
+    });
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
+        ]),
+      },
+      mediaUpload: { createUploadIntent },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/attachments/upload?mode=mechanical', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: 'ct-scan.pdf',
+        fileSize: 24,
+        mimeType: 'application/pdf',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(createUploadIntent).toHaveBeenCalledWith(expect.objectContaining({
+      ownerType: 'conversation',
+      ownerId: 'conv-1',
+      fileName: 'ct-scan.pdf',
+    }));
+  });
+
   it('triggers widget starter backfill on /me for select-hospitals restores', async () => {
     const execute = vi.fn().mockResolvedValue({
       id: 'patient-1',

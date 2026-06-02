@@ -158,6 +158,10 @@ function isAllowedUploadTarget(url: URL): boolean {
   return hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
 }
 
+function isMechanicalModeRequest(mode: string | undefined): boolean {
+  return mode === 'mechanical';
+}
+
 async function resolveFormalConversationForPatientSession(
   patientId: string,
   sessionId: string,
@@ -361,8 +365,16 @@ app.post('/sessions/:sessionId/messages', async (c) => {
   const sessionId = c.req.param('sessionId');
   const actor = toPatientActor(session);
   const conversation = await resolveFormalConversationForPatientSession(session.userId, sessionId);
+  const isMechanicalMode = isMechanicalModeRequest(c.req.query('mode'));
+  const isMechanicalAttachmentOnlyMessage = isMechanicalMode
+    && (body.attachments?.length ?? 0) > 0
+    && body.content.trim().length === 0;
 
-  if (conversation.category === 'ADMIN_PATIENT' && conversation.assistantMode === 'AI_ACTIVE') {
+  if (
+    conversation.category === 'ADMIN_PATIENT'
+    && conversation.assistantMode === 'AI_ACTIVE'
+    && !isMechanicalAttachmentOnlyMessage
+  ) {
     return c.json({ error: 'Care-team AI is still active for this session' }, 409);
   }
 
@@ -406,8 +418,13 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
   const session = c.get('patientSession');
   const sessionId = c.req.param('sessionId');
   const conversation = await resolveFormalConversationForPatientSession(session.userId, sessionId);
+  const isMechanicalMode = isMechanicalModeRequest(c.req.query('mode'));
 
-  if (conversation.category === 'ADMIN_PATIENT' && conversation.assistantMode === 'AI_ACTIVE') {
+  if (
+    conversation.category === 'ADMIN_PATIENT'
+    && conversation.assistantMode === 'AI_ACTIVE'
+    && !isMechanicalMode
+  ) {
     return c.json({ error: 'Care-team AI is still active for this session' }, 409);
   }
 

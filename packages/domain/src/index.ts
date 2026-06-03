@@ -52,7 +52,7 @@ export type { HospitalProps } from './entities/hospital.entity.js';
 export { Conversation } from './entities/conversation.entity.js';
 export type { ConversationProps } from './entities/conversation.entity.js';
 export { Message } from './entities/message.entity.js';
-export type { MessageProps, Attachment } from './entities/message.entity.js';
+export type { MessageProps, Attachment, MessageDeliveryStatus } from './entities/message.entity.js';
 export { EmailReplyToken } from './entities/email-reply-token.entity.js';
 export type {
   EmailReplyChannel,
@@ -154,7 +154,7 @@ export type { ICaseEventRepository, CaseEventListOptions } from './ports/case-ev
 // Phase 2 M3: Support Ticket Enums
 export type {
   TicketType, TicketPriority, TicketStatus, TicketReplyRole,
-  AiChatSessionStatus, AiChatRole, AiChatIntent, AiChatRiskLevel, AiChatNextAction,
+  AiChatSessionStatus, ChatAutomationMode, AiChatRole, AiChatIntent, AiChatRiskLevel, AiChatNextAction,
   AiSyncAction, AiSyncStatus,
 } from './enums/index.js';
 

@@ -6,7 +6,7 @@ import type {
   ICaseProgressRepository,
   ICHCRepository,
 } from '@medical-crm/domain';
-import { Case, CaseNumber } from '@medical-crm/domain';
+import { Case, CaseNumber, Document } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 
 describe('UploadDocumentUseCase', () => {
@@ -75,6 +75,7 @@ describe('UploadDocumentUseCase', () => {
 
     mockDocumentRepo = {
       findById: vi.fn(),
+      findByStorageKey: vi.fn().mockResolvedValue(null),
       findByCaseId: vi.fn(),
       save: vi.fn().mockImplementation((doc) => Promise.resolve(doc)),
       softDelete: vi.fn(),
@@ -106,6 +107,31 @@ describe('UploadDocumentUseCase', () => {
 
     expect(result.documentId).toBeTruthy();
     expect(result).not.toHaveProperty('upload');
+  });
+
+  it('returns the existing document when storageKey was already saved', async () => {
+    vi.mocked(mockDocumentRepo.findByStorageKey).mockResolvedValue(new Document({
+      id: 'doc-existing',
+      caseId: 'case-1',
+      uploadedById: 'admin-1',
+      fileName: 'report.pdf',
+      fileSize: 102400,
+      mimeType: 'application/pdf',
+      storageKey: validInput.storageKey,
+      documentType: 'MEDICAL_REPORT',
+      sensitivity: 'NORMAL',
+      language: 'en',
+      isTranslated: false,
+      status: 'PENDING',
+      createdAt: new Date('2026-06-01T00:00:00Z'),
+      updatedAt: new Date('2026-06-01T00:00:00Z'),
+    }));
+
+    const result = await useCase.execute(validInput, adminActor);
+
+    expect(result.documentId).toBe('doc-existing');
+    expect(mockDocumentRepo.save).not.toHaveBeenCalled();
+    expect(mockProgressRepo.save).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundError when case does not exist', async () => {

@@ -1,5 +1,5 @@
 import type { PatientSite } from '../ports/patient-repository.port.js';
-import type { AiChatSessionStatus, HospitalType } from '../enums/index.js';
+import type { AiChatSessionStatus, ChatAutomationMode, HospitalType } from '../enums/index.js';
 
 export interface AiChatPendingState {
   type: string;
@@ -90,6 +90,7 @@ export interface AiChatSessionProps {
   patientId: string | null;
   hospitalType: HospitalType;
   status: AiChatSessionStatus;
+  automationMode?: ChatAutomationMode | null;
   statusSnapshot?: Partial<AiChatStatusSnapshot>;
   createdAt: Date;
   updatedAt: Date;
@@ -104,6 +105,7 @@ export class AiChatSession {
   patientId: string | null;
   hospitalType: HospitalType;
   status: AiChatSessionStatus;
+  automationMode: ChatAutomationMode;
   statusSnapshot: AiChatStatusSnapshot;
   createdAt: Date;
   updatedAt: Date;
@@ -127,6 +129,7 @@ export class AiChatSession {
     this.patientId = props.patientId;
     this.hospitalType = props.hospitalType;
     this.status = props.status;
+    this.automationMode = props.automationMode ?? 'mechanical';
     this.statusSnapshot = {
       conditionStatus: props.statusSnapshot?.conditionStatus ?? 'unknown',
       formStatus: props.statusSnapshot?.formStatus ?? 'not_started',

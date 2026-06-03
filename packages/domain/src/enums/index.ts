@@ -66,6 +66,7 @@ export type TicketPriority = 'HIGH' | 'MEDIUM' | 'LOW';
 export type TicketStatus = 'OPEN' | 'ASSIGNED' | 'IN_PROGRESS' | 'PENDING_INFO' | 'RESOLVED' | 'CLOSED';
 export type TicketReplyRole = 'ADMIN' | 'PATIENT';
 export type AiChatSessionStatus = 'ACTIVE' | 'ESCALATED' | 'CLOSED';
+export type ChatAutomationMode = 'mechanical' | 'ai' | 'human';
 export type AiChatRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 export type AiChatIntent = 'FAQ' | 'CONSULT' | 'UNKNOWN' | 'SAFETY';
 export type AiChatRiskLevel = 'NORMAL' | 'SENSITIVE' | 'CRISIS';

@@ -8,9 +8,12 @@ export type Attachment = {
   storageKey: string;
 };
 
+export type MessageDeliveryStatus = 'pending' | 'uploading' | 'sent' | 'failed';
+
 export interface MessageProps {
   id: string;
   conversationId: string;
+  clientMessageId?: string | null;
   senderId: string | null;
   senderRoleOverride?: string | null;
   senderNameOverride?: string | null;
@@ -23,12 +26,15 @@ export interface MessageProps {
   moderationStatus: ModerationStatus;
   attachments: Attachment[];
   aiSummary: string | null;
+  deliveryStatus?: MessageDeliveryStatus | null;
+  metadata?: Record<string, unknown> | null;
   createdAt: Date;
 }
 
 export class Message {
   readonly id: string;
   conversationId: string;
+  clientMessageId: string | null;
   senderId: string | null;
   senderRoleOverride: string | null;
   senderNameOverride: string | null;
@@ -41,11 +47,14 @@ export class Message {
   moderationStatus: ModerationStatus;
   attachments: Attachment[];
   aiSummary: string | null;
+  deliveryStatus: MessageDeliveryStatus | null;
+  metadata: Record<string, unknown>;
   createdAt: Date;
 
   constructor(props: MessageProps) {
     this.id = props.id;
     this.conversationId = props.conversationId;
+    this.clientMessageId = props.clientMessageId ?? null;
     this.senderId = props.senderId;
     this.senderRoleOverride = props.senderRoleOverride ?? null;
     this.senderNameOverride = props.senderNameOverride ?? null;
@@ -58,6 +67,8 @@ export class Message {
     this.moderationStatus = props.moderationStatus;
     this.attachments = props.attachments;
     this.aiSummary = props.aiSummary;
+    this.deliveryStatus = props.deliveryStatus ?? null;
+    this.metadata = props.metadata ?? {};
     this.createdAt = props.createdAt;
   }
 

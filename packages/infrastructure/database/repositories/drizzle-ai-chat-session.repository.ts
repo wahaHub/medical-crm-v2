@@ -44,6 +44,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
         patientId: entity.patientId,
         hospitalType: entity.hospitalType,
         status: entity.status,
+        automationMode: entity.automationMode,
         conditionStatus: entity.statusSnapshot.conditionStatus,
         formStatus: entity.statusSnapshot.formStatus,
         docUploadStatus: entity.statusSnapshot.docUploadStatus,
@@ -84,6 +85,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
           patientId: entity.patientId,
           hospitalType: entity.hospitalType,
           status: entity.status,
+          automationMode: entity.automationMode,
           conditionStatus: entity.statusSnapshot.conditionStatus,
           formStatus: entity.statusSnapshot.formStatus,
           docUploadStatus: entity.statusSnapshot.docUploadStatus,
@@ -152,6 +154,22 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
     const rows = await db
       .update(aiChatSessions)
       .set({ status, updatedAt: sql`NOW()` })
+      .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
+      .returning();
+
+    return rows[0] ? this.rowToEntity(rows[0]) : null;
+  }
+
+  async updateAutomationMode(
+    sessionId: string,
+    site: PatientSite,
+    mode: import('@medical-crm/domain').ChatAutomationMode,
+    tx?: unknown,
+  ): Promise<AiChatSession | null> {
+    const db = (tx as CrmDb) ?? this.db;
+    const rows = await db
+      .update(aiChatSessions)
+      .set({ automationMode: mode, updatedAt: sql`NOW()` })
       .where(and(eq(aiChatSessions.sessionId, sessionId), eq(aiChatSessions.site, site)))
       .returning();
 
@@ -255,6 +273,7 @@ export class DrizzleAiChatSessionRepository implements IAiChatSessionRepository 
       patientId: row.patientId ?? null,
       hospitalType: row.hospitalType as import('@medical-crm/domain').HospitalType,
       status: row.status as import('@medical-crm/domain').AiChatSessionStatus,
+      automationMode: normalizeAutomationMode(row.automationMode),
       statusSnapshot: {
         conditionStatus: row.conditionStatus,
         formStatus: row.formStatus,
@@ -385,4 +404,8 @@ function normalizeJourneyCurrentPhase(value: unknown): string | null | undefined
   }
 
   return undefined;
+}
+
+function normalizeAutomationMode(value: unknown): import('@medical-crm/domain').ChatAutomationMode {
+  return value === 'ai' || value === 'human' || value === 'mechanical' ? value : 'mechanical';
 }

@@ -22,6 +22,20 @@ export class DrizzleDocumentRepository implements IDocumentRepository {
     return this.rowToEntity(rows[0]!);
   }
 
+  async findByStorageKey(storageKey: string): Promise<Document | null> {
+    const rows = await withTransientDatabaseRetry(
+      'load document by storage key',
+      () => this.db
+        .select()
+        .from(documents)
+        .where(eq(documents.storageKey, storageKey))
+        .limit(1),
+    );
+
+    if (rows.length === 0) return null;
+    return this.rowToEntity(rows[0]!);
+  }
+
   async findByCaseId(caseId: string): Promise<Document[]> {
     const rows = await withTransientDatabaseRetry(
       'load documents by case id',

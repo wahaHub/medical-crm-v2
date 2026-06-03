@@ -91,6 +91,7 @@ describe('GetPatientSessionDetailUseCase', () => {
     };
     messageRepo = {
       findById: vi.fn(),
+      findByConversationClientMessageId: vi.fn(),
       findByConversationId: vi.fn().mockResolvedValue({
         data: [],
         total: 0,
@@ -100,6 +101,10 @@ describe('GetPatientSessionDetailUseCase', () => {
         hasMore: false,
       }),
       findPendingReview: vi.fn(),
+      createPendingAttachmentMessage: vi.fn(),
+      claimDeliveryStatus: vi.fn(),
+      updateDeliveryStatus: vi.fn(),
+      updateMetadata: vi.fn(),
       save: vi.fn(),
       delete: vi.fn(),
     };
@@ -237,5 +242,113 @@ describe('GetPatientSessionDetailUseCase', () => {
       source: 'FORMAL',
       senderRole: 'HOSPITAL',
     });
+  });
+
+  it('keeps upload records available after non-file formal messages', async () => {
+    vi.mocked(conversationRepo.findByPatientId).mockResolvedValue([
+      makeConversation({
+        id: 'conv-admin',
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'AI_ACTIVE',
+      }),
+    ]);
+    vi.mocked(messageRepo.findByConversationId).mockResolvedValue({
+      data: [makeFormalMessage({
+        id: 'msg-upload-action',
+        senderRole: 'PATIENT',
+        messageType: 'TEXT',
+        deliveryStatus: 'sent',
+        attachments: [],
+        metadata: {
+          eventType: 'ACTION_SELECTED',
+          actionKey: 'UPLOAD_RECORDS',
+        },
+      })],
+      total: 1,
+      page: 1,
+      limit: 50,
+      totalPages: 1,
+      hasMore: false,
+    });
+    vi.mocked(aiChatSessionRepo.findBySessionId).mockResolvedValue(new AiChatSession({
+      id: 'ai-session-db-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+      automationMode: 'mechanical',
+      statusSnapshot: {
+        formStatus: 'COMPLETED',
+        processExplained: true,
+        supportingDocuments: [],
+      },
+      createdAt: new Date('2026-04-18T00:00:00Z'),
+      updatedAt: new Date('2026-04-18T00:00:00Z'),
+    }));
+
+    const result = await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      limit: 50,
+    });
+
+    expect(result.chatState?.botMode).toBe('mechanical');
+    expect(result.chatState?.availableActions.map((action) => action.id)).toContain('UPLOAD_RECORDS');
+  });
+
+  it('hides upload records after a completed file attachment message', async () => {
+    vi.mocked(conversationRepo.findByPatientId).mockResolvedValue([
+      makeConversation({
+        id: 'conv-admin',
+        category: 'ADMIN_PATIENT',
+        assistantMode: 'AI_ACTIVE',
+      }),
+    ]);
+    vi.mocked(messageRepo.findByConversationId).mockResolvedValue({
+      data: [makeFormalMessage({
+        id: 'msg-uploaded-file',
+        senderRole: 'PATIENT',
+        messageType: 'FILE',
+        deliveryStatus: 'sent',
+        attachments: [{
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1234,
+          storageKey: 'message-attachments/report.pdf',
+        }],
+      })],
+      total: 1,
+      page: 1,
+      limit: 50,
+      totalPages: 1,
+      hasMore: false,
+    });
+    vi.mocked(aiChatSessionRepo.findBySessionId).mockResolvedValue(new AiChatSession({
+      id: 'ai-session-db-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      sessionSecretHash: null,
+      difyConversationId: null,
+      patientId: 'patient-1',
+      hospitalType: 'REGULAR',
+      status: 'ACTIVE',
+      automationMode: 'mechanical',
+      createdAt: new Date('2026-04-18T00:00:00Z'),
+      updatedAt: new Date('2026-04-18T00:00:00Z'),
+    }));
+
+    const result = await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      limit: 50,
+    });
+
+    expect(result.chatState?.botMode).toBe('mechanical');
+    expect(result.chatState?.availableActions.map((action) => action.id)).not.toContain('UPLOAD_RECORDS');
   });
 });

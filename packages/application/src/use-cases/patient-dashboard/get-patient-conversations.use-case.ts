@@ -7,6 +7,7 @@ import type {
 export interface GetPatientConversationsInput {
   patientId: string;
   caseId?: string;
+  locale?: 'en' | 'zh';
 }
 
 export class GetPatientConversationsUseCase {

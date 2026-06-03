@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
-import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
+import { ForbiddenError, NotFoundError, generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
 import { wsManager } from '../ws/ws-manager.js';
 import { seedWidgetStarterMessage } from './patient-widget-starter.js';
 import {
   selectHospitalsSchema, sendPatientMessageSchema,
-  listMessagesQuerySchema, quoteActionSchema, submitIntakeSchema,
+  listMessagesQuerySchema, patientChatEventSchema, quoteActionSchema, submitIntakeSchema,
 } from '@medical-crm/validation';
 
 const app = new Hono();
@@ -15,9 +15,12 @@ const messageUploadInitSchema = z.object({
   fileName: z.string().min(1),
   fileSize: z.number().positive(),
   mimeType: z.string().min(1),
+  clientMessageId: z.string().min(1).max(120).optional(),
+  locale: z.enum(['en', 'zh']).default('en'),
 });
 const patientConversationListQuerySchema = z.object({
   caseId: z.string().uuid().optional(),
+  locale: z.enum(['en', 'zh']).optional(),
 });
 const patientTicketTypeSchema = z.enum([
   'GENERAL_SUPPORT',
@@ -302,7 +305,7 @@ app.get('/conversations', async (c) => {
   const session = c.get('patientSession');
   const query = patientConversationListQuerySchema.parse(c.req.query());
   const { getPatientConversations } = getServices();
-  const result = await getPatientConversations.execute({ patientId: session.userId, caseId: query.caseId });
+  const result = await getPatientConversations.execute({ patientId: session.userId, caseId: query.caseId, locale: query.locale });
   return c.json(result);
 });
 
@@ -335,7 +338,36 @@ app.get('/sessions/:sessionId/messages', async (c) => {
     sessionId,
     site,
     limit: query.limit,
+    locale: query.locale,
   });
+  return c.json(result);
+});
+
+// POST /sessions/:sessionId/chat/events
+app.post('/sessions/:sessionId/chat/events', async (c) => {
+  const body = patientChatEventSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const site = c.get('patientSite');
+  const sessionId = c.req.param('sessionId');
+  const { handlePatientChatEvent } = getServices();
+
+  const result = await handlePatientChatEvent.execute({
+    patientId: session.userId,
+    sessionId,
+    site,
+    eventType: body.eventType,
+    actionKey: body.actionKey,
+    clientMessageId: body.clientMessageId,
+    serverMessageId: body.serverMessageId,
+    locale: body.locale,
+    payload: body.payload,
+  });
+
+  wsManager.broadcast(`conv:${sessionId}`, {
+    type: 'patient_chat_state_updated',
+    data: result,
+  });
+
   return c.json(result);
 });
 
@@ -428,24 +460,132 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
     return c.json({ error: 'Care-team AI is still active for this session' }, 409);
   }
 
-  const { mediaUpload } = getServices();
-  const result = await mediaUpload.createUploadIntent({
-    policyId: 'message_attachment',
-    ownerType: 'conversation',
+  const { mediaUpload, messageRepo, conversationRepo } = getServices();
+  const uploadIntentInput = {
+    policyId: 'message_attachment' as const,
+    ownerType: 'conversation' as const,
     ownerId: conversation.id,
     fileName: body.fileName,
     fileSize: body.fileSize,
     mimeType: body.mimeType,
-  });
+  };
 
-  return c.json({
+  if (body.clientMessageId) {
+    const existingMessage = await messageRepo.findByConversationClientMessageId(conversation.id, body.clientMessageId);
+    const existingAttachment = existingMessage?.attachments[0] ?? null;
+
+    if (existingMessage && existingAttachment) {
+      const existingUpload = existingMessage.deliveryStatus === 'uploading' || existingMessage.deliveryStatus === 'pending'
+        ? await mediaUpload.createUploadIntentForStorageKey(uploadIntentInput, existingAttachment.storageKey)
+        : null;
+
+      return c.json({
+        upload: existingUpload
+          ? {
+              uploadUrl: existingUpload.uploadUrl,
+              storageKey: existingUpload.storageKey,
+              expiresIn: existingUpload.expiresIn,
+            }
+          : null,
+        asset: {
+          fileName: existingAttachment.fileName,
+          mimeType: existingAttachment.mimeType,
+          fileSize: existingAttachment.fileSize,
+          storageKey: existingAttachment.storageKey,
+        },
+        message: {
+          serverMessageId: existingMessage.id,
+          clientMessageId: existingMessage.clientMessageId,
+          deliveryStatus: existingMessage.deliveryStatus,
+        },
+      }, 200);
+    }
+  }
+
+  const result = await mediaUpload.createUploadIntent(uploadIntentInput);
+
+  let pendingMessage = null;
+  let createdPendingMessage = false;
+  let effectiveUpload = result;
+  let effectiveAsset = result.asset;
+  if (body.clientMessageId) {
+    const pendingMessageId = generateId();
+    pendingMessage = await messageRepo.createPendingAttachmentMessage({
+      id: pendingMessageId,
+      conversationId: conversation.id,
+      patientId: session.userId,
+      clientMessageId: body.clientMessageId,
+      content: body.locale === 'zh' ? '正在上传医疗资料...' : 'Uploading medical records...',
+      locale: body.locale,
+      attachments: [{
+        fileName: body.fileName,
+        fileSize: body.fileSize,
+        mimeType: body.mimeType,
+        storageKey: result.storageKey,
+      }],
+      metadata: {
+        eventType: 'ATTACHMENT_UPLOAD_STARTED',
+        source: 'patient',
+        contentType: 'attachment',
+        uploadStatus: 'uploading',
+        storageKey: result.storageKey,
+      },
+      createdAt: new Date(),
+    });
+    createdPendingMessage = pendingMessage.id === pendingMessageId;
+    const pendingAttachment = pendingMessage.attachments[0] ?? null;
+    if (pendingAttachment && pendingAttachment.storageKey !== result.storageKey) {
+      effectiveUpload = await mediaUpload.createUploadIntentForStorageKey(uploadIntentInput, pendingAttachment.storageKey);
+      effectiveAsset = {
+        fileName: pendingAttachment.fileName,
+        fileSize: pendingAttachment.fileSize,
+        mimeType: pendingAttachment.mimeType,
+        storageKey: pendingAttachment.storageKey,
+      };
+    }
+    if (createdPendingMessage) {
+      conversation.updateLastMessage({
+        id: pendingMessage.id,
+        content: pendingMessage.content,
+        senderId: pendingMessage.senderId,
+        createdAt: pendingMessage.createdAt,
+      });
+      await conversationRepo.save(conversation);
+    }
+  }
+
+  const response = {
     upload: {
-      uploadUrl: result.uploadUrl,
-      storageKey: result.storageKey,
-      expiresIn: result.expiresIn,
+      uploadUrl: effectiveUpload.uploadUrl,
+      storageKey: effectiveUpload.storageKey,
+      expiresIn: effectiveUpload.expiresIn,
     },
-    asset: result.asset,
-  }, 201);
+    asset: effectiveAsset,
+    message: pendingMessage
+      ? {
+          serverMessageId: pendingMessage.id,
+          clientMessageId: pendingMessage.clientMessageId,
+          deliveryStatus: pendingMessage.deliveryStatus,
+        }
+      : null,
+  };
+
+  if (pendingMessage && createdPendingMessage) {
+    wsManager.broadcast(`conv:${sessionId}`, {
+      type: 'new_message',
+      data: {
+        id: pendingMessage.id,
+        clientMessageId: pendingMessage.clientMessageId,
+        deliveryStatus: pendingMessage.deliveryStatus,
+        content: pendingMessage.content,
+        attachments: pendingMessage.attachments,
+        senderRole: 'PATIENT',
+        createdAt: pendingMessage.createdAt.toISOString(),
+      },
+    });
+  }
+
+  return c.json(response, 201);
 });
 
 // POST /conversations/:convId/attachments/upload

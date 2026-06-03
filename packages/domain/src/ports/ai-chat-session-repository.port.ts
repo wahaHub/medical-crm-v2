@@ -1,5 +1,5 @@
 import type { AiChatSession } from '../entities/ai-chat-session.entity.js';
-import type { AiChatSessionStatus } from '../enums/index.js';
+import type { AiChatSessionStatus, ChatAutomationMode } from '../enums/index.js';
 import type { PatientSite } from './patient-repository.port.js';
 
 type AiChatSessionReplaySafeTimestampPatch = Partial<{
@@ -16,6 +16,7 @@ export interface IAiChatSessionRepository {
   setDifyConversationId?(sessionId: string, site: PatientSite, difyConversationId: string, tx?: unknown): Promise<AiChatSession | null>;
   attachPatient(sessionId: string, site: PatientSite, patientId: string, tx?: unknown): Promise<AiChatSession | null>;
   updateStatus(sessionId: string, site: PatientSite, status: AiChatSessionStatus, tx?: unknown): Promise<AiChatSession | null>;
+  updateAutomationMode?(sessionId: string, site: PatientSite, mode: ChatAutomationMode, tx?: unknown): Promise<AiChatSession | null>;
   patchStatus(
     sessionId: string,
     site: PatientSite,

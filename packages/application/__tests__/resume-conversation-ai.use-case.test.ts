@@ -51,7 +51,12 @@ describe('ResumeConversationAiUseCase', () => {
     messageRepo = {
       findById: vi.fn(),
       findByConversationId: vi.fn(),
+      findByConversationClientMessageId: vi.fn(),
       findPendingReview: vi.fn(),
+      createPendingAttachmentMessage: vi.fn(),
+      claimDeliveryStatus: vi.fn(),
+      updateDeliveryStatus: vi.fn(),
+      updateMetadata: vi.fn(),
       save: vi.fn().mockImplementation(async (entity: Message) => entity),
       delete: vi.fn(),
     };

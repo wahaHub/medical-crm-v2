@@ -1,5 +1,6 @@
 import type {
   AiChatMessage,
+  AiChatSession,
   Attachment,
   IAiChatMessageRepository,
   IAiChatSessionRepository,
@@ -15,12 +16,14 @@ import type {
   PatientSessionDetailDTO,
   PatientSessionMessageDTO,
 } from '../../dtos/patient-conversation.dto.js';
+import { resolvePatientChatState } from '../patient-chat/patient-chat-actions.js';
 
 export interface GetPatientSessionDetailInput {
   patientId: string;
   sessionId: string;
   site: PatientSite;
   limit?: number;
+  locale?: 'en' | 'zh';
 }
 
 function sortSessionMessages(
@@ -106,6 +109,18 @@ export class GetPatientSessionDetailUseCase {
       hospitalId: null,
       hospitalName: null,
       isAiAvailable: adminConversation?.assistantMode === 'AI_ACTIVE',
+      chatState: resolvePatientChatState({
+        sessionType: 'CARE_TEAM',
+        assistantMode: adminConversation?.assistantMode ?? null,
+        locale: input.locale,
+        isWidgetSession: true,
+        mechanicalFlowEnabled: true,
+        automationMode: aiSession?.automationMode ?? null,
+        processGuideConfirmed: aiSession?.statusSnapshot.processExplained === true,
+        questionnaireSubmitted: isQuestionnaireSubmitted(aiSession),
+        advisorRequested: adminConversation?.assistantMode === 'HUMAN_TAKEOVER' || aiSession?.automationMode === 'human',
+        medicalRecordsUploaded: hasUploadedMedicalRecords(formalMessages.data, aiSession),
+      }),
       chatAuthority: adminConversation?.assistantMode ?? null,
       data: mergedMessages,
       total: mergedMessages.length,
@@ -151,6 +166,18 @@ export class GetPatientSessionDetailUseCase {
       hospitalId,
       hospitalName,
       isAiAvailable: false,
+      chatState: resolvePatientChatState({
+        sessionType: 'HOSPITAL',
+        assistantMode: adminConversation?.assistantMode ?? null,
+        locale: input.locale,
+        isWidgetSession: false,
+        mechanicalFlowEnabled: false,
+        automationMode: null,
+        processGuideConfirmed: false,
+        questionnaireSubmitted: false,
+        advisorRequested: true,
+        medicalRecordsUploaded: false,
+      }),
       chatAuthority: adminConversation?.assistantMode ?? null,
       data: formalMessages.data.map((message) =>
         this.toFormalSessionMessage(input.sessionId, message, signedUrls),
@@ -211,6 +238,7 @@ export class GetPatientSessionDetailUseCase {
     return {
       id: message.id,
       sessionId,
+      clientMessageId: message.clientMessageId,
       source: 'FORMAL',
       conversationId: message.conversationId,
       senderRole: message.senderRole,
@@ -219,6 +247,8 @@ export class GetPatientSessionDetailUseCase {
       messageType: message.messageType,
       moderationStatus: message.moderationStatus,
       attachments: message.attachments.map((attachment) => toMessageAttachmentDTO(attachment, signedUrls)),
+      metadata: message.metadata,
+      deliveryStatus: message.deliveryStatus,
       createdAt: message.createdAt.toISOString(),
     };
   }
@@ -247,6 +277,7 @@ export class GetPatientSessionDetailUseCase {
       ),
       citations: message.citations as Array<Record<string, unknown>>,
       metadata: message.metadata,
+      deliveryStatus: null,
       createdAt: message.createdAt.toISOString(),
     };
   }
@@ -285,4 +316,26 @@ export class GetPatientSessionDetailUseCase {
       }];
     });
   }
+}
+
+function hasUploadedMedicalRecords(
+  formalMessages: Awaited<ReturnType<IMessageRepository['findByConversationId']>>['data'],
+  aiSession: AiChatSession | null,
+): boolean {
+  if (formalMessages.some((message) =>
+    message.messageType === 'FILE'
+    && message.attachments.length > 0
+    && message.deliveryStatus !== 'uploading'
+    && message.deliveryStatus !== 'pending'
+    && message.deliveryStatus !== 'failed'
+  )) {
+    return true;
+  }
+
+  return (aiSession?.statusSnapshot.supportingDocuments.length ?? 0) > 0;
+}
+
+function isQuestionnaireSubmitted(aiSession: AiChatSession | null): boolean {
+  const formStatus = aiSession?.statusSnapshot.formStatus?.toLowerCase();
+  return formStatus === 'completed' || formStatus === 'complete' || formStatus === 'submitted';
 }

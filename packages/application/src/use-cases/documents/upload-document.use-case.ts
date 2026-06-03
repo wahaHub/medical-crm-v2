@@ -39,6 +39,10 @@ export class UploadDocumentUseCase {
 
     const docId = generateId();
     const storageKey = input.storageKey;
+    const existing = await this.documentRepo.findByStorageKey(storageKey);
+    if (existing) {
+      return { documentId: existing.id };
+    }
 
     const now = new Date();
     const doc = new Document({

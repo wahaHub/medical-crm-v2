@@ -105,6 +105,29 @@ export const listMessagesQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   after: z.string().uuid().optional(),
+  locale: z.enum(['en', 'zh']).optional(),
+});
+
+export const patientChatEventSchema = z.object({
+  eventType: z.enum([
+    'ACTION_SELECTED',
+    'PROCESS_GUIDE_CONFIRMED',
+    'PROCESS_GUIDE_DISMISSED',
+    'ADVISOR_HANDOFF_REQUESTED',
+    'QUESTIONNAIRE_OPENED',
+    'QUESTIONNAIRE_SUBMITTED',
+    'ATTACHMENT_UPLOAD_STARTED',
+    'ATTACHMENT_UPLOAD_COMPLETED',
+    'ATTACHMENT_UPLOAD_FAILED',
+    'TEXT_MESSAGE_SUBMITTED',
+    'BOT_MODE_CHANGED',
+    'ADMIN_TAKEOVER_STARTED',
+  ]),
+  actionKey: z.enum(['VIEW_PROCESS', 'UPLOAD_RECORDS', 'CONTACT_ADVISOR', 'OPEN_QUESTIONNAIRE']).optional(),
+  clientMessageId: z.string().min(1).max(120).optional(),
+  serverMessageId: z.string().min(1).max(120).optional(),
+  locale: z.enum(['en', 'zh']).default('en'),
+  payload: z.record(z.unknown()).optional(),
 });
 
 // POST /api/patient/intake/:caseId
@@ -131,5 +154,6 @@ export type RestoreTokenInput = z.infer<typeof restoreTokenSchema>;
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
 export type SendPatientMessageInput = z.infer<typeof sendPatientMessageSchema>;
 export type ListMessagesQuery = z.infer<typeof listMessagesQuerySchema>;
+export type PatientChatEventInput = z.infer<typeof patientChatEventSchema>;
 export type SubmitIntakeInput = z.infer<typeof submitIntakeSchema>;
 export type QuoteActionInput = z.infer<typeof quoteActionSchema>;

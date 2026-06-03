@@ -1044,23 +1044,6 @@ async function resolveAdminConversationForChatbotSession(
   return svc.conversationRepo.findOrCreateAdminPatientConversation(newConversation);
 }
 
-async function tryResolveAdminConversationForChatbotSession(
-  svc: ReturnType<typeof getServices>,
-  session: AiChatSession,
-): Promise<Conversation | null> {
-  try {
-    return await resolveAdminConversationForChatbotSession(svc, session);
-  } catch (error) {
-    console.error('[chatbot-mirror] failed to resolve admin conversation', {
-      sessionId: session.sessionId,
-      patientId: session.patientId,
-      site: session.site,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return null;
-  }
-}
-
 async function resolveChatbotCaseIdForMirroring(
   svc: ReturnType<typeof getServices>,
   session: AiChatSession,

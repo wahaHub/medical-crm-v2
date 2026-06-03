@@ -170,6 +170,7 @@ import {
   GetPatientCaseDetailUseCase,
   GetPatientConversationsUseCase,
   GetPatientSessionDetailUseCase,
+  HandlePatientChatEventUseCase,
   PatientAcceptQuoteUseCase,
   PatientRejectQuoteUseCase,
   GetIntakeTemplateUseCase,
@@ -328,7 +329,6 @@ interface AppServices {
   messageRepo: IMessageRepository;
   aiChatSessionRepo: IAiChatSessionRepository;
   aiChatMessageRepo: IAiChatMessageRepository;
-  conversationRepo: IConversationRepository;
   aiUserProfileRepo: IAiUserProfileRepository;
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
@@ -586,6 +586,7 @@ interface AppServices {
   getPatientCaseDetail: GetPatientCaseDetailUseCase;
   getPatientConversations: GetPatientConversationsUseCase;
   getPatientSessionDetail: GetPatientSessionDetailUseCase;
+  handlePatientChatEvent: HandlePatientChatEventUseCase;
   patientAcceptQuote: PatientAcceptQuoteUseCase;
   patientRejectQuote: PatientRejectQuoteUseCase;
   getIntakeTemplate: GetIntakeTemplateUseCase;
@@ -1083,7 +1084,6 @@ export function getServices(): AppServices {
     const contextBuilderService = new ContextBuilderService(
       aiChatSessionRepo,
       aiChatMessageRepo,
-      conversationRepo,
       aiUserProfileRepo,
       aiChatTimelineEventRepo,
       aiFollowupTriggerRepo,
@@ -1108,6 +1108,22 @@ export function getServices(): AppServices {
     const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase, crmSupabase);
 
     const listCases = new ListCasesUseCase(caseRepo);
+    const uploadDocument = new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo);
+    const getPatientSessionDetail = new GetPatientSessionDetailUseCase(
+      conversationRepo,
+      messageRepo,
+      aiChatSessionRepo,
+      aiChatMessageRepo,
+      routedStorageService,
+      hospitalRepo,
+    );
+    const handlePatientChatEvent = new HandlePatientChatEventUseCase(
+      conversationRepo,
+      messageRepo,
+      aiChatSessionRepo,
+      getPatientSessionDetail,
+      uploadDocument,
+    );
 
     _services = {
       crmDb, crmSupabase, mainSupabase, chinaSupabase,
@@ -1132,7 +1148,7 @@ export function getServices(): AppServices {
       updateCaseStatus: new UpdateCaseStatusUseCase(caseRepo, progressRepo),
       advanceCaseStage: new AdvanceCaseStageUseCase(caseRepo, progressRepo),
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
-      uploadDocument: new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo),
+      uploadDocument,
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
       getDocumentPreview: new GetDocumentPreviewUseCase(documentRepo, caseRepo, routedStorageService, chcRepo),
       deleteDocument: new DeleteDocumentUseCase(documentRepo, caseRepo, chcRepo),
@@ -1260,14 +1276,8 @@ export function getServices(): AppServices {
       getPatientCases: new GetPatientCasesUseCase(caseRepo),
       getPatientCaseDetail: new GetPatientCaseDetailUseCase(caseRepo),
       getPatientConversations: new GetPatientConversationsUseCase(conversationRepo, hospitalRepo),
-      getPatientSessionDetail: new GetPatientSessionDetailUseCase(
-        conversationRepo,
-        messageRepo,
-        aiChatSessionRepo,
-        aiChatMessageRepo,
-        routedStorageService,
-        hospitalRepo,
-      ),
+      getPatientSessionDetail,
+      handlePatientChatEvent,
       patientAcceptQuote: new PatientAcceptQuoteUseCase(quoteRepo, caseRepo),
       patientRejectQuote: new PatientRejectQuoteUseCase(quoteRepo, caseRepo),
       getIntakeTemplate: new GetIntakeTemplateUseCase(),

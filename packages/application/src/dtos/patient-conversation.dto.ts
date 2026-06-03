@@ -8,6 +8,7 @@ export interface PatientSessionSummaryDTO {
   hospitalId: string | null;
   hospitalName: string | null;
   isAiAvailable: boolean;
+  chatState?: PatientChatStateDTO;
   unreadCount: number;
   lastMessagePreview: string | null;
   lastMessageAt: string | null;
@@ -27,6 +28,7 @@ export interface PatientConversationSummariesDTO {
 export interface PatientSessionMessageDTO {
   id: string;
   sessionId: string;
+  clientMessageId?: string | null;
   source: 'FORMAL' | 'CHATBOT';
   conversationId: string | null;
   senderRole: string | null;
@@ -37,7 +39,30 @@ export interface PatientSessionMessageDTO {
   attachments: MessageAttachmentDTO[];
   citations?: Array<Record<string, unknown>>;
   metadata?: Record<string, unknown>;
+  deliveryStatus?: string | null;
   createdAt: string;
+}
+
+export type PatientBotMode = 'mechanical' | 'ai' | 'human';
+
+export interface PatientChatActionDTO {
+  id: 'VIEW_PROCESS' | 'UPLOAD_RECORDS' | 'CONTACT_ADVISOR' | 'OPEN_QUESTIONNAIRE';
+  label: string;
+  icon?: string;
+  disabled?: boolean;
+}
+
+export interface PatientComposerPolicyDTO {
+  textEnabled: boolean;
+  attachmentsEnabled: boolean;
+  sendEnabledWhen: 'text_or_attachment' | 'attachment_only' | 'disabled';
+  placeholder: string;
+}
+
+export interface PatientChatStateDTO {
+  botMode: PatientBotMode;
+  availableActions: PatientChatActionDTO[];
+  composerPolicy: PatientComposerPolicyDTO;
 }
 
 export interface PatientSessionDetailDTO {
@@ -48,6 +73,7 @@ export interface PatientSessionDetailDTO {
   hospitalId: string | null;
   hospitalName: string | null;
   isAiAvailable: boolean;
+  chatState?: PatientChatStateDTO;
   chatAuthority: 'AI_ACTIVE' | 'HUMAN_TAKEOVER' | null;
   data: PatientSessionMessageDTO[];
   total: number;

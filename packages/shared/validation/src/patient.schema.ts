@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { sanitizeRichText } from '@medical-crm/utils';
 
+const beautyProcedureCategorySchema = z.enum(['face', 'body', 'non-surgical', 'hair']);
+
 // POST /api/patient/onboarding/init
 export const initOnboardingSchema = z.object({
   email: z.string().email().max(255),
@@ -18,7 +20,7 @@ export const initOnboardingSchema = z.object({
   procedureId: z.string().uuid().optional(),
   destination: z.string().max(100).optional(),
   treatmentTime: z.string().trim().max(120).optional(),
-  category: z.enum(['face', 'body', 'non-surgical']).optional(),
+  category: beautyProcedureCategorySchema.optional(),
   registerToken: z.string().min(1).optional(),
   captchaToken: z.string().min(1).optional(),
 });
@@ -28,7 +30,7 @@ export const matchHospitalsSchema = z.object({
   procedureId: z.string().optional(),
   procedureName: z.string().optional(),
   destination: z.string().max(100).optional(),
-  category: z.enum(['face', 'body', 'non-surgical']).optional(),
+  category: beautyProcedureCategorySchema.optional(),
 });
 
 // POST /api/patient/select-hospitals

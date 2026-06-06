@@ -153,6 +153,61 @@ describe('patientPublicRoutes', () => {
     delete process.env.DEBUG_BYPASS_TOKEN;
   });
 
+  it('returns hair procedures from the public fallback catalog', async () => {
+    const res = await requestWithSite('/procedures?category=hair');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      procedures: [
+        { id: 'hair-transplant', name: 'Hair Transplant' },
+        { id: 'hairline-design', name: 'Hairline Design' },
+        { id: 'beard-transplant', name: 'Beard Transplant' },
+        { id: 'eyebrow-restoration', name: 'Eyebrow Restoration' },
+      ],
+    });
+  });
+
+  it('accepts hair as a Beauty onboarding procedure category', async () => {
+    const execute = vi.fn().mockResolvedValue({
+      patientId: 'patient-1',
+      caseId: '11111111-1111-4111-8111-111111111111',
+      nextStep: 'select-hospitals',
+      token: 'session-token-123',
+      restoreToken: 'restore-token-123',
+      restoreCookie: 'restore-cookie-123',
+      isExistingPatient: false,
+      widgetChatTarget: {
+        kind: 'CHATBOT_SESSION',
+        sessionId: 'widget-chat:patient-1:11111111-1111-4111-8111-111111111111',
+      },
+    });
+    mockGetServices.mockReturnValue(createBaseServices({
+      initOnboarding: { execute },
+    }));
+
+    const res = await requestWithSite('/onboarding/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'hair-patient@example.com',
+        name: 'Hair Patient',
+        preferredLanguage: 'en',
+        disease: 'Hair Transplant',
+        destination: 'Shenzhen',
+        category: 'hair',
+        captchaToken: 'captcha-token',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      category: 'hair',
+      disease: 'Hair Transplant',
+      destination: 'Shenzhen',
+      site: 'beauty',
+    }));
+  });
+
   it('returns a restore token from onboarding and seeds the widget through Dify instead of local hospital matching', async () => {
     const execute = vi.fn().mockResolvedValue({
       patientId: 'patient-1',

@@ -106,6 +106,12 @@ const PROCEDURE_FALLBACK: Record<string, Array<{ id: string; name: string }>> = 
     { id: 'non-surgical-microneedling', name: 'Microneedling' },
     { id: 'non-surgical-prp-prf', name: 'PRP / PRF' },
   ],
+  hair: [
+    { id: 'hair-transplant', name: 'Hair Transplant' },
+    { id: 'hairline-design', name: 'Hairline Design' },
+    { id: 'beard-transplant', name: 'Beard Transplant' },
+    { id: 'eyebrow-restoration', name: 'Eyebrow Restoration' },
+  ],
 };
 
 async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<boolean> {

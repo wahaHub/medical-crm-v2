@@ -30,6 +30,7 @@ RSYNC_EXCLUDES = (
     ".vercel",
     ".turbo",
     ".next",
+    ".next-dev",
     "node_modules",
     "coverage",
     "dist",

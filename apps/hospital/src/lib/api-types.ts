@@ -59,6 +59,7 @@ export interface HospitalCaseDetail {
   id: string;
   caseNumber: string;
   displayStatus: string;
+  hospitalType?: 'COSMETIC' | 'REGULAR' | null;
   patient: {
     id: string;
     name: string;

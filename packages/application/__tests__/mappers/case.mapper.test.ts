@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toCaseDTO } from '../../src/mappers/case.mapper.js';
+import { toCaseDTO, toHospitalCaseDetailDTO } from '../../src/mappers/case.mapper.js';
 
 describe('toCaseDTO', () => {
   it('maps extended entry profile fields into the admin case summary', () => {
@@ -99,5 +99,71 @@ describe('toCaseDTO', () => {
 
     expect(dto.country).toBe('Canada');
     expect(dto.destination).toBeNull();
+  });
+});
+
+describe('toHospitalCaseDetailDTO', () => {
+  it('maps patient site into the hospital detail hospital type', () => {
+    const baseCase = {
+      id: 'case-3',
+      caseNumber: { value: 'CASE-2026-0003' },
+      patientId: 'patient-3',
+      patientName: 'Beauty Patient',
+      patientCountry: 'US',
+      patientLanguage: 'en',
+      assignedHospitalId: null,
+      primaryDiagnosis: null,
+      diagnosisCode: null,
+      symptoms: null,
+      medicalHistory: null,
+      aiSummary: null,
+      aiSummaryLanguage: null,
+      riskLevel: null,
+      status: 'DRAFT',
+      stage: 'PENDING_ASSIGNMENT',
+      assignedAt: null,
+      createdAt: new Date('2026-04-04T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-04T00:00:00.000Z'),
+      assignmentStatus: 'UNASSIGNED',
+      treatmentStage: null,
+      conditionSummary: null,
+      structuredData: null,
+      riskFlags: null,
+      priority: null,
+      lastEventAt: null,
+      aiSummaryStatus: 'PENDING',
+      questionCollectorTemplateId: null,
+    } as any;
+
+    const beautyDto = toHospitalCaseDetailDTO(
+      baseCase,
+      [],
+      [],
+      {
+        id: 'patient-3',
+        code: 'P-3',
+        preferredLanguage: 'en',
+        site: 'beauty',
+        age: null,
+        gender: null,
+      },
+    );
+
+    const regularDto = toHospitalCaseDetailDTO(
+      baseCase,
+      [],
+      [],
+      {
+        id: 'patient-3',
+        code: 'P-3',
+        preferredLanguage: 'en',
+        site: 'china',
+        age: null,
+        gender: null,
+      },
+    );
+
+    expect(beautyDto.hospitalType).toBe('COSMETIC');
+    expect(regularDto.hospitalType).toBe('REGULAR');
   });
 });

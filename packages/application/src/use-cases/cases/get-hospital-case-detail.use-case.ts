@@ -128,6 +128,7 @@ export class GetHospitalCaseDetailUseCase {
         id: entity.patientId,
         code: patientInfo?.patientCode ?? '',
         preferredLanguage: patientInfo?.preferredLanguage,
+        site: patientInfo?.site ?? null,
         age: null,
         gender: null,
       },

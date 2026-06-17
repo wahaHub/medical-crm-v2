@@ -78,6 +78,7 @@ import {
   getDiagnosisSeverityLabel,
   getDiagnosisTreatmentDurationLabel,
   getMarketingTemplateTypeLabel,
+  shouldShowHospitalCaseDetailTab,
 } from '../components/case-detail-panel';
 
 type TranslationFn = (key: string, params?: Record<string, unknown>, fallback?: string) => string;
@@ -280,5 +281,19 @@ describe('case detail panel i18n helpers', () => {
     expect(getDiagnosisSeverityLabel('moderate', t)).toBe('Localized Moderate');
     expect(getDiagnosisSeverityLabel('severe', t)).toBe('Localized Severe');
     expect(getDiagnosisSeverityLabel('CRITICAL_BACKEND_CODE', t)).toBe('Localized Unknown');
+  });
+
+  it('shows only the intake tab matching the case hospital type', () => {
+    expect(shouldShowHospitalCaseDetailTab('intake', 'REGULAR')).toBe(true);
+    expect(shouldShowHospitalCaseDetailTab('beauty', 'REGULAR')).toBe(false);
+
+    expect(shouldShowHospitalCaseDetailTab('intake', 'COSMETIC')).toBe(false);
+    expect(shouldShowHospitalCaseDetailTab('beauty', 'COSMETIC')).toBe(true);
+  });
+
+  it('keeps missing hospital type cases on the legacy medical intake path', () => {
+    expect(shouldShowHospitalCaseDetailTab('intake', null)).toBe(true);
+    expect(shouldShowHospitalCaseDetailTab('beauty', null)).toBe(false);
+    expect(shouldShowHospitalCaseDetailTab('documents', null)).toBe(true);
   });
 });

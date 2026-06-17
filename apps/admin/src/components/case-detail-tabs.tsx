@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tabs } from '@medical-crm/ui';
 import { CaseOverviewTab } from './tabs/case-overview-tab';
 import { CaseIntakeTab } from './tabs/case-intake-tab';
@@ -13,6 +13,7 @@ import { CaseOrdersTab } from './tabs/case-orders-tab';
 import { CaseSupportTab } from './tabs/case-support-tab';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
 import { CaseBeautyTab } from './tabs/case-beauty-tab';
+import { shouldShowCaseDetailTab } from '@/lib/case-detail-tabs';
 import type { CaseSummary } from '@/lib/api-types';
 
 const TAB_ITEMS = [
@@ -35,18 +36,32 @@ interface CaseDetailTabsProps {
 
 export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
   const [activeKey, setActiveKey] = useState('overview');
+  const visibleTabItems = useMemo(
+    () => TAB_ITEMS.filter((tab) => shouldShowCaseDetailTab(tab.key, caseData.hospitalType)),
+    [caseData.hospitalType],
+  );
+
+  useEffect(() => {
+    if (!visibleTabItems.some((tab) => tab.key === activeKey)) {
+      setActiveKey('overview');
+    }
+  }, [activeKey, visibleTabItems]);
 
   return (
     <div className="space-y-6">
-      <Tabs items={TAB_ITEMS} activeKey={activeKey} onChange={setActiveKey} />
+      <Tabs items={visibleTabItems} activeKey={activeKey} onChange={setActiveKey} />
 
       <div>
         {activeKey === 'overview' && <CaseOverviewTab caseData={caseData} />}
-        {activeKey === 'intake' && <CaseIntakeTab caseId={caseData.id} />}
+        {activeKey === 'intake' && shouldShowCaseDetailTab('intake', caseData.hospitalType) && (
+          <CaseIntakeTab caseId={caseData.id} />
+        )}
         {activeKey === 'quotes' && <CaseQuotesTab caseId={caseData.id} />}
         {activeKey === 'timeline' && <CaseTimelineTab caseId={caseData.id} />}
         {activeKey === 'messages' && <CaseMessagesTab caseId={caseData.id} />}
-        {activeKey === 'beauty' && <CaseBeautyTab caseId={caseData.id} />}
+        {activeKey === 'beauty' && shouldShowCaseDetailTab('beauty', caseData.hospitalType) && (
+          <CaseBeautyTab caseId={caseData.id} />
+        )}
         {activeKey === 'journey' && <CaseJourneyTab caseId={caseData.id} />}
         {activeKey === 'consultations' && <CaseConsultationsTab caseId={caseData.id} />}
         {activeKey === 'orders' && <CaseOrdersTab caseId={caseData.id} />}

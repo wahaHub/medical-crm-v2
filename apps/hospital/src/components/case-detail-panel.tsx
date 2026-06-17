@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -522,12 +522,37 @@ const tabDefinitions = [
   { id: 'consultation', labelKey: 'hospital.cases.detail.tabs.consultation', fallback: 'Consultation', icon: Video },
 ];
 
+export function shouldShowHospitalCaseDetailTab(
+  tabId: string,
+  hospitalType: HospitalCaseDetail['hospitalType'],
+) {
+  if (tabId === 'beauty') {
+    return hospitalType === 'COSMETIC';
+  }
+
+  if (tabId === 'intake') {
+    return hospitalType !== 'COSMETIC';
+  }
+
+  return true;
+}
+
 // ── Main Component ──────────────────────────────────────────────────
 
 export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail }) {
   const [activeTab, setActiveTab] = useState('ai-summary');
   const router = useRouter();
   const { locale, t } = useHospitalI18n();
+  const visibleTabDefinitions = useMemo(
+    () => tabDefinitions.filter((tab) => shouldShowHospitalCaseDetailTab(tab.id, caseDetail.hospitalType)),
+    [caseDetail.hospitalType],
+  );
+
+  useEffect(() => {
+    if (!visibleTabDefinitions.some((tab) => tab.id === activeTab)) {
+      setActiveTab('ai-summary');
+    }
+  }, [activeTab, visibleTabDefinitions]);
 
   const { data: consultations } = useCaseConsultations(caseDetail.id);
   const consultationsList = (consultations as ConsultationSummary[] | undefined) ?? [];
@@ -607,7 +632,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
       {/* Tabs */}
       <div className="px-10 pt-4 bg-white border-b border-slate-200/60 shrink-0 shadow-sm">
         <div className="flex gap-8 overflow-x-auto">
-          {tabDefinitions.map((tab) => (
+          {visibleTabDefinitions.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -627,8 +652,12 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
       <div className="flex-1 overflow-y-auto p-10">
         <div className="max-w-5xl mx-auto">
           {activeTab === 'ai-summary' && <CaseAiSummaryTab aiSummary={caseDetail.aiSummary} />}
-          {activeTab === 'beauty' && <CaseBeautyTab caseDetail={caseDetail} />}
-          {activeTab === 'intake' && <IntakeTab caseDetail={caseDetail} />}
+          {activeTab === 'beauty' && shouldShowHospitalCaseDetailTab('beauty', caseDetail.hospitalType) && (
+            <CaseBeautyTab caseDetail={caseDetail} />
+          )}
+          {activeTab === 'intake' && shouldShowHospitalCaseDetailTab('intake', caseDetail.hospitalType) && (
+            <IntakeTab caseDetail={caseDetail} />
+          )}
           {activeTab === 'documents' && <DocumentsTab caseDetail={caseDetail} />}
           {activeTab === 'messages' && <MessagesTab caseDetail={caseDetail} />}
           {activeTab === 'diagnosis' && <DiagnosisTab caseDetail={caseDetail} />}

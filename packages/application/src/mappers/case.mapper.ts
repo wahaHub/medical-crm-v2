@@ -67,6 +67,7 @@ export interface PatientInfo {
   id: string;
   code: string;
   preferredLanguage?: string;
+  site?: 'beauty' | 'china' | null;
   age: number | null;
   gender: string | null;
 }
@@ -130,6 +131,7 @@ export function toHospitalCaseDetailDTO(
     id: entity.id,
     caseNumber: entity.caseNumber.value,
     displayStatus: deriveDisplayStatus(entity),
+    hospitalType: deriveHospitalTypeFromPatientSite(patient.site),
     patient: {
       id: patient.id,
       name: entity.patientName,

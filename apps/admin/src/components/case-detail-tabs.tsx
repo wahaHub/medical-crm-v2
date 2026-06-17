@@ -12,6 +12,7 @@ import { CaseConsultationsTab } from './tabs/case-consultations-tab';
 import { CaseOrdersTab } from './tabs/case-orders-tab';
 import { CaseSupportTab } from './tabs/case-support-tab';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
+import { CaseBeautyTab } from './tabs/case-beauty-tab';
 import type { CaseSummary } from '@/lib/api-types';
 
 const TAB_ITEMS = [
@@ -19,6 +20,7 @@ const TAB_ITEMS = [
   { key: 'quotes', label: 'Multi-Hospital Quotes' },
   { key: 'timeline', label: 'Timeline' },
   { key: 'messages', label: 'Messages' },
+  { key: 'beauty', label: 'Beauty Intake' },
   { key: 'intake', label: 'Medical Intake' },
   { key: 'journey', label: 'Journey' },
   { key: 'consultations', label: 'Consultations' },
@@ -44,6 +46,7 @@ export function CaseDetailTabs({ caseData }: CaseDetailTabsProps) {
         {activeKey === 'quotes' && <CaseQuotesTab caseId={caseData.id} />}
         {activeKey === 'timeline' && <CaseTimelineTab caseId={caseData.id} />}
         {activeKey === 'messages' && <CaseMessagesTab caseId={caseData.id} />}
+        {activeKey === 'beauty' && <CaseBeautyTab caseId={caseData.id} />}
         {activeKey === 'journey' && <CaseJourneyTab caseId={caseData.id} />}
         {activeKey === 'consultations' && <CaseConsultationsTab caseId={caseData.id} />}
         {activeKey === 'orders' && <CaseOrdersTab caseId={caseData.id} />}

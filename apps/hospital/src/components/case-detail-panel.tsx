@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge, MessageCaseDetailPanel, QuestionnaireReadonlyView, LoadingSpinner } from '@medical-crm/ui';
 import { CaseAiSummaryTab } from './tabs/case-ai-summary-tab';
+import { CaseBeautyTab } from './tabs/case-beauty-tab';
 import { CaseQuoteTab } from './tabs/case-quote-tab';
 import {
   useCaseConsultations,
@@ -510,6 +511,7 @@ export function formatQuestionnaireFallbackFieldLabel(key: string, t: Translatio
 
 const tabDefinitions = [
   { id: 'ai-summary', labelKey: 'hospital.cases.detail.tabs.aiSummary', fallback: 'AI Summary', icon: Sparkles },
+  { id: 'beauty', labelKey: 'hospital.cases.detail.tabs.beauty', fallback: 'Beauty Intake', icon: Eye },
   { id: 'intake', labelKey: 'hospital.cases.detail.tabs.intake', fallback: 'Intake', icon: FileText },
   { id: 'documents', labelKey: 'hospital.cases.detail.tabs.documents', fallback: 'Documents', icon: FileText },
   { id: 'messages', labelKey: 'hospital.cases.detail.tabs.messages', fallback: 'Messages', icon: MessageSquare },
@@ -625,6 +627,7 @@ export function CaseDetailPanel({ caseDetail }: { caseDetail: HospitalCaseDetail
       <div className="flex-1 overflow-y-auto p-10">
         <div className="max-w-5xl mx-auto">
           {activeTab === 'ai-summary' && <CaseAiSummaryTab aiSummary={caseDetail.aiSummary} />}
+          {activeTab === 'beauty' && <CaseBeautyTab caseDetail={caseDetail} />}
           {activeTab === 'intake' && <IntakeTab caseDetail={caseDetail} />}
           {activeTab === 'documents' && <DocumentsTab caseDetail={caseDetail} />}
           {activeTab === 'messages' && <MessagesTab caseDetail={caseDetail} />}

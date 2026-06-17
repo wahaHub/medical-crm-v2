@@ -20,6 +20,8 @@ export class PatientChatMessageWriter {
     clientMessageId?: string | null;
     content: string;
     locale: string;
+    messageType?: 'TEXT' | 'IMAGE' | 'FILE';
+    attachments?: Attachment[];
     metadata: Record<string, unknown>;
   }, tx?: Transaction): Promise<Message> {
     return this.saveAndTouchConversation(new Message({
@@ -32,9 +34,9 @@ export class PatientChatMessageWriter {
       content: input.content,
       originalLanguage: input.locale,
       translatedContent: null,
-      messageType: 'TEXT',
+      messageType: input.messageType ?? 'TEXT',
       moderationStatus: 'ALLOWED',
-      attachments: [],
+      attachments: input.attachments ?? [],
       deliveryStatus: 'sent',
       metadata: {
         source: 'patient',

@@ -193,6 +193,14 @@ export class HandlePatientChatEventUseCase {
     if (!content) {
       throw new ForbiddenError('Message content is required');
     }
+    const attachments = readAttachments(input.payload);
+    const requestedMessageType = input.payload?.['messageType'];
+    const messageType =
+      requestedMessageType === 'IMAGE' || requestedMessageType === 'FILE' || requestedMessageType === 'TEXT'
+        ? requestedMessageType
+        : attachments.length > 0
+          ? (attachments.some((attachment) => attachment.mimeType.startsWith('image/')) ? 'IMAGE' : 'FILE')
+          : 'TEXT';
 
     await this.writer.writePatientAction({
       conversationId,
@@ -200,7 +208,12 @@ export class HandlePatientChatEventUseCase {
       clientMessageId: input.clientMessageId,
       content,
       locale: input.locale,
-      metadata: { eventType: input.eventType, contentType: 'text' },
+      messageType,
+      attachments,
+      metadata: {
+        eventType: input.eventType,
+        contentType: attachments.length > 0 ? 'attachment' : 'text',
+      },
     });
   }
 
@@ -453,27 +466,37 @@ function readFirstAttachment(payload: Record<string, unknown> | undefined): {
   mimeType: string;
   storageKey: string;
 } | null {
+  return readAttachments(payload)[0] ?? null;
+}
+
+function readAttachments(payload: Record<string, unknown> | undefined): Array<{
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  storageKey: string;
+}> {
   const attachments = payload?.['attachments'];
   if (!Array.isArray(attachments) || attachments.length === 0) {
-    return null;
+    return [];
   }
 
-  const candidate = attachments[0];
-  if (!candidate || typeof candidate !== 'object') {
-    return null;
-  }
+  return attachments.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object') {
+      return [];
+    }
 
-  const record = candidate as Record<string, unknown>;
-  const fileName = typeof record['fileName'] === 'string' ? record['fileName'] : null;
-  const mimeType = typeof record['mimeType'] === 'string' ? record['mimeType'] : null;
-  const storageKey = typeof record['storageKey'] === 'string' ? record['storageKey'] : null;
-  const fileSize = typeof record['fileSize'] === 'number'
-    ? record['fileSize']
-    : (typeof record['size'] === 'number' ? record['size'] : null);
+    const record = candidate as Record<string, unknown>;
+    const fileName = typeof record['fileName'] === 'string' ? record['fileName'] : null;
+    const mimeType = typeof record['mimeType'] === 'string' ? record['mimeType'] : null;
+    const storageKey = typeof record['storageKey'] === 'string' ? record['storageKey'] : null;
+    const fileSize = typeof record['fileSize'] === 'number'
+      ? record['fileSize']
+      : (typeof record['size'] === 'number' ? record['size'] : null);
 
-  if (!fileName || !mimeType || !storageKey || typeof fileSize !== 'number') {
-    return null;
-  }
+    if (!fileName || !mimeType || !storageKey || typeof fileSize !== 'number') {
+      return [];
+    }
 
-  return { fileName, mimeType, storageKey, fileSize };
+    return [{ fileName, mimeType, storageKey, fileSize }];
+  });
 }

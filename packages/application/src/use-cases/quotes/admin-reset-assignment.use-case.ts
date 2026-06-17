@@ -1,12 +1,14 @@
 import type { ICHCRepository, ICaseRepository, TransactionRunner, Transaction } from '@medical-crm/domain';
 import { ForbiddenError, NotFoundError, ValidationError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class AdminResetAssignmentUseCase {
   constructor(
     private readonly chcRepo: ICHCRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly txRunner: TransactionRunner,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<void> {
@@ -16,6 +18,7 @@ export class AdminResetAssignmentUseCase {
       // 1. Find the case
       const caseEntity = await this.caseRepo.findById(caseId, tx);
       if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
       if (caseEntity.assignmentStatus !== 'ASSIGNED') {
         throw new ValidationError('Case is not assigned');
       }

@@ -3,15 +3,20 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class RemoveHospitalFromCaseUseCase {
-  constructor(private readonly chcRepo: ICHCRepository) {}
+  constructor(
+    private readonly chcRepo: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
+  ) {}
 
   async execute(chcId: string, reason: string | undefined, actor: Actor): Promise<CaseHospitalContactDTO> {
     if (actor.role !== 'ADMIN') throw new ForbiddenError('Only admins can remove hospitals from cases');
 
     const entity = await this.chcRepo.findById(chcId);
     if (!entity) throw new NotFoundError(`CaseHospitalContact ${chcId} not found`);
+    await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
 
     entity.remove(reason);
     const saved = await this.chcRepo.save(entity);

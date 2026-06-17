@@ -4,6 +4,7 @@ import { generateId, ForbiddenError, ValidationError } from '@medical-crm/utils'
 import type { OrderDTO } from '../../dtos/order.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toOrderDTO } from '../../mappers/order.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface CreateOrderInput {
   caseId?: string;
@@ -24,6 +25,7 @@ export class CreateOrderUseCase {
   constructor(
     private readonly orderRepo: IOrderRepository,
     private readonly idempotencyGuard?: IIdempotencyGuard,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(input: CreateOrderInput, actor: Actor): Promise<OrderDTO> {
@@ -36,6 +38,10 @@ export class CreateOrderUseCase {
     if (actor.role === 'ADMIN') {
       if (!input.patientId) throw new ValidationError('Admin must specify patientId when creating an order');
       resolvedPatientId = input.patientId;
+      await this.adminAccess?.assertActorCanAccessCaseOrPatient(
+        actor,
+        { caseId: input.caseId ?? null, patientId: resolvedPatientId },
+      );
     } else {
       resolvedPatientId = actor.userId;
     }

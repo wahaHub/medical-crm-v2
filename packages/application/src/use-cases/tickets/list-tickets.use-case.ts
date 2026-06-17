@@ -2,6 +2,7 @@ import type { ISupportTicketRepository, TicketListQuery } from '@medical-crm/dom
 import type { SupportTicketDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketDTO } from '../../mappers/support-ticket.mapper.js';
+import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
 
 export class ListTicketsUseCase {
   constructor(private readonly ticketRepo: ISupportTicketRepository) {}
@@ -14,7 +15,8 @@ export class ListTicketsUseCase {
 
     if (actor.role === 'ADMIN') {
       // Admin sees all tickets
-      result = await this.ticketRepo.findAll(query);
+      const patientSiteScope = getAdminPatientSiteScope(actor);
+      result = await this.ticketRepo.findAll(patientSiteScope ? { ...query, patientSiteScope } : query);
     } else {
       // Patient sees own tickets only
       result = await this.ticketRepo.findByPatientId(actor.userId, query);

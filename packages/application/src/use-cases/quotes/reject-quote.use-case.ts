@@ -3,11 +3,13 @@ import { NotFoundError, ForbiddenError, ConflictError } from '@medical-crm/utils
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class RejectQuoteUseCase {
   constructor(
     private readonly quoteRepo: IQuoteRepository,
     private readonly chcRepo: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(quoteId: string, actor: Actor): Promise<QuoteDTO> {
@@ -15,6 +17,7 @@ export class RejectQuoteUseCase {
 
     const quote = await this.quoteRepo.findById(quoteId);
     if (!quote) throw new NotFoundError(`Quote ${quoteId} not found`);
+    await this.adminAccess?.assertActorCanAccessCase(actor, quote.caseId);
     if (quote.status !== 'PENDING') throw new ConflictError('Quote is not in PENDING status');
 
     quote.reject();

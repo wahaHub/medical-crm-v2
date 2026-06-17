@@ -1,8 +1,11 @@
-import { eq, and, sql, ne, count, ilike } from 'drizzle-orm';
+import { eq, and, sql, ne, count, ilike, type SQL } from 'drizzle-orm';
 import type { IQuoteRepository, QuoteListQuery } from '@medical-crm/domain';
 import { Quote, QuoteNumber } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { quotes } from '../schema/index.js';
+import { cases, quotes, users } from '../schema/index.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type QuoteRow = typeof quotes.$inferSelect;
 
 export class DrizzleQuoteRepository implements IQuoteRepository {
   constructor(private readonly db: CrmDb) {}
@@ -36,7 +39,7 @@ export class DrizzleQuoteRepository implements IQuoteRepository {
   ): Promise<{ data: Quote[]; total: number }> {
     const { page, limit, status } = query;
 
-    const conditions = [eq(quotes.hospitalId, hospitalId)];
+    const conditions: SQL[] = [eq(quotes.hospitalId, hospitalId)];
     if (query.caseId) {
       conditions.push(eq(quotes.caseId, query.caseId));
     }
@@ -45,25 +48,47 @@ export class DrizzleQuoteRepository implements IQuoteRepository {
         eq(quotes.status, status as typeof quotes.status.enumValues[number]),
       );
     }
+    const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
+    if (patientSiteCondition) conditions.push(patientSiteCondition);
 
     const where = and(...conditions);
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(quotes)
-        .where(where)
-        .orderBy(sql`${quotes.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(quotes)
-        .where(where),
-    ]);
+    const [rows, countResult] = query.patientSiteScope
+      ? await Promise.all([
+          this.db
+            .select({ quotes })
+            .from(quotes)
+            .innerJoin(cases, eq(quotes.caseId, cases.id))
+            .innerJoin(users, eq(cases.patientId, users.id))
+            .where(where)
+            .orderBy(sql`${quotes.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(quotes)
+            .innerJoin(cases, eq(quotes.caseId, cases.id))
+            .innerJoin(users, eq(cases.patientId, users.id))
+            .where(where),
+        ])
+      : await Promise.all([
+          this.db
+            .select()
+            .from(quotes)
+            .where(where)
+            .orderBy(sql`${quotes.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(quotes)
+            .where(where),
+        ]);
 
     return {
-      data: rows.map((r) => this.rowToEntity(r)),
+      data: query.patientSiteScope
+        ? (rows as Array<{ quotes: QuoteRow }>).map((r) => this.rowToEntity(r.quotes))
+        : (rows as QuoteRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
   }

@@ -3,6 +3,7 @@ import { ForbiddenError, NotFoundError, ConflictError } from '@medical-crm/utils
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class AcceptQuoteUseCase {
   constructor(
@@ -10,6 +11,7 @@ export class AcceptQuoteUseCase {
     private readonly chcRepo: ICHCRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly txRunner: TransactionRunner,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(quoteId: string, actor: Actor): Promise<QuoteDTO> {
@@ -20,6 +22,9 @@ export class AcceptQuoteUseCase {
       // 1. Load and validate quote
       const quote = await this.quoteRepo.findById(quoteId, tx);
       if (!quote) throw new NotFoundError(`Quote ${quoteId} not found`);
+      const caseEntity = await this.caseRepo.findById(quote.caseId, tx);
+      if (!caseEntity) throw new NotFoundError('Case not found');
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
       if (quote.status !== 'PENDING') throw new ConflictError('Quote is not in PENDING status');
       if (quote.isDraft) throw new ConflictError('Cannot accept a draft quote');
 
@@ -41,8 +46,6 @@ export class AcceptQuoteUseCase {
       await this.quoteRepo.rejectPendingByCaseExcept(quote.caseId, quote.id, tx);
 
       // 6. Assign the case to this hospital
-      const caseEntity = await this.caseRepo.findById(quote.caseId, tx);
-      if (!caseEntity) throw new NotFoundError('Case not found');
       caseEntity.transitionAssignmentStatus('ASSIGNED');
       caseEntity.assignedHospitalId = quote.hospitalId;
       caseEntity.assignedAt = new Date();

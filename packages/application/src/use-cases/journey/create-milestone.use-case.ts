@@ -5,6 +5,7 @@ import type { JourneyMilestoneDTO } from '../../dtos/journey.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toJourneyMilestoneDTO } from '../../mappers/journey.mapper.js';
 import { assertAssignedHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface CreateMilestoneInput {
   eventType: string;
@@ -17,6 +18,7 @@ export class CreateMilestoneUseCase {
   constructor(
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, input: CreateMilestoneInput, actor: Actor): Promise<JourneyMilestoneDTO> {
@@ -30,6 +32,8 @@ export class CreateMilestoneUseCase {
 
     if (actor.role === 'HOSPITAL') {
       assertAssignedHospitalCaseAccess(caseEntity, actor.hospitalId, 'Hospital can only create milestones for assigned cases');
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
 
     const milestone = new JourneyMilestone({

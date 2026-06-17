@@ -1,6 +1,7 @@
 import type { QCTemplate } from '../entities/qc-template.entity.js';
 import type { QCResponse } from '../entities/qc-response.entity.js';
 import type { QCCustomization } from '../entities/qc-customization.entity.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface QCTemplateListQuery {
   isActive?: boolean;
@@ -15,6 +16,7 @@ export interface QCResponseListQuery {
   hasRiskFlags?: boolean;
   page: number;
   limit: number;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface IQuestionCollectorRepository {

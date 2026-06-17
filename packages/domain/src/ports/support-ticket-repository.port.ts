@@ -1,4 +1,5 @@
 import type { SupportTicket } from '../entities/support-ticket.entity.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface TicketListQuery {
   patientId?: string;
@@ -9,6 +10,7 @@ export interface TicketListQuery {
   caseId?: string;
   page: number;
   limit: number;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface ISupportTicketRepository {

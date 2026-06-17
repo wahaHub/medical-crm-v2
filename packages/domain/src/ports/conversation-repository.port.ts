@@ -2,12 +2,14 @@ import type { Conversation } from '../entities/conversation.entity.js';
 import type { ConversationCategory } from '../enums/index.js';
 import type { PaginatedResult } from '@medical-crm/utils';
 import type { Transaction } from './transaction-runner.port.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface ConversationListQuery {
   page: number;
   limit: number;
   category?: ConversationCategory;
   caseId?: string;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface IConversationRepository {

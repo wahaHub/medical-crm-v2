@@ -3,6 +3,7 @@ import { generateId, ForbiddenError, ValidationError } from '@medical-crm/utils'
 import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO } from '../../mappers/conversation.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface CreateConversationInput {
   category: ConversationCategory;
@@ -16,6 +17,7 @@ export class CreateConversationUseCase {
     private readonly conversationRepo: IConversationRepository,
     private readonly caseRepo?: ICaseRepository,
     private readonly hospitalRepo?: IHospitalRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(input: CreateConversationInput, actor: Actor): Promise<ConversationDTO> {
@@ -28,6 +30,9 @@ export class CreateConversationUseCase {
 
     if (input.category === 'HOSPITAL_PATIENT' && (!input.caseId || !hospitalId)) {
       throw new ValidationError('HOSPITAL_PATIENT conversations require both caseId and hospitalId');
+    }
+    if (actor.role === 'ADMIN' && input.caseId) {
+      await this.adminAccess?.assertActorCanAccessCase(actor, input.caseId);
     }
 
     // Auto-generate title if not provided

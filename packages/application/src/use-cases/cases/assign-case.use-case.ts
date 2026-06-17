@@ -4,6 +4,7 @@ import { generateId, NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class AssignCaseUseCase {
   constructor(
@@ -11,6 +12,7 @@ export class AssignCaseUseCase {
     private readonly hospitalRepo: IHospitalRepository,
     private readonly assignmentService: CaseAssignmentService,
     private readonly progressRepo: ICaseProgressRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, hospitalId: string, actor: Actor): Promise<CaseDTO> {
@@ -20,6 +22,7 @@ export class AssignCaseUseCase {
 
     const entity = await this.caseRepo.findById(caseId);
     if (!entity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertActorCanAccessCaseEntity(actor, entity);
 
     const hospital = await this.hospitalRepo.findById(hospitalId);
     if (!hospital) throw new NotFoundError(`Hospital ${hospitalId} not found`);

@@ -3,6 +3,8 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export interface UpdateMessageInput {
   content: string;
@@ -12,6 +14,7 @@ export class UpdateMessageUseCase {
   constructor(
     private readonly conversationRepo: IConversationRepository,
     private readonly messageRepo: IMessageRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -32,9 +35,10 @@ export class UpdateMessageUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
+    await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
 
     const message = await this.messageRepo.findById(messageId);
-    if (!message) {
+    if (!message || message.conversationId !== conversationId) {
       throw new NotFoundError(`Message ${messageId} not found`);
     }
 

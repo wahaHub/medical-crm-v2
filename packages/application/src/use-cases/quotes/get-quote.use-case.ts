@@ -3,11 +3,13 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class GetQuoteUseCase {
   constructor(
     private readonly quoteRepo: IQuoteRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(quoteId: string, actor: Actor): Promise<QuoteDTO> {
@@ -23,6 +25,9 @@ export class GetQuoteUseCase {
       if (!caseEntity || caseEntity.patientId !== actor.userId) {
         throw new ForbiddenError('Access denied to this quote');
       }
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
     }
 
     return toQuoteDTO(entity);

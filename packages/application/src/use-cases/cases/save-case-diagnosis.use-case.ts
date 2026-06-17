@@ -5,6 +5,7 @@ import type { CaseProgressDTO } from '../../dtos/progress.dto.js';
 import { toProgressDTO } from '../../mappers/progress.mapper.js';
 import type { Actor } from '../../types/actor.js';
 import { assertHospitalCaseAccess } from './hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface SaveCaseDiagnosisInput {
   title: string;
@@ -28,6 +29,7 @@ export class SaveCaseDiagnosisUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly progressRepo: ICaseProgressRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, input: SaveCaseDiagnosisInput, actor: Actor): Promise<CaseProgressDTO> {
@@ -37,6 +39,8 @@ export class SaveCaseDiagnosisUseCase {
     }
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);
     }
 
     const previousDiagnosis = caze.primaryDiagnosis;

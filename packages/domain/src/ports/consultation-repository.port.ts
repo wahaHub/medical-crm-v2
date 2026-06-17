@@ -1,6 +1,7 @@
 import type { Consultation } from '../entities/consultation.entity.js';
 import type { ConsultationStatus } from '../enums/index.js';
 import type { CursorPaginatedResult } from '@medical-crm/utils';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface ConsultationListQuery {
   cursor?: { scheduledAt: string; id: string };
@@ -8,6 +9,7 @@ export interface ConsultationListQuery {
   hospitalId?: string;
   caseId?: string;
   status?: ConsultationStatus;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface ConsultationCountFilters {

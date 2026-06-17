@@ -1,8 +1,11 @@
-import { eq, and, sql, count, ilike } from 'drizzle-orm';
+import { eq, and, sql, count, ilike, type SQL } from 'drizzle-orm';
 import type { IOrderRepository, OrderListQuery } from '@medical-crm/domain';
 import { Order, OrderNumber } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { orders } from '../schema/index.js';
+import { orders, users } from '../schema/index.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type OrderRow = typeof orders.$inferSelect;
 
 export class DrizzleOrderRepository implements IOrderRepository {
   constructor(private readonly db: CrmDb) {}
@@ -22,7 +25,7 @@ export class DrizzleOrderRepository implements IOrderRepository {
   async findAll(
     query: OrderListQuery,
   ): Promise<{ data: Order[]; total: number }> {
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: SQL[] = [];
     this.applyFilters(conditions, query);
     return this.queryWithPagination(conditions, query);
   }
@@ -98,7 +101,7 @@ export class DrizzleOrderRepository implements IOrderRepository {
   }
 
   private applyFilters(
-    conditions: ReturnType<typeof eq>[],
+    conditions: SQL[],
     query: OrderListQuery,
   ): void {
     if (query.patientId) {
@@ -117,31 +120,51 @@ export class DrizzleOrderRepository implements IOrderRepository {
         eq(orders.type, query.type as typeof orders.type.enumValues[number]),
       );
     }
+    const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
+    if (patientSiteCondition) conditions.push(patientSiteCondition);
   }
 
   private async queryWithPagination(
-    conditions: ReturnType<typeof eq>[],
+    conditions: SQL[],
     query: OrderListQuery,
   ): Promise<{ data: Order[]; total: number }> {
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(orders)
-        .where(where)
-        .orderBy(sql`${orders.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(orders)
-        .where(where),
-    ]);
+    const [rows, countResult] = query.patientSiteScope
+      ? await Promise.all([
+          this.db
+            .select({ orders })
+            .from(orders)
+            .innerJoin(users, eq(orders.patientId, users.id))
+            .where(where)
+            .orderBy(sql`${orders.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(orders)
+            .innerJoin(users, eq(orders.patientId, users.id))
+            .where(where),
+        ])
+      : await Promise.all([
+          this.db
+            .select()
+            .from(orders)
+            .where(where)
+            .orderBy(sql`${orders.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(orders)
+            .where(where),
+        ]);
 
     return {
-      data: rows.map((r) => this.rowToEntity(r)),
+      data: query.patientSiteScope
+        ? (rows as Array<{ orders: OrderRow }>).map((r) => this.rowToEntity(r.orders))
+        : (rows as OrderRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
   }

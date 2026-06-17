@@ -1,4 +1,4 @@
-import { eq, and, lt, count, sql } from 'drizzle-orm';
+import { eq, and, lt, count, sql, type SQL } from 'drizzle-orm';
 import type {
   IConsultationRepository,
   ConsultationListQueryType as ConsultationListQuery,
@@ -8,7 +8,10 @@ import type {
 import { Consultation } from '@medical-crm/domain';
 import type { CursorPaginatedResult } from '@medical-crm/utils';
 import type { CrmDb } from '../crm-client.js';
-import { consultations } from '../schema/index.js';
+import { consultations, users } from '../schema/index.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type ConsultationRow = typeof consultations.$inferSelect;
 
 export class DrizzleConsultationRepository implements IConsultationRepository {
   constructor(private readonly db: CrmDb) {}
@@ -25,12 +28,14 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
   }
 
   async findMany(query: ConsultationListQuery): Promise<CursorPaginatedResult<Consultation>> {
-    const { cursor, limit, hospitalId, caseId, status } = query;
+    const { cursor, limit, hospitalId, caseId, status, patientSiteScope } = query;
 
-    const conditions = [];
+    const conditions: SQL[] = [];
     if (hospitalId) conditions.push(eq(consultations.hospitalId, hospitalId));
     if (caseId) conditions.push(eq(consultations.caseId, caseId));
     if (status) conditions.push(eq(consultations.status, status));
+    const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, patientSiteScope);
+    if (patientSiteCondition) conditions.push(patientSiteCondition);
 
     // Cursor-based pagination: composite (scheduledAt, id) DESC
     if (cursor) {
@@ -44,19 +49,30 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const rows = await this.db
-      .select()
-      .from(consultations)
-      .where(where)
-      .orderBy(sql`${consultations.scheduledAt} DESC, ${consultations.id} DESC`)
-      .limit(limit + 1);
+    const rows = patientSiteScope
+      ? await this.db
+          .select({ consultations })
+          .from(consultations)
+          .innerJoin(users, eq(consultations.patientId, users.id))
+          .where(where)
+          .orderBy(sql`${consultations.scheduledAt} DESC, ${consultations.id} DESC`)
+          .limit(limit + 1)
+      : await this.db
+          .select()
+          .from(consultations)
+          .where(where)
+          .orderBy(sql`${consultations.scheduledAt} DESC, ${consultations.id} DESC`)
+          .limit(limit + 1);
 
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;
+    const consultationRows = patientSiteScope
+      ? (data as Array<{ consultations: ConsultationRow }>).map((r) => r.consultations)
+      : data as ConsultationRow[];
 
     let nextCursor: { scheduledAt: string; id: string } | null = null;
     if (hasMore) {
-      const last = data[data.length - 1]!;
+      const last = consultationRows[consultationRows.length - 1]!;
       nextCursor = {
         scheduledAt: last.scheduledAt,
         id: last.id,
@@ -64,7 +80,7 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
     }
 
     return {
-      data: data.map((r) => this.rowToEntity(r)),
+      data: consultationRows.map((r) => this.rowToEntity(r)),
       nextCursor,
       hasMore,
     };

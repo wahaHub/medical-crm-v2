@@ -4,12 +4,14 @@ import type { QCResponseDTO } from '../../dtos/question-collector.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQCResponseDTO } from '../../mappers/question-collector.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class GetResponseUseCase {
   constructor(
     private readonly qcRepo: IQuestionCollectorRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<QCResponseDTO | null> {
@@ -26,8 +28,9 @@ export class GetResponseUseCase {
       }
     } else if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo, 'Hospital can only access responses for assigned cases');
+    } else if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, caseId);
     }
-    // ADMIN can access all
 
     const entity = await this.qcRepo.findResponseByCaseId(caseId);
     if (!entity) return null;

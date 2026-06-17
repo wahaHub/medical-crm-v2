@@ -21,6 +21,13 @@ const adminActor: Actor = {
   hospitalId: null,
 };
 
+const beautyAdminActor: Actor = {
+  userId: 'beauty-admin-1',
+  email: 'contact@medorabeauty.com',
+  role: 'ADMIN',
+  hospitalId: null,
+};
+
 const hospitalActor: Actor = {
   userId: 'hospital-user-1',
   email: 'hospital@test.com',
@@ -530,6 +537,21 @@ describe('ListResponsesUseCase', () => {
     (qcRepo.findAllResponses as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
     const result = await uc.execute({ page: 1, limit: 20 }, adminActor);
     expect(result.total).toBe(0);
+    expect(qcRepo.findAllResponses).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    });
+  });
+
+  it('medora beauty admin sees only beauty responses', async () => {
+    (qcRepo.findAllResponses as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+    await uc.execute({ page: 1, limit: 20 }, beautyAdminActor);
+    expect(qcRepo.findAllResponses).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+    });
   });
 
   it('rejects patient', async () => {
@@ -545,7 +567,12 @@ describe('ListResponsesUseCase', () => {
   it('passes hasRiskFlags filter', async () => {
     (qcRepo.findAllResponses as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
     await uc.execute({ page: 1, limit: 20, hasRiskFlags: true }, adminActor);
-    expect(qcRepo.findAllResponses).toHaveBeenCalledWith({ page: 1, limit: 20, hasRiskFlags: true });
+    expect(qcRepo.findAllResponses).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      hasRiskFlags: true,
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    });
   });
 });
 

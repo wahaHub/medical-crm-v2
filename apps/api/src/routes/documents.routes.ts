@@ -438,6 +438,9 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   if (actor.role === 'HOSPITAL') {
     await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
   }
+  if (actor.role === 'ADMIN') {
+    await svc.adminPatientSiteAccess.assertActorCanAccessCaseEntity(actor, caseEntity);
+  }
 
   const doc = await svc.documentRepo.findById(docId);
   if (!doc || doc.caseId !== caseId || doc.status === 'DELETED') {

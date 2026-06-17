@@ -16,7 +16,14 @@ import type { Actor } from '../src/types/actor.js';
 // ——— Actors ———
 const adminActor: Actor = {
   userId: 'admin-1',
-  email: 'admin@test.com',
+  email: 'admin@medicaltourismchina.health',
+  role: 'ADMIN',
+  hospitalId: null,
+};
+
+const beautyAdminActor: Actor = {
+  userId: 'admin-2',
+  email: 'contact@medorabeauty.com',
   role: 'ADMIN',
   hospitalId: null,
 };
@@ -106,7 +113,7 @@ function makeMockMilestone(overrides: Partial<ConstructorParameters<typeof Journ
     id: 'milestone-1',
     caseId: 'case-1',
     eventType: 'SURGERY_DATE',
-    eventDate: new Date('2026-04-01'),
+    eventDate: new Date('2026-08-01'),
     note: 'Upcoming surgery',
     isVisibleToPatient: true,
     createdBy: 'admin-1',
@@ -323,6 +330,52 @@ describe('AdminDashboardUseCase', () => {
       assignmentStatus: 'UNASSIGNED',
       createdAt: '2026-03-16T00:00:00.000Z',
     });
+  });
+
+  it('scopes all admin dashboard case-derived counts for regular admins', async () => {
+    vi.mocked(caseRepo.countByFilters).mockResolvedValue({
+      total: 0,
+      unassigned: 0,
+      assigned: 0,
+      inTreatment: 0,
+      postTreatment: 0,
+      completed: 0,
+      followUp: 0,
+    });
+    vi.mocked(ticketRepo.findAll).mockResolvedValue({ data: [], total: 0 });
+    vi.mocked(orderRepo.findAll).mockResolvedValue({ data: [], total: 0 });
+    vi.mocked(caseRepo.findMany).mockResolvedValue({ data: [], total: 0 });
+
+    await uc.execute(adminActor);
+
+    const expectedScope = { mode: 'EXCLUDE', site: 'beauty' };
+    expect(caseRepo.countByFilters).toHaveBeenCalledWith({ patientSiteScope: expectedScope });
+    expect(caseRepo.findMany).toHaveBeenCalledWith({ page: 1, limit: 5, patientSiteScope: expectedScope });
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
+    expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
+  });
+
+  it('scopes all admin dashboard case-derived counts for beauty admins', async () => {
+    vi.mocked(caseRepo.countByFilters).mockResolvedValue({
+      total: 0,
+      unassigned: 0,
+      assigned: 0,
+      inTreatment: 0,
+      postTreatment: 0,
+      completed: 0,
+      followUp: 0,
+    });
+    vi.mocked(ticketRepo.findAll).mockResolvedValue({ data: [], total: 0 });
+    vi.mocked(orderRepo.findAll).mockResolvedValue({ data: [], total: 0 });
+    vi.mocked(caseRepo.findMany).mockResolvedValue({ data: [], total: 0 });
+
+    await uc.execute(beautyAdminActor);
+
+    const expectedScope = { mode: 'ONLY', site: 'beauty' };
+    expect(caseRepo.countByFilters).toHaveBeenCalledWith({ patientSiteScope: expectedScope });
+    expect(caseRepo.findMany).toHaveBeenCalledWith({ page: 1, limit: 5, patientSiteScope: expectedScope });
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
+    expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
   });
 
   it('throws ForbiddenError when non-admin accesses admin dashboard', async () => {

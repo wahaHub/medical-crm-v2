@@ -18,6 +18,8 @@ import type {
 import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export interface SendMessageInput {
   content: string;
@@ -58,6 +60,7 @@ export class SendMessageUseCase {
     private readonly userRepo: IUserRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly txRunner: TransactionRunner,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -319,7 +322,10 @@ export class SendMessageUseCase {
   }
 
   private async checkAccess(conversation: Conversation, actor: Actor): Promise<void> {
-    if (actor.role === 'ADMIN') return;
+    if (actor.role === 'ADMIN') {
+      await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
+      return;
+    }
     if (actor.role === 'HOSPITAL') {
       if (conversation.hospitalId !== actor.hospitalId) {
         throw new ForbiddenError('No access to this conversation');

@@ -9,6 +9,7 @@ describe('ListConversationsUseCase', () => {
   let mockConversationRepo: IConversationRepository;
 
   const adminActor: Actor = { userId: 'a-1', email: 'a@t.com', role: 'ADMIN', hospitalId: null };
+  const beautyAdminActor: Actor = { userId: 'ba-1', email: 'contact@medorabeauty.com', role: 'ADMIN', hospitalId: null };
   const hospitalActor: Actor = { userId: 'h-1', email: 'h@t.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 
   const mockConversation = new Conversation({
@@ -43,10 +44,22 @@ describe('ListConversationsUseCase', () => {
     useCase = new ListConversationsUseCase(mockConversationRepo);
   });
 
-  it('ADMIN sees all conversations — calls findMany without hospitalId filter', async () => {
+  it('ADMIN scopes out beauty conversations', async () => {
     const query: ConversationListQuery = { page: 1, limit: 20 };
     await useCase.execute(query, adminActor);
-    expect(mockConversationRepo.findMany).toHaveBeenCalledWith(query, undefined);
+    expect(mockConversationRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    }, undefined);
+  });
+
+  it('medora beauty ADMIN sees only beauty conversations', async () => {
+    const query: ConversationListQuery = { page: 1, limit: 20 };
+    await useCase.execute(query, beautyAdminActor);
+    expect(mockConversationRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+    }, undefined);
   });
 
   it('HOSPITAL passes its own hospitalId as filter', async () => {

@@ -5,6 +5,7 @@ import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface CreateConsultationInput {
   caseId: string;
@@ -22,6 +23,7 @@ export class CreateConsultationUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly translationTaskService: TranslationTaskService,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(input: CreateConsultationInput, actor: Actor): Promise<ConsultationDTO> {
@@ -32,6 +34,9 @@ export class CreateConsultationUseCase {
 
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, input.caseId);
     }
 
     const now = new Date();

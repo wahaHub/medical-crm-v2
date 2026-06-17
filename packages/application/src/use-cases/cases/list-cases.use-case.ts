@@ -4,6 +4,7 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
+import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
 
 export class ListCasesUseCase {
   constructor(private readonly caseRepo: ICaseRepository) {}
@@ -14,7 +15,9 @@ export class ListCasesUseCase {
       if (!actor.hospitalId) throw new ForbiddenError('Hospital actor missing hospitalId');
       hospitalId = actor.hospitalId;
     }
-    const result = await this.caseRepo.findMany(query, hospitalId);
+    const patientSiteScope = getAdminPatientSiteScope(actor);
+    const scopedQuery = patientSiteScope ? { ...query, patientSiteScope } : query;
+    const result = await this.caseRepo.findMany(scopedQuery, hospitalId);
     return {
       ...result,
       data: result.data.map((c) => toCaseDTO(c)),

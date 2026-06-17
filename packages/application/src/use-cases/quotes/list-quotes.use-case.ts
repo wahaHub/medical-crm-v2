@@ -3,15 +3,21 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
+import { getAdminPatientSiteScope, type AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class ListQuotesUseCase {
   constructor(
     private readonly quoteRepo: IQuoteRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(query: QuoteListQuery, actor: Actor): Promise<{ data: QuoteDTO[]; total: number; page: number; limit: number }> {
     const effectiveQuery = { ...query };
+    const patientSiteScope = getAdminPatientSiteScope(actor);
+    if (patientSiteScope) {
+      effectiveQuery.patientSiteScope = patientSiteScope;
+    }
     if (actor.role === 'HOSPITAL') {
       if (!actor.hospitalId) throw new ForbiddenError('Hospital actor missing hospitalId');
       effectiveQuery.hospitalId = actor.hospitalId;
@@ -26,6 +32,9 @@ export class ListQuotesUseCase {
       if (!caseEntity || caseEntity.patientId !== actor.userId) {
         throw new ForbiddenError('Access denied to this case');
       }
+    }
+    if (actor.role === 'ADMIN' && effectiveQuery.caseId) {
+      await this.adminAccess?.assertActorCanAccessCase(actor, effectiveQuery.caseId);
     }
 
     if (effectiveQuery.hospitalId) {

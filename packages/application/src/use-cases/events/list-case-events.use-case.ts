@@ -4,12 +4,14 @@ import type { CaseEventDTO } from '../../dtos/case-event.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseEventDTO } from '../../mappers/case-event.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class ListCaseEventsUseCase {
   constructor(
     private readonly eventRepo: ICaseEventRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<CaseEventDTO[]> {
@@ -19,6 +21,8 @@ export class ListCaseEventsUseCase {
     }
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
+    } else if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
     if (actor.role === 'PATIENT' && caseEntity.patientId !== actor.userId) {
       throw new ForbiddenError('Access denied to this case');

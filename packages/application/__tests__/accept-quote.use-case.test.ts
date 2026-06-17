@@ -151,6 +151,7 @@ describe('AcceptQuoteUseCase', () => {
     mockCHCRepo = createMockCHCRepo();
     mockCaseRepo = createMockCaseRepo();
     mockTxRunner = createMockTxRunner();
+    (mockCaseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeMockCase());
     useCase = new AcceptQuoteUseCase(mockQuoteRepo, mockCHCRepo, mockCaseRepo, mockTxRunner);
   });
 

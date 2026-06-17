@@ -19,6 +19,13 @@ const adminActor: Actor = {
   hospitalId: null,
 };
 
+const beautyAdminActor: Actor = {
+  userId: 'beauty-admin-1',
+  email: 'contact@medorabeauty.com',
+  role: 'ADMIN',
+  hospitalId: null,
+};
+
 const hospitalActor: Actor = {
   userId: 'hospital-user-1',
   email: 'hospital@test.com',
@@ -473,7 +480,21 @@ describe('ListQuotesUseCase', () => {
 
     await useCase.execute({ hospitalId: 'hosp-1', page: 1, limit: 20 }, adminActor);
 
-    expect(mockQuoteRepo.findByHospitalId).toHaveBeenCalledWith('hosp-1', expect.objectContaining({ hospitalId: 'hosp-1' }));
+    expect(mockQuoteRepo.findByHospitalId).toHaveBeenCalledWith('hosp-1', expect.objectContaining({
+      hospitalId: 'hosp-1',
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    }));
+  });
+
+  it('medora beauty ADMIN lists only beauty quotes by hospitalId', async () => {
+    (mockQuoteRepo.findByHospitalId as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+
+    await useCase.execute({ hospitalId: 'hosp-1', page: 1, limit: 20 }, beautyAdminActor);
+
+    expect(mockQuoteRepo.findByHospitalId).toHaveBeenCalledWith('hosp-1', expect.objectContaining({
+      hospitalId: 'hosp-1',
+      patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+    }));
   });
 
   it('returns empty when no filter is provided for ADMIN', async () => {

@@ -49,4 +49,13 @@ describe('resolveMaterialsPolicyId', () => {
       'materials_regular_hospital_video',
     );
   });
+
+  it('routes hospital PDF uploads by hospital type', () => {
+    expect(resolveMaterialsPolicyId('COSMETIC', 'hospital_pdf')).toBe(
+      'materials_beauty_hospital_pdf',
+    );
+    expect(resolveMaterialsPolicyId('REGULAR', 'hospital_pdf')).toBe(
+      'materials_regular_hospital_pdf',
+    );
+  });
 });

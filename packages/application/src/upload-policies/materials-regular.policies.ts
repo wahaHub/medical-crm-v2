@@ -15,6 +15,16 @@ export const materialsRegularPolicies: UploadPolicy[] = [
       `crm/${env}/materials-regular/hospital-image/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
   },
   {
+    policyId: 'materials_regular_hospital_pdf',
+    feature: 'materials_media',
+    backend: 's3-materials',
+    keyNamespace: 'materials-regular/hospital-pdf',
+    allowedMimeTypes: ['application/pdf'],
+    maxFileSize: 25 * 1024 * 1024,
+    buildStorageKey: (input, assetId) =>
+      `crm/${env}/materials-regular/hospital-pdf/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
+  },
+  {
     policyId: 'materials_regular_hospital_video',
     feature: 'materials_media',
     backend: 's3-materials',

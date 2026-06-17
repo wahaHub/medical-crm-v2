@@ -83,7 +83,18 @@ export interface MaterialsHospitalInfo {
   operatingHours?: string;
   promotionalVideos?: string[];
   promotionalVideoStorageKeys?: Array<string | null>;
+  pdfDocuments?: MaterialsHospitalPdfDocument[];
   translations?: Record<string, Record<string, unknown>>;
+}
+
+export interface MaterialsHospitalPdfDocument {
+  id: string;
+  fileName: string;
+  url: string;
+  storageKey?: string | null;
+  mimeType?: string;
+  fileSize?: number;
+  uploadedAt?: string;
 }
 
 export interface MaterialsProcedure {

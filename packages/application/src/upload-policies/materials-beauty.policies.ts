@@ -15,6 +15,16 @@ export const materialsBeautyPolicies: UploadPolicy[] = [
       `crm/${env}/materials-beauty/hospital-image/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
   },
   {
+    policyId: 'materials_beauty_hospital_pdf',
+    feature: 'materials_media',
+    backend: 'r2-materials-beauty',
+    keyNamespace: 'materials-beauty/hospital-pdf',
+    allowedMimeTypes: ['application/pdf'],
+    maxFileSize: 25 * 1024 * 1024,
+    buildStorageKey: (input, assetId) =>
+      `crm/${env}/materials-beauty/hospital-pdf/${input.ownerId}/${assetId}/${sanitizeFileName(input.fileName)}`,
+  },
+  {
     policyId: 'materials_beauty_hospital_video',
     feature: 'materials_media',
     backend: 'r2-materials-beauty',

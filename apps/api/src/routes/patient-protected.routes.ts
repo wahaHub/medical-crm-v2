@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
+import { AiChatMessage, Message } from '@medical-crm/domain';
 import { ForbiddenError, NotFoundError, generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
@@ -18,6 +20,9 @@ const messageUploadInitSchema = z.object({
   clientMessageId: z.string().min(1).max(120).optional(),
   locale: z.enum(['en', 'zh']).default('en'),
 });
+const PROCESS_CONFIRMATION_MESSAGE_VERSION = 'process-confirmation-v1';
+const AI_MIRROR_SENDER_NAME = 'Medora AI';
+const AI_MIRROR_SENDER_ROLE = 'AI';
 const patientConversationListQuerySchema = z.object({
   caseId: z.string().uuid().optional(),
   locale: z.enum(['en', 'zh']).optional(),
@@ -154,6 +159,102 @@ function buildNotificationPreview(content: string | null | undefined): string {
   const normalized = (content ?? '').trim().replace(/\s+/g, ' ');
   if (!normalized) return 'Open Medora to read the latest message.';
   return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
+}
+
+function normalizeProcessLanguage(language: string | null | undefined): 'zh' | 'es' | 'fr' | 'de' | 'ru' | 'en' {
+  const normalized = (language ?? '').trim().toLowerCase();
+  if (normalized.startsWith('zh')) return 'zh';
+  if (normalized.startsWith('es')) return 'es';
+  if (normalized.startsWith('fr')) return 'fr';
+  if (normalized.startsWith('de')) return 'de';
+  if (normalized.startsWith('ru')) return 'ru';
+  return 'en';
+}
+
+function buildProcessConfirmationMessage(language: string | null | undefined): string {
+  switch (normalizeProcessLanguage(language)) {
+    case 'zh':
+      return '谢谢您确认医疗旅行流程。下一步，请上传或文字说明您已有的医疗资料，例如诊断证明、转诊记录、CT、MRI、X 光、超声等影像报告、病理报告、血液检查或其他检验报告、出院小结、当前用药清单、既往治疗或手术记录。所有文字和附件都会直接进入您的 CRM v2 病例，供医疗团队查看。';
+    case 'es':
+      return 'Gracias por confirmar el proceso de viaje médico. A continuación, suba o describa los documentos médicos que ya tenga, como notas de diagnóstico, derivaciones, informes de CT, MRI, rayos X o ultrasonido, patología, análisis de sangre u otros laboratorios, informes de alta, lista de medicamentos actuales y tratamientos o cirugías previas. Todo el texto y los archivos adjuntos irán directamente a su caso de CRM v2 para que el equipo médico los revise.';
+    case 'fr':
+      return 'Merci de confirmer le processus de voyage médical. Ensuite, veuillez téléverser ou décrire les documents médicaux que vous avez déjà, par exemple notes de diagnostic, courriers d’orientation, rapports de CT, IRM, radiographie ou échographie, anatomopathologie, analyses sanguines ou autres examens, comptes rendus de sortie, liste des médicaments actuels et traitements ou chirurgies antérieurs. Tous les textes et fichiers seront directement ajoutés à votre dossier CRM v2 pour examen par l’équipe médicale.';
+    case 'de':
+      return 'Vielen Dank, dass Sie den medizinischen Reiseprozess bestätigt haben. Als Nächstes laden Sie bitte die medizinischen Unterlagen hoch, die Sie bereits haben, oder beschreiben Sie sie kurz, zum Beispiel Diagnosen, Überweisungen, CT-, MRT-, Röntgen- oder Ultraschallberichte, Pathologieberichte, Blutwerte oder andere Laborberichte, Entlassungsberichte, aktuelle Medikamentenlisten sowie frühere Behandlungen oder Operationen. Alle Texte und Anhänge gehen direkt in Ihren CRM-v2-Fall, damit das medizinische Team sie prüfen kann.';
+    case 'ru':
+      return 'Спасибо, что подтвердили процесс медицинской поездки. Далее загрузите или опишите медицинские документы, которые у вас уже есть: диагнозы, направления, отчеты CT, MRI, рентгена или УЗИ, патологию, анализы крови или другие лабораторные отчеты, выписки, список текущих лекарств, а также сведения о предыдущем лечении или операциях. Весь текст и вложения попадут напрямую в ваш кейс CRM v2 для просмотра медицинской командой.';
+    case 'en':
+    default:
+      return 'Thank you for confirming the medical travel process. Next, please upload or describe the medical records you already have, such as diagnosis notes, referral records, CT, MRI, X-ray or ultrasound reports, pathology reports, blood tests or other lab reports, discharge summaries, current medication lists, and prior treatment or surgery records. All text and attachments will go directly into your CRM v2 case for the care team to review.';
+  }
+}
+
+function buildProcessConfirmationChatbotV3Envelope(content: string) {
+  return {
+    messages: [{
+      role: 'assistant',
+      text: content,
+    }],
+    turnOutcome: {
+      status: 'ok',
+      recoverableErrorCode: null,
+    },
+    cards: [{
+      cardId: 'process-confirmed-upload-records',
+      cardType: 'UPLOAD_RECORDS',
+      payload: {
+        required: true,
+        uploadedCount: 0,
+      },
+      actions: [{
+        actionType: 'REFRESH_STATUS',
+        label: 'Refresh upload status',
+        params: {
+          actionKey: 'UPLOAD_RECORDS',
+        },
+      }],
+    }],
+    journey: {
+      stage: 'COLLECT_MEDICAL_INPUTS',
+      phase: 'active',
+    },
+    handoff: {
+      required: false,
+      ticketId: null,
+    },
+  };
+}
+
+function isProcessConfirmationMessage(message: { role: string; metadata: Record<string, unknown> }): boolean {
+  return message.role === 'ASSISTANT'
+    && message.metadata['processConfirmationMessage'] === true
+    && message.metadata['processConfirmationMessageVersion'] === PROCESS_CONFIRMATION_MESSAGE_VERSION;
+}
+
+function createProcessConfirmationMessageId(aiChatSessionId: string): string {
+  const digest = createHash('sha256')
+    .update(`patient-process-confirmation:${aiChatSessionId}:${PROCESS_CONFIRMATION_MESSAGE_VERSION}`)
+    .digest('hex');
+  const variant = ((Number.parseInt(digest.slice(16, 18), 16) & 0x3f) | 0x80)
+    .toString(16)
+    .padStart(2, '0');
+
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `5${digest.slice(13, 16)}`,
+    `${variant}${digest.slice(18, 20)}`,
+    digest.slice(20, 32),
+  ].join('-');
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Error
+    && (
+      error.message.includes('duplicate key')
+      || error.message.includes('unique')
+      || (error as Error & { code?: string }).code === '23505'
+    );
 }
 
 function isAllowedUploadTarget(url: URL): boolean {
@@ -373,21 +474,148 @@ app.post('/sessions/:sessionId/chat/events', async (c) => {
 
 // POST /sessions/:sessionId/process-confirmation
 app.post('/sessions/:sessionId/process-confirmation', async (c) => {
-  const session = c.get('patientSession');
+  const patientSession = c.get('patientSession');
   const site = c.get('patientSite');
   const sessionId = c.req.param('sessionId');
+  const parsed = parsePatientSessionId(sessionId);
 
-  if (!sessionId.startsWith(`widget-chat:${session.userId}:`)) {
+  if (!parsed || parsed.type !== 'CARE_TEAM') {
+    return c.json({ error: 'Process confirmation is only available for care-team sessions' }, 400);
+  }
+
+  const conversation = await resolveFormalConversationForPatientSession(patientSession.userId, sessionId);
+
+  const services = getServices();
+  const aiChatSession = await services.aiChatSessionRepo.findBySessionId(sessionId, site);
+  if (!aiChatSession || aiChatSession.patientId !== patientSession.userId) {
     throw new NotFoundError(`Patient session ${sessionId} not found`);
   }
 
-  const { aiChatSessionRepo } = getServices();
-  const result = await aiChatSessionRepo.patchStatus(sessionId, site, { processExplained: true });
-  if (!result) {
-    throw new NotFoundError(`Patient session ${sessionId} not found`);
+  const patient = await services.patientRepo.findById(patientSession.userId, site);
+  const content = buildProcessConfirmationMessage(patient?.preferredLanguage ?? null);
+  const recentMessages = await services.aiChatMessageRepo.listRecentBySession(aiChatSession.id, 20);
+  const existingConfirmation = recentMessages.find((message) => isProcessConfirmationMessage(message));
+  const messageId = createProcessConfirmationMessageId(aiChatSession.id);
+  const now = new Date();
+  const patchedSession = await services.aiChatSessionRepo.patchStatus(sessionId, site, {
+    processExplained: true,
+    journeyCurrentStage: 'COLLECT_MEDICAL_INPUTS',
+    journeyCurrentPhase: 'active',
+    lastAssistantMessageAt: existingConfirmation ? aiChatSession.statusSnapshot.lastAssistantMessageAt : now,
+  }) ?? aiChatSession;
+
+  const metadata = {
+    processConfirmationMessage: true,
+    processConfirmationMessageVersion: PROCESS_CONFIRMATION_MESSAGE_VERSION,
+    chatbotV3: buildProcessConfirmationChatbotV3Envelope(content),
+  };
+  let assistantMessage: AiChatMessage | undefined = existingConfirmation;
+  let createdAssistantMessage = false;
+  if (!assistantMessage) {
+    const draft = new AiChatMessage({
+      id: messageId,
+      sessionId: aiChatSession.id,
+      role: 'ASSISTANT',
+      content,
+      intent: null,
+      riskLevel: null,
+      canAnswer: null,
+      nextAction: null,
+      secondaryAction: null,
+      responseMode: null,
+      citations: [],
+      reasonCodes: [],
+      shortlist: [],
+      writebackStatus: 'succeeded',
+      metadata,
+      createdAt: now,
+    });
+
+    try {
+      assistantMessage = await services.aiChatMessageRepo.create(draft);
+      createdAssistantMessage = true;
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+      assistantMessage = (await services.aiChatMessageRepo.updateMessage(messageId, {})) ?? undefined;
+      if (!assistantMessage) {
+        throw error;
+      }
+    }
   }
 
-  return c.json({ ok: true, status: 'confirmed' });
+  const mirroredMessage = await services.messageRepo.save(new Message({
+    id: messageId,
+    conversationId: conversation.id,
+    senderId: null,
+    senderRoleOverride: AI_MIRROR_SENDER_ROLE,
+    senderNameOverride: AI_MIRROR_SENDER_NAME,
+    senderRole: AI_MIRROR_SENDER_ROLE,
+    senderName: AI_MIRROR_SENDER_NAME,
+    content: assistantMessage.content,
+    originalLanguage: null,
+    translatedContent: null,
+    messageType: 'TEXT',
+    moderationStatus: 'ALLOWED',
+    attachments: [],
+    aiSummary: null,
+    createdAt: assistantMessage.createdAt,
+  }));
+
+  conversation.updateLastMessage({
+    id: mirroredMessage.id,
+    content: mirroredMessage.content,
+    senderId: mirroredMessage.senderId,
+    createdAt: mirroredMessage.createdAt,
+  });
+  await services.conversationRepo.save(conversation);
+
+  if (createdAssistantMessage) {
+    wsManager.broadcast(`conv:${sessionId}`, {
+      type: 'new_message',
+      data: {
+        id: assistantMessage.id,
+        sessionId,
+        source: 'CHATBOT',
+        conversationId: null,
+        senderRole: 'AI',
+        senderName: 'Medora AI',
+        content: assistantMessage.content,
+        messageType: 'TEXT',
+        moderationStatus: null,
+        attachments: [],
+        citations: assistantMessage.citations,
+        metadata: assistantMessage.metadata,
+        createdAt: assistantMessage.createdAt.toISOString(),
+      },
+    });
+    wsManager.broadcast(`conv:${conversation.id}`, {
+      type: 'new_message',
+      data: {
+        id: mirroredMessage.id,
+        conversationId: mirroredMessage.conversationId,
+        senderId: mirroredMessage.senderId,
+        senderRole: mirroredMessage.senderRole,
+        senderName: mirroredMessage.senderName,
+        content: mirroredMessage.content,
+        originalLanguage: mirroredMessage.originalLanguage,
+        translatedContent: mirroredMessage.translatedContent,
+        messageType: mirroredMessage.messageType,
+        moderationStatus: mirroredMessage.moderationStatus,
+        attachments: mirroredMessage.attachments,
+        aiSummary: mirroredMessage.aiSummary,
+        createdAt: mirroredMessage.createdAt.toISOString(),
+      },
+    });
+  }
+
+  return c.json({
+    ok: true,
+    status: 'confirmed',
+    statusSnapshot: patchedSession.statusSnapshot,
+    message: assistantMessage,
+  });
 });
 
 // POST /sessions/:sessionId/messages

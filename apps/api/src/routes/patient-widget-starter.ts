@@ -63,7 +63,7 @@ export async function seedWidgetStarterMessage(input: {
   const payload = {
     content: GENERIC_WIDGET_STARTER_CONTENT,
     nextAction: null,
-    shortlist: [] as Record<string, unknown>[],
+    shortlist: [] as Array<Record<string, unknown>>,
     writebackStatus: 'succeeded',
     metadata: {
       widgetStarterSeed: true,

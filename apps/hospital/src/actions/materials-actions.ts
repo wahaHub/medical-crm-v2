@@ -51,6 +51,9 @@ function summarizeMaterialsInfoPayload(data: Record<string, unknown>) {
     videoTestimonials: summarizeArrayField(data.videoTestimonials, {
       keys: ['id', 'patientName', 'patientCountry', 'procedureName', 'videoUrl', 'thumbnailUrl', 'duration'],
     }),
+    pdfDocuments: summarizeArrayField(data.pdfDocuments, {
+      keys: ['id', 'fileName', 'url', 'storageKey', 'mimeType', 'fileSize'],
+    }),
     departments: summarizeArrayField(data.departments, {
       keys: ['name', 'doctorCount', 'annualSurgeryCases'],
     }),

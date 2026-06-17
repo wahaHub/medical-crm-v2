@@ -59,9 +59,35 @@ describe('MediaUploadService', () => {
       ownerType: 'conversation',
       ownerId: 'conv_123',
       fileName: 'huge.pdf',
-      fileSize: 25 * 1024 * 1024,
+      fileSize: 101 * 1024 * 1024,
       mimeType: 'application/pdf',
     })).rejects.toThrow(/exceeds maximum/);
+  });
+
+  it('allows common medical media and office attachment types', async () => {
+    await expect(service.createUploadIntent({
+      policyId: 'message_attachment',
+      ownerType: 'conversation',
+      ownerId: 'conv_123',
+      fileName: 'consultation.mov',
+      fileSize: 10 * 1024 * 1024,
+      mimeType: 'video/quicktime',
+    })).resolves.toEqual(expect.objectContaining({
+      asset: expect.objectContaining({ mimeType: 'video/quicktime' }),
+    }));
+
+    await expect(service.createUploadIntent({
+      policyId: 'message_attachment',
+      ownerType: 'conversation',
+      ownerId: 'conv_123',
+      fileName: 'labs.xlsx',
+      fileSize: 1024,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })).resolves.toEqual(expect.objectContaining({
+      asset: expect.objectContaining({
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+    }));
   });
 
   it('sanitizes file name in storage key', async () => {

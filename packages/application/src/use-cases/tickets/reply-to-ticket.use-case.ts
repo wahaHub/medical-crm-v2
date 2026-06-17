@@ -5,6 +5,7 @@ import type { SupportTicketReplyDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketReplyDTO } from '../../mappers/support-ticket.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface ReplyToTicketInput {
   content: string;
@@ -17,6 +18,7 @@ export class ReplyToTicketUseCase {
     private readonly ticketRepo: ISupportTicketRepository,
     private readonly replyRepo: ISupportTicketReplyRepository,
     private readonly translationTaskService: TranslationTaskService,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -30,6 +32,9 @@ export class ReplyToTicketUseCase {
     // Access control: patients can only reply to their own tickets
     if (actor.role !== 'ADMIN' && ticket.patientId !== actor.userId) {
       throw new ForbiddenError('Not authorized to reply to this ticket');
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCaseOrPatient(actor, { caseId: ticket.caseId, patientId: ticket.patientId });
     }
 
     // Only admins can create internal notes

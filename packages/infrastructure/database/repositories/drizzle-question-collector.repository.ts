@@ -1,4 +1,4 @@
-import { eq, and, sql, count, desc } from 'drizzle-orm';
+import { eq, and, sql, count, desc, type SQL } from 'drizzle-orm';
 import type { IQuestionCollectorRepository, QCTemplateListQuery, QCResponseListQuery } from '@medical-crm/domain';
 import { QCTemplate, QCResponse, QCCustomization } from '@medical-crm/domain';
 import { ConflictError } from '@medical-crm/utils';
@@ -7,8 +7,12 @@ import {
   questionCollectorTemplates,
   questionCollectorResponses,
   questionCollectorCustomizations,
+  cases,
   users,
 } from '../schema/index.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type QCResponseRow = typeof questionCollectorResponses.$inferSelect;
 
 export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRepository {
   constructor(private readonly db: CrmDb) {}
@@ -165,7 +169,7 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
   }
 
   async findAllResponses(query: QCResponseListQuery): Promise<{ data: QCResponse[]; total: number }> {
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: SQL[] = [];
 
     if (query.caseId) {
       conditions.push(eq(questionCollectorResponses.caseId, query.caseId));
@@ -181,26 +185,48 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
     if (query.hasRiskFlags === true) {
       conditions.push(sql`array_length(${questionCollectorResponses.riskFlags}, 1) > 0`);
     }
+    const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
+    if (patientSiteCondition) conditions.push(patientSiteCondition);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const { page, limit } = query;
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(questionCollectorResponses)
-        .where(where)
-        .orderBy(desc(questionCollectorResponses.createdAt))
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(questionCollectorResponses)
-        .where(where),
-    ]);
+    const [rows, countResult] = query.patientSiteScope
+      ? await Promise.all([
+          this.db
+            .select({ questionCollectorResponses })
+            .from(questionCollectorResponses)
+            .innerJoin(cases, eq(questionCollectorResponses.caseId, cases.id))
+            .innerJoin(users, eq(cases.patientId, users.id))
+            .where(where)
+            .orderBy(desc(questionCollectorResponses.createdAt))
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(questionCollectorResponses)
+            .innerJoin(cases, eq(questionCollectorResponses.caseId, cases.id))
+            .innerJoin(users, eq(cases.patientId, users.id))
+            .where(where),
+        ])
+      : await Promise.all([
+          this.db
+            .select()
+            .from(questionCollectorResponses)
+            .where(where)
+            .orderBy(desc(questionCollectorResponses.createdAt))
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(questionCollectorResponses)
+            .where(where),
+        ]);
 
     return {
-      data: rows.map((r) => this.rowToResponse(r)),
+      data: query.patientSiteScope
+        ? (rows as Array<{ questionCollectorResponses: QCResponseRow }>).map((r) => this.rowToResponse(r.questionCollectorResponses))
+        : (rows as QCResponseRow[]).map((r) => this.rowToResponse(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
   }

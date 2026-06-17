@@ -1,8 +1,11 @@
-import { eq, and, sql, count, ilike } from 'drizzle-orm';
+import { eq, and, sql, count, ilike, type SQL } from 'drizzle-orm';
 import type { ISupportTicketRepository, TicketListQuery } from '@medical-crm/domain';
 import { SupportTicket, TicketNumber } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { supportTickets } from '../schema/index.js';
+import { supportTickets, users } from '../schema/index.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type SupportTicketRow = typeof supportTickets.$inferSelect;
 
 export class DrizzleSupportTicketRepository implements ISupportTicketRepository {
   constructor(private readonly db: CrmDb) {}
@@ -23,7 +26,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
     patientId: string,
     query: TicketListQuery,
   ): Promise<{ data: SupportTicket[]; total: number }> {
-    const conditions = [eq(supportTickets.patientId, patientId)];
+    const conditions: SQL[] = [eq(supportTickets.patientId, patientId)];
     this.applyFilters(conditions, query);
     return this.queryWithPagination(conditions, query);
   }
@@ -32,7 +35,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
     assignedTo: string,
     query: TicketListQuery,
   ): Promise<{ data: SupportTicket[]; total: number }> {
-    const conditions = [eq(supportTickets.assignedTo, assignedTo)];
+    const conditions: SQL[] = [eq(supportTickets.assignedTo, assignedTo)];
     this.applyFilters(conditions, query);
     return this.queryWithPagination(conditions, query);
   }
@@ -40,7 +43,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
   async findAll(
     query: TicketListQuery,
   ): Promise<{ data: SupportTicket[]; total: number }> {
-    const conditions: ReturnType<typeof eq>[] = [];
+    const conditions: SQL[] = [];
     this.applyFilters(conditions, query);
     return this.queryWithPagination(conditions, query);
   }
@@ -116,7 +119,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
   }
 
   private applyFilters(
-    conditions: ReturnType<typeof eq>[],
+    conditions: SQL[],
     query: TicketListQuery,
   ): void {
     if (query.status) {
@@ -137,31 +140,51 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
     if (query.caseId) {
       conditions.push(eq(supportTickets.caseId, query.caseId));
     }
+    const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
+    if (patientSiteCondition) conditions.push(patientSiteCondition);
   }
 
   private async queryWithPagination(
-    conditions: ReturnType<typeof eq>[],
+    conditions: SQL[],
     query: TicketListQuery,
   ): Promise<{ data: SupportTicket[]; total: number }> {
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await Promise.all([
-      this.db
-        .select()
-        .from(supportTickets)
-        .where(where)
-        .orderBy(sql`${supportTickets.createdAt} DESC`)
-        .limit(limit)
-        .offset((page - 1) * limit),
-      this.db
-        .select({ total: count() })
-        .from(supportTickets)
-        .where(where),
-    ]);
+    const [rows, countResult] = query.patientSiteScope
+      ? await Promise.all([
+          this.db
+            .select({ supportTickets })
+            .from(supportTickets)
+            .innerJoin(users, eq(supportTickets.patientId, users.id))
+            .where(where)
+            .orderBy(sql`${supportTickets.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(supportTickets)
+            .innerJoin(users, eq(supportTickets.patientId, users.id))
+            .where(where),
+        ])
+      : await Promise.all([
+          this.db
+            .select()
+            .from(supportTickets)
+            .where(where)
+            .orderBy(sql`${supportTickets.createdAt} DESC`)
+            .limit(limit)
+            .offset((page - 1) * limit),
+          this.db
+            .select({ total: count() })
+            .from(supportTickets)
+            .where(where),
+        ]);
 
     return {
-      data: rows.map((r) => this.rowToEntity(r)),
+      data: query.patientSiteScope
+        ? (rows as Array<{ supportTickets: SupportTicketRow }>).map((r) => this.rowToEntity(r.supportTickets))
+        : (rows as SupportTicketRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
   }

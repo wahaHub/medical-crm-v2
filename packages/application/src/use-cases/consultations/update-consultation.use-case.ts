@@ -4,6 +4,7 @@ import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface UpdateConsultationInput {
   scheduledAt?: Date;
@@ -18,6 +19,7 @@ export class UpdateConsultationUseCase {
   constructor(
     private readonly consultationRepo: IConsultationRepository,
     private readonly translationTaskService: TranslationTaskService,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -32,6 +34,9 @@ export class UpdateConsultationUseCase {
 
     if (actor.role === 'HOSPITAL' && entity.hospitalId !== actor.hospitalId) {
       throw new ForbiddenError('Access denied to this consultation');
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
     }
 
     if (input.scheduledAt !== undefined) entity.scheduledAt = input.scheduledAt;

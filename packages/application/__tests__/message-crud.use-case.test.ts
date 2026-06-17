@@ -6,6 +6,7 @@ import { DeleteMessageUseCase } from '../src/use-cases/messages/delete-message.u
 import { Conversation, Message } from '@medical-crm/domain';
 import type { IConversationRepository, IMessageRepository, IStorageService } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -115,6 +116,13 @@ function makeStorage(): IStorageService {
   };
 }
 
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
+
 // ─── ListMessagesUseCase ───────────────────────────────────────────────────────
 
 describe('ListMessagesUseCase', () => {
@@ -137,6 +145,28 @@ describe('ListMessagesUseCase', () => {
       'conv-1',
       { page: 1, limit: 20 },
     );
+  });
+
+  it('ADMIN: blocks listing messages when the conversation case is outside scope', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation({
+      category: 'ADMIN_PATIENT',
+      caseId: 'beauty-case-1',
+    }));
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Access denied to this case')),
+    });
+    const useCase = new ListMessagesUseCase(
+      mockConversationRepo,
+      mockMessageRepo,
+      makeStorage(),
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute('conv-1', { page: 1, limit: 20 }, adminActor),
+    ).rejects.toThrow('Access denied to this case');
+    expect(adminAccess.assertActorCanAccessCase).toHaveBeenCalledWith(adminActor, 'beauty-case-1');
+    expect(mockMessageRepo.findByConversationId).not.toHaveBeenCalled();
   });
 
   it('preserves sender metadata and signs attachment urls in list responses', async () => {
@@ -315,6 +345,26 @@ describe('GetMessageUseCase', () => {
     ).rejects.toThrow('Message no-msg not found');
   });
 
+  it('throws NotFoundError without signing attachments when message belongs to a different conversation', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), makeMessage({
+      conversationId: 'beauty-conv-1',
+      attachments: [{
+        fileName: 'scan.jpg',
+        fileSize: 2048,
+        mimeType: 'image/jpeg',
+        storageKey: 'attachments/beauty-scan.jpg',
+      }],
+    }));
+    const storage = makeStorage();
+    const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, storage);
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', adminActor),
+    ).rejects.toThrow('Message msg-1 not found');
+
+    expect(storage.getSignedUrls).not.toHaveBeenCalled();
+  });
+
   it('throws ForbiddenError if HOSPITAL hospitalId does not match', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     const useCase = new GetMessageUseCase(mockConversationRepo, mockMessageRepo, makeStorage());
@@ -391,6 +441,19 @@ describe('UpdateMessageUseCase', () => {
     ).rejects.toThrow('Message no-msg not found');
   });
 
+  it('throws NotFoundError and does not save when message belongs to a different conversation', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), makeMessage({
+      conversationId: 'beauty-conv-1',
+    }));
+    const useCase = new UpdateMessageUseCase(mockConversationRepo, mockMessageRepo);
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', { content: 'X' }, adminActor),
+    ).rejects.toThrow('Message msg-1 not found');
+
+    expect(mockMessageRepo.save).not.toHaveBeenCalled();
+  });
+
   it('throws ForbiddenError if HOSPITAL hospitalId does not match', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     const useCase = new UpdateMessageUseCase(mockConversationRepo, mockMessageRepo);
@@ -459,6 +522,19 @@ describe('DeleteMessageUseCase', () => {
     await expect(
       useCase.execute('conv-1', 'no-msg', adminActor),
     ).rejects.toThrow('Message no-msg not found');
+  });
+
+  it('throws NotFoundError and does not delete when message belongs to a different conversation', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation(), makeMessage({
+      conversationId: 'beauty-conv-1',
+    }));
+    const useCase = new DeleteMessageUseCase(mockConversationRepo, mockMessageRepo);
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', adminActor),
+    ).rejects.toThrow('Message msg-1 not found');
+
+    expect(mockMessageRepo.delete).not.toHaveBeenCalled();
   });
 
   it('throws ForbiddenError if HOSPITAL hospitalId does not match', async () => {

@@ -3,6 +3,8 @@ import { ForbiddenError, NotFoundError, generateId } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO, MessageDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO, toMessageDTO } from '../../mappers/conversation.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 type TxConversationRepository = IConversationRepository & {
   findById(id: string, tx?: Transaction): Promise<Conversation | null>;
@@ -31,6 +33,7 @@ export class ResumeConversationAiUseCase {
     private readonly conversationRepo: IConversationRepository,
     private readonly messageRepo: IMessageRepository,
     private readonly txRunner: TransactionRunner,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(id: string, actor: Actor): Promise<ResumeConversationAiResult> {
@@ -49,6 +52,7 @@ export class ResumeConversationAiUseCase {
       if (conversation.category !== 'ADMIN_PATIENT') {
         throw new ForbiddenError('Only admin-patient conversations support assistant resume');
       }
+      await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
       if (conversation.assistantMode === 'AI_ACTIVE') {
         return {
           conversation: toConversationDTO(conversation),

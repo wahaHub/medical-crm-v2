@@ -2,6 +2,7 @@ import type { ICaseRepository, IDocumentRepository, IStorageService, ICHCReposit
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -18,6 +19,7 @@ export class GetDocumentPreviewUseCase {
     private readonly storageService: IStorageService,
     private readonly chcRepo?: ICHCRepository,
     private readonly fetchFn: FetchFn = fetch,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, documentId: string, actor: Actor): Promise<DocumentPreviewResult> {
@@ -34,6 +36,8 @@ export class GetDocumentPreviewUseCase {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else if (actor.role !== 'ADMIN') {
       throw new ForbiddenError('Only admins and hospital users can preview case documents');
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);
     }
 
     const signedUrl = await this.storageService.getSignedUrl(doc.storageKey);

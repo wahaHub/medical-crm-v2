@@ -54,6 +54,7 @@ const mockServices = {
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
+  adminPatientSiteAccess: { assertActorCanAccessCaseEntity: vi.fn() },
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
   hospitalRepo: { findById: vi.fn() },
@@ -152,6 +153,7 @@ describe('Documents routes', () => {
       patientId: 'patient-1',
       assignedHospitalId: 'hospital-1',
     });
+    mockServices.adminPatientSiteAccess.assertActorCanAccessCaseEntity.mockResolvedValue(undefined);
     mockServices.patientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       site: 'beauty',
@@ -397,6 +399,25 @@ describe('Documents routes', () => {
         category: 'ADMIN_PATIENT',
         caseId: CASE_UUID,
       }, expect.anything());
+    });
+
+    it('blocks admin document notifications before document lookup when the case is outside admin site scope', async () => {
+      mockServices.adminPatientSiteAccess.assertActorCanAccessCaseEntity.mockRejectedValueOnce(
+        new ForbiddenError('Access denied to this case'),
+      );
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents/${DOC_UUID}/notify-patient`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(403);
+      await expect(res.json()).resolves.toMatchObject({
+        error: 'Access denied to this case',
+      });
+      expect(mockServices.documentRepo.findById).not.toHaveBeenCalled();
+      expect(mockServices.patientRepo.findById).not.toHaveBeenCalled();
+      expect(mockServices.notifyPatientOfCaseUpdate.execute).not.toHaveBeenCalled();
+      expect(mockServices.createConversation.execute).not.toHaveBeenCalled();
     });
 
     it('rejects invalid explicit hospitalId format for admin document notifications', async () => {

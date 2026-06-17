@@ -5,6 +5,7 @@ import type { Actor } from '../../types/actor.js';
 import { eventToTimelineItem } from '../../mappers/case-event.mapper.js';
 import { milestoneToTimelineItem } from '../../mappers/journey.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class GetCaseTimelineUseCase {
   constructor(
@@ -12,6 +13,7 @@ export class GetCaseTimelineUseCase {
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<TimelineItemDTO[]> {
@@ -21,6 +23,8 @@ export class GetCaseTimelineUseCase {
     }
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
+    } else if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
     if (actor.role === 'PATIENT' && caseEntity.patientId !== actor.userId) {
       throw new ForbiddenError('Access denied to this case');

@@ -3,6 +3,7 @@ import { generateId, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { CaseDTO } from '../../dtos/case.dto.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface CreateCaseInput {
   patientId: string;
@@ -17,12 +18,17 @@ export interface CreateCaseInput {
 const MAX_RETRIES = 3;
 
 export class CreateCaseUseCase {
-  constructor(private readonly caseRepo: ICaseRepository) {}
+  constructor(
+    private readonly caseRepo: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
+  ) {}
 
   async execute(input: CreateCaseInput, actor: Actor): Promise<CaseDTO> {
     if (actor.role !== 'ADMIN') {
       throw new ForbiddenError('Only admins can create cases');
     }
+
+    await this.adminAccess?.assertActorCanAccessPatient(actor, input.patientId);
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       const caseNumber = await this.caseRepo.nextCaseNumber();

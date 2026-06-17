@@ -4,6 +4,7 @@ import type { DocumentDTO } from '../../dtos/document.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toDocumentDTO } from '../../mappers/document.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class ListDocumentsUseCase {
   constructor(
@@ -11,6 +12,7 @@ export class ListDocumentsUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly storageService: IStorageService,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<DocumentDTO[]> {
@@ -18,6 +20,8 @@ export class ListDocumentsUseCase {
     if (!caze) throw new NotFoundError(`Case ${caseId} not found`);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);
     }
 
     const docs = await this.documentRepo.findByCaseId(caseId);

@@ -3,11 +3,13 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { SupportTicketDTO, SupportTicketReplyDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketDTO, toSupportTicketReplyDTO } from '../../mappers/support-ticket.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class GetTicketUseCase {
   constructor(
     private readonly ticketRepo: ISupportTicketRepository,
     private readonly replyRepo: ISupportTicketReplyRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -20,6 +22,9 @@ export class GetTicketUseCase {
     // Access control: patients can only see their own tickets
     if (actor.role !== 'ADMIN' && ticket.patientId !== actor.userId) {
       throw new ForbiddenError('Not authorized to view this ticket');
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCaseOrPatient(actor, { caseId: ticket.caseId, patientId: ticket.patientId });
     }
 
     const replies = await this.replyRepo.findByTicketId(id);

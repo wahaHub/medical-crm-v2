@@ -4,12 +4,14 @@ import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class ListCaseConsultationsUseCase {
   constructor(
     private readonly consultationRepo: IConsultationRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<ConsultationDTO[]> {
@@ -25,6 +27,9 @@ export class ListCaseConsultationsUseCase {
     // Hospital users can only see consultations for cases assigned to their hospital
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo, 'Case is not assigned to your hospital');
+    }
+    if (actor.role === 'ADMIN') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, caseId);
     }
 
     const consultations = await this.consultationRepo.findByCaseId(caseId);

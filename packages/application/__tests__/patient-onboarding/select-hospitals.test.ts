@@ -17,6 +17,7 @@ describe('SelectHospitalsUseCase', () => {
     };
     mockConversationRepo = {
       save: vi.fn().mockResolvedValue({ id: 'conv-1' }),
+      findOrCreateHospitalPatientConversation: vi.fn().mockResolvedValue({ id: 'conv-1' }),
       findById: vi.fn(),
       findMany: vi.fn(),
     };
@@ -32,7 +33,7 @@ describe('SelectHospitalsUseCase', () => {
     // Should call save for each hospital contact
     expect(mockCaseHospitalContactRepo.save).toHaveBeenCalledTimes(2);
     // Should create a conversation for each hospital
-    expect(mockConversationRepo.save).toHaveBeenCalledTimes(2);
+    expect(mockConversationRepo.findOrCreateHospitalPatientConversation).toHaveBeenCalledTimes(2);
   });
 
   it('throws if no hospitals selected', async () => {
@@ -42,7 +43,7 @@ describe('SelectHospitalsUseCase', () => {
   });
 
   it('returns conversation ids for each hospital', async () => {
-    mockConversationRepo.save
+    mockConversationRepo.findOrCreateHospitalPatientConversation
       .mockResolvedValueOnce({ id: 'conv-h1' })
       .mockResolvedValueOnce({ id: 'conv-h2' });
 
@@ -56,7 +57,7 @@ describe('SelectHospitalsUseCase', () => {
   });
 
   it('creates contact with DISTRIBUTED status and correct caseId/hospitalId', async () => {
-    mockConversationRepo.save.mockResolvedValue({ id: 'conv-1' });
+    mockConversationRepo.findOrCreateHospitalPatientConversation.mockResolvedValue({ id: 'conv-1' });
 
     await useCase.execute({
       caseId: 'case-42',
@@ -72,7 +73,7 @@ describe('SelectHospitalsUseCase', () => {
   });
 
   it('creates conversation with HOSPITAL_PATIENT category', async () => {
-    mockConversationRepo.save.mockResolvedValue({ id: 'conv-1' });
+    mockConversationRepo.findOrCreateHospitalPatientConversation.mockResolvedValue({ id: 'conv-1' });
 
     await useCase.execute({
       caseId: 'case-42',
@@ -80,7 +81,7 @@ describe('SelectHospitalsUseCase', () => {
       patientId: 'patient-1',
     });
 
-    const savedConv = mockConversationRepo.save.mock.calls[0][0];
+    const savedConv = mockConversationRepo.findOrCreateHospitalPatientConversation.mock.calls[0][0];
     expect(savedConv.caseId).toBe('case-42');
     expect(savedConv.hospitalId).toBe('hosp-99');
     expect(savedConv.category).toBe('HOSPITAL_PATIENT');

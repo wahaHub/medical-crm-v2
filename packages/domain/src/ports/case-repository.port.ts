@@ -1,6 +1,7 @@
 import type { Case } from '../entities/case.entity.js';
 import type { CaseNumber } from '../value-objects/case-number.js';
 import type { CaseStatus, CaseStage, CaseAssignmentStatus, CaseTreatmentStage } from '../enums/index.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 import type { PaginatedResult } from '@medical-crm/utils';
 
 export interface CaseListQuery {
@@ -12,10 +13,12 @@ export interface CaseListQuery {
   treatmentStage?: CaseTreatmentStage;
   hospitalId?: string;
   search?: string;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface CaseCountFilters {
   hospitalId?: string;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface CaseStats {

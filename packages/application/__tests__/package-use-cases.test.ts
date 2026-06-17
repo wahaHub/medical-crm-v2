@@ -57,6 +57,13 @@ function createMockPackageRepo(): IPackageRepository {
   };
 }
 
+function createMockAiSyncTaskService() {
+  return {
+    enqueuePackageUpsert: vi.fn().mockResolvedValue(undefined),
+    enqueuePackageDelete: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 // ============================================================================
 // CreatePackageUseCase
 // ============================================================================
@@ -142,32 +149,35 @@ describe('UpdatePackageUseCase', () => {
 // ============================================================================
 describe('PublishPackageUseCase', () => {
   let repo: IPackageRepository;
+  let aiSyncTaskService: ReturnType<typeof createMockAiSyncTaskService>;
 
   beforeEach(() => {
     repo = createMockPackageRepo();
+    aiSyncTaskService = createMockAiSyncTaskService();
   });
 
   it('publishes a DRAFT package', async () => {
     const pkg = makeMockPackage({ status: 'DRAFT' });
     (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(pkg);
 
-    const uc = new PublishPackageUseCase(repo);
+    const uc = new PublishPackageUseCase(repo, aiSyncTaskService as any);
     const result = await uc.execute('pkg-1', adminActor);
 
     expect(result.status).toBe('PUBLISHED');
     expect(repo.save).toHaveBeenCalledOnce();
+    expect(aiSyncTaskService.enqueuePackageUpsert).toHaveBeenCalledOnce();
   });
 
   it('throws on publishing already PUBLISHED', async () => {
     const pkg = makeMockPackage({ status: 'PUBLISHED' });
     (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(pkg);
 
-    const uc = new PublishPackageUseCase(repo);
+    const uc = new PublishPackageUseCase(repo, aiSyncTaskService as any);
     await expect(uc.execute('pkg-1', adminActor)).rejects.toThrow('Cannot transition');
   });
 
   it('throws ForbiddenError for non-admin', async () => {
-    const uc = new PublishPackageUseCase(repo);
+    const uc = new PublishPackageUseCase(repo, aiSyncTaskService as any);
     await expect(uc.execute('pkg-1', patientActor)).rejects.toThrow('Admin only');
   });
 });
@@ -177,27 +187,30 @@ describe('PublishPackageUseCase', () => {
 // ============================================================================
 describe('UnpublishPackageUseCase', () => {
   let repo: IPackageRepository;
+  let aiSyncTaskService: ReturnType<typeof createMockAiSyncTaskService>;
 
   beforeEach(() => {
     repo = createMockPackageRepo();
+    aiSyncTaskService = createMockAiSyncTaskService();
   });
 
   it('unpublishes a PUBLISHED package', async () => {
     const pkg = makeMockPackage({ status: 'PUBLISHED' });
     (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(pkg);
 
-    const uc = new UnpublishPackageUseCase(repo);
+    const uc = new UnpublishPackageUseCase(repo, aiSyncTaskService as any);
     const result = await uc.execute('pkg-1', adminActor);
 
     expect(result.status).toBe('DRAFT');
     expect(repo.save).toHaveBeenCalledOnce();
+    expect(aiSyncTaskService.enqueuePackageDelete).toHaveBeenCalledOnce();
   });
 
   it('throws on unpublishing DRAFT', async () => {
     const pkg = makeMockPackage({ status: 'DRAFT' });
     (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(pkg);
 
-    const uc = new UnpublishPackageUseCase(repo);
+    const uc = new UnpublishPackageUseCase(repo, aiSyncTaskService as any);
     await expect(uc.execute('pkg-1', adminActor)).rejects.toThrow('Cannot transition');
   });
 });

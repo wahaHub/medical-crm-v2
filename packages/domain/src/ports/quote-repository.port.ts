@@ -1,4 +1,5 @@
 import type { Quote } from '../entities/quote.entity.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface QuoteListQuery {
   caseId?: string;
@@ -6,6 +7,7 @@ export interface QuoteListQuery {
   status?: string;
   page: number;
   limit: number;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface IQuoteRepository {

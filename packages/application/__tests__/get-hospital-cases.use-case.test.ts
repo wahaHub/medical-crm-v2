@@ -122,7 +122,12 @@ describe('GetHospitalCasesUseCase', () => {
     await useCase.execute('h-1', query, adminActor);
 
     expect(mockCaseRepo.findMany).toHaveBeenCalledWith(
-      { page: 1, limit: 20, hospitalId: 'h-1' },
+      {
+        page: 1,
+        limit: 20,
+        hospitalId: 'h-1',
+        patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      },
       undefined,
     );
   });
@@ -132,7 +137,13 @@ describe('GetHospitalCasesUseCase', () => {
     await useCase.execute('h-1', query, adminActor);
 
     expect(mockCaseRepo.findMany).toHaveBeenCalledWith(
-      { page: 2, limit: 10, status: 'ACTIVE', hospitalId: 'h-1' },
+      {
+        page: 2,
+        limit: 10,
+        status: 'ACTIVE',
+        hospitalId: 'h-1',
+        patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      },
       undefined,
     );
   });

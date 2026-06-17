@@ -24,6 +24,7 @@
     "seed:faq:check": "node scripts/generate-faq-seed.ts --check",
     "seed:faq:import": "pnpm exec tsx scripts/import-faq-seed.ts",
     "seed:faq:evaluate": "pnpm exec tsx scripts/evaluate-faq-retrieval.ts",
+    "admin:provision": "pnpm --filter @medical-crm/infrastructure admin:provision",
     "clean": "turbo clean && rm -rf node_modules"
   },
   "devDependencies": {

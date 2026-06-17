@@ -72,6 +72,10 @@ export type { ConsultationTranscriptProps, TranscriptEntry } from './entities/co
 
 // Phase 1 Ports
 export type { ICaseRepository, CaseListQuery, CaseCountFilters, CaseStats } from './ports/case-repository.port.js';
+export type {
+  PatientSiteAccessScope,
+  PatientSiteForAccess,
+} from './ports/patient-site-scope.port.js';
 export type { IDocumentRepository } from './ports/document-repository.port.js';
 export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
 export type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from './ports/hospital-repository.port.js';

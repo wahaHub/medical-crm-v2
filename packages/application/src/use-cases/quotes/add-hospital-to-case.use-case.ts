@@ -5,6 +5,7 @@ import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dt
 import type { Actor } from '../../types/actor.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
 import { deriveHospitalTypeFromPatientSite } from '../../utils/hospital-type.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class AddHospitalToCaseUseCase {
   constructor(
@@ -12,6 +13,7 @@ export class AddHospitalToCaseUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly hospitalRepo: IHospitalRepository,
     private readonly userRepo: IUserRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, hospitalId: string, actor: Actor): Promise<CaseHospitalContactDTO> {
@@ -23,6 +25,7 @@ export class AddHospitalToCaseUseCase {
     ]);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
     if (!hospital) throw new NotFoundError(`Hospital ${hospitalId} not found`);
+    await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
     if (hospital.status !== 'ACTIVE') {
       throw new ValidationError('Only active hospitals can be added to cases');
     }

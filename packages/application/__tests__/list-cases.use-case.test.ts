@@ -9,6 +9,7 @@ describe('ListCasesUseCase', () => {
   let mockCaseRepo: ICaseRepository;
 
   const adminActor: Actor = { userId: 'a-1', email: 'a@t.com', role: 'ADMIN', hospitalId: null };
+  const beautyAdminActor: Actor = { userId: 'a-2', email: 'contact@medorabeauty.com', role: 'ADMIN', hospitalId: null };
   const hospitalActor: Actor = { userId: 'h-1', email: 'h@t.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 
   const mockCase = new Case({
@@ -42,7 +43,19 @@ describe('ListCasesUseCase', () => {
   it('does not force hospitalId for ADMIN actor', async () => {
     const query: CaseListQuery = { page: 1, limit: 20 };
     await useCase.execute(query, adminActor);
-    expect(mockCaseRepo.findMany).toHaveBeenCalledWith(query, undefined);
+    expect(mockCaseRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    }, undefined);
+  });
+
+  it('passes beauty-only patient-site scope for medorabeauty admin', async () => {
+    const query: CaseListQuery = { page: 1, limit: 20 };
+    await useCase.execute(query, beautyAdminActor);
+    expect(mockCaseRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+    }, undefined);
   });
 
   it('returns paginated CaseDTO results', async () => {

@@ -6,7 +6,11 @@ import type { CrmDb } from '../crm-client.js';
 import type { Transaction } from '@medical-crm/domain';
 import { conversations } from '../schema/index.js';
 import { cases } from '../schema/index.js';
+import { users } from '../schema/index.js';
 import { withTransientDatabaseRetry } from '../transient-db-retry.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
+
+type ConversationRow = typeof conversations.$inferSelect;
 
 export class DrizzleConversationRepository implements IConversationRepository {
   constructor(private readonly db: CrmDb) {}
@@ -77,38 +81,63 @@ export class DrizzleConversationRepository implements IConversationRepository {
   }
 
   async findMany(query: ConversationListQuery, hospitalId?: string, tx?: Transaction): Promise<PaginatedResult<Conversation>> {
-    const { page, limit, category, caseId } = query;
+    const { page, limit, category, caseId, patientSiteScope } = query;
     const db = (tx as CrmDb | undefined) ?? this.db;
 
     const conditions = [];
     if (category) conditions.push(eq(conversations.category, category));
     if (caseId) conditions.push(eq(conversations.caseId, caseId));
     if (hospitalId) conditions.push(eq(conversations.hospitalId, hospitalId));
+    const siteCondition = patientSiteScopeSql(sql`${users.patientSite}`, patientSiteScope);
+    if (siteCondition) conditions.push(siteCondition);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [rows, countResult] = await withTransientDatabaseRetry(
-      'list conversations',
-      () => Promise.all([
-        db
-          .select()
-          .from(conversations)
-          .where(where)
-          .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`)
-          .limit(limit)
-          .offset((page - 1) * limit),
-        db
-          .select({ total: count() })
-          .from(conversations)
-          .where(where),
-      ]),
-    );
+    const [rows, countResult] = patientSiteScope
+      ? await withTransientDatabaseRetry(
+          'list conversations',
+          () => Promise.all([
+            db
+              .select({ conversations })
+              .from(conversations)
+              .innerJoin(cases, eq(conversations.caseId, cases.id))
+              .innerJoin(users, eq(cases.patientId, users.id))
+              .where(where)
+              .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`)
+              .limit(limit)
+              .offset((page - 1) * limit),
+            db
+              .select({ total: count() })
+              .from(conversations)
+              .innerJoin(cases, eq(conversations.caseId, cases.id))
+              .innerJoin(users, eq(cases.patientId, users.id))
+              .where(where),
+          ]),
+        )
+      : await withTransientDatabaseRetry(
+          'list conversations',
+          () => Promise.all([
+            db
+              .select()
+              .from(conversations)
+              .where(where)
+              .orderBy(sql`${conversations.lastMessageAt} DESC NULLS LAST`)
+              .limit(limit)
+              .offset((page - 1) * limit),
+            db
+              .select({ total: count() })
+              .from(conversations)
+              .where(where),
+          ]),
+        );
 
     const total = Number(countResult[0]?.total ?? 0);
     const totalPages = Math.ceil(total / limit);
 
     return {
-      data: rows.map((r) => this.rowToEntity(r)),
+      data: patientSiteScope
+        ? (rows as Array<{ conversations: ConversationRow }>).map((r) => this.rowToEntity(r.conversations))
+        : (rows as ConversationRow[]).map((r) => this.rowToEntity(r)),
       total,
       page,
       limit,

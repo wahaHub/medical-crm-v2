@@ -10,6 +10,7 @@ import { Document, CaseProgress } from '@medical-crm/domain';
 import { generateId, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface UploadDocumentInput {
   caseId: string;
@@ -28,6 +29,7 @@ export class UploadDocumentUseCase {
     private readonly caseRepo: ICaseRepository,
     private readonly progressRepo: ICaseProgressRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
@@ -35,6 +37,8 @@ export class UploadDocumentUseCase {
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);
     }
 
     const docId = generateId();

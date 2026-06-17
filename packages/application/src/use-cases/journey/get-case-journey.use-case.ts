@@ -4,12 +4,14 @@ import type { CaseJourneyDTO } from '../../dtos/journey.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseJourneyDTO } from '../../mappers/journey.mapper.js';
 import { assertHospitalCaseAccess } from '../cases/hospital-case-access.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class GetCaseJourneyUseCase {
   constructor(
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
     private readonly chcRepo?: ICHCRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, actor: Actor): Promise<CaseJourneyDTO | null> {
@@ -23,6 +25,8 @@ export class GetCaseJourneyUseCase {
       if (actor.userId !== caseEntity.patientId) {
         throw new ForbiddenError('Patient can only access their own case journey');
       }
+    } else {
+      await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
     // ADMIN always has access
 

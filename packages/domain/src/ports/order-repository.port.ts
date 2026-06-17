@@ -1,4 +1,5 @@
 import type { Order } from '../entities/order.entity.js';
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 
 export interface OrderListQuery {
   patientId?: string;
@@ -7,6 +8,7 @@ export interface OrderListQuery {
   type?: string;
   page: number;
   limit: number;
+  patientSiteScope?: PatientSiteAccessScope;
 }
 
 export interface IOrderRepository {

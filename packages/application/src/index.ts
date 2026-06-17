@@ -2,6 +2,14 @@
 export type { Actor, Session } from './types/actor.js';
 export { toActor } from './types/actor.js';
 
+// Access policies
+export {
+  AdminPatientSiteAccessPolicy,
+  assertPatientSiteAllowedByScope,
+  getAdminPatientSiteScope,
+  isPatientSiteAllowedByScope,
+} from './access/admin-patient-site-access.js';
+
 // Services
 export { TranslationTaskService } from './services/translation-task.service.js';
 export {

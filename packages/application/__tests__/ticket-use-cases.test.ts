@@ -18,6 +18,13 @@ const adminActor: Actor = {
   hospitalId: null,
 };
 
+const beautyAdminActor: Actor = {
+  userId: 'beauty-admin-1',
+  email: 'contact@medorabeauty.com',
+  role: 'ADMIN',
+  hospitalId: null,
+};
+
 const patientActor: Actor = {
   userId: 'patient-1',
   email: 'patient@test.com',
@@ -149,16 +156,33 @@ describe('ListTicketsUseCase', () => {
     ticketRepo = createMockTicketRepo();
   });
 
-  it('admin sees all tickets', async () => {
+  it('admin scopes out beauty tickets', async () => {
     const tickets = [makeMockTicket()];
     (ticketRepo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({ data: tickets, total: 1 });
 
     const uc = new ListTicketsUseCase(ticketRepo);
     const result = await uc.execute({ page: 1, limit: 20 }, adminActor);
 
-    expect(ticketRepo.findAll).toHaveBeenCalledOnce();
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+    });
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
+  });
+
+  it('medora beauty admin sees only beauty tickets', async () => {
+    (ticketRepo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+
+    const uc = new ListTicketsUseCase(ticketRepo);
+    await uc.execute({ page: 1, limit: 20 }, beautyAdminActor);
+
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+    });
   });
 
   it('patient sees only own tickets', async () => {

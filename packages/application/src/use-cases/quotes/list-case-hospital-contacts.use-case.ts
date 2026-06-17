@@ -3,11 +3,13 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export class ListCaseHospitalContactsUseCase {
   constructor(
     private readonly chcRepo: ICHCRepository,
-    private readonly caseRepo: ICaseRepository,
+    private readonly caseRepo?: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(
@@ -26,10 +28,16 @@ export class ListCaseHospitalContactsUseCase {
       if (!effectiveQuery.caseId) {
         return { data: [], total: 0, page: query.page, limit: query.limit };
       }
-      const caseEntity = await this.caseRepo.findById(effectiveQuery.caseId);
+      const caseEntity = await this.caseRepo?.findById(effectiveQuery.caseId);
       if (!caseEntity || caseEntity.patientId !== actor.userId) {
         throw new ForbiddenError('Access denied to this case');
       }
+    }
+
+    if (actor.role === 'ADMIN' && effectiveQuery.caseId && this.caseRepo && this.adminAccess) {
+      const caseEntity = await this.caseRepo.findById(effectiveQuery.caseId);
+      if (!caseEntity) throw new ForbiddenError('Access denied to this case');
+      await this.adminAccess.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
 
     // Use findByCaseId for case-scoped queries, scoped by hospital when applicable

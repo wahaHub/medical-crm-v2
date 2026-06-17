@@ -4,6 +4,7 @@ import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { CaseJourneyDTO } from '../../dtos/journey.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseJourneyDTO } from '../../mappers/journey.mapper.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
 
 export interface UpdateJourneyInput {
   visa?: unknown;
@@ -17,6 +18,7 @@ export class UpdateCaseJourneyUseCase {
   constructor(
     private readonly journeyRepo: IJourneyRepository,
     private readonly caseRepo: ICaseRepository,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(caseId: string, input: UpdateJourneyInput, actor: Actor): Promise<CaseJourneyDTO> {
@@ -27,6 +29,7 @@ export class UpdateCaseJourneyUseCase {
 
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
 
     let journey = await this.journeyRepo.findJourneyByCaseId(caseId);
 

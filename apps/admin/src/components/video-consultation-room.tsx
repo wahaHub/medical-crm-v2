@@ -6,9 +6,10 @@ import {
   RoomEvent,
   Track,
   VideoPresets,
+  type LocalVideoTrack,
+  type RemoteAudioTrack,
   type RemoteParticipant,
-  type RemoteTrack,
-  type RemoteTrackPublication,
+  type RemoteVideoTrack,
 } from 'livekit-client';
 import { Button, LoadingSpinner } from '@medical-crm/ui';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react';
@@ -30,21 +31,21 @@ export function VideoConsultationRoom({
   displayName,
   onClose,
 }: Props) {
-  const localRef = useRef<HTMLDivElement>(null);
-  const remoteRef = useRef<HTMLDivElement>(null);
-  const roomRef = useRef<Room | null>(null);
-
+  const [room, setRoom] = useState<Room | null>(null);
   const [connecting, setConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('Joining…');
   const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
   const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
+  const [localVideoTrack, setLocalVideoTrack] = useState<LocalVideoTrack | null>(null);
+  const [remoteVideoTracks, setRemoteVideoTracks] = useState<RemoteVideoTrack[]>([]);
+  const [remoteAudioTracks, setRemoteAudioTracks] = useState<RemoteAudioTrack[]>([]);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
 
   useEffect(() => {
     let disposed = false;
 
-    const room = new Room({
+    const lkRoom = new Room({
       adaptiveStream: true,
       dynacast: true,
       publishDefaults: { simulcast: true },
@@ -52,78 +53,72 @@ export function VideoConsultationRoom({
         resolution: VideoPresets.h720.resolution,
       },
     });
-    roomRef.current = room;
 
-    const attachRemoteTrack = (
-      track: RemoteTrack,
-      publication: RemoteTrackPublication,
-      participant: RemoteParticipant,
-    ) => {
-      if (track.kind !== Track.Kind.Audio && track.kind !== Track.Kind.Video) return;
-      const element = track.attach();
-      element.dataset.participant = participant.identity;
-      element.dataset.trackSid = publication.trackSid;
-      element.className = track.kind === Track.Kind.Video ? 'w-full h-full object-cover bg-slate-900' : 'hidden';
-      remoteRef.current?.appendChild(element);
-    };
+    function syncLocalVideo() {
+      const cameraPub = lkRoom.localParticipant.getTrackPublication(Track.Source.Camera);
+      setLocalVideoTrack((cameraPub?.track as LocalVideoTrack | undefined) ?? null);
+    }
 
-    const detachRemoteTrack = (track: RemoteTrack) => {
-      for (const element of track.detach()) {
-        element.remove();
-      }
-    };
+    function syncRemoteParticipants() {
+      setRemoteParticipants(Array.from(lkRoom.remoteParticipants.values()));
+    }
 
-    room
-      .on(RoomEvent.TrackSubscribed, attachRemoteTrack)
-      .on(RoomEvent.TrackUnsubscribed, detachRemoteTrack)
+    lkRoom
+      .on(RoomEvent.LocalTrackPublished, () => syncLocalVideo())
+      .on(RoomEvent.LocalTrackUnpublished, () => syncLocalVideo())
+      .on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+        if (track.kind === Track.Kind.Video) {
+          setRemoteVideoTracks((prev) => {
+            if (prev.some((t) => t.sid === track.sid)) return prev;
+            return [...prev, track as RemoteVideoTrack];
+          });
+        } else if (track.kind === Track.Kind.Audio) {
+          setRemoteAudioTracks((prev) => {
+            if (prev.some((t) => t.sid === track.sid)) return prev;
+            return [...prev, track as RemoteAudioTrack];
+          });
+        }
+        setRemoteParticipants((prev) => {
+          if (prev.some((p) => p.identity === participant.identity)) return prev;
+          return [...prev, participant];
+        });
+      })
+      .on(RoomEvent.TrackUnsubscribed, (track) => {
+        if (track.kind === Track.Kind.Video) {
+          setRemoteVideoTracks((prev) => prev.filter((t) => t.sid !== track.sid));
+        } else if (track.kind === Track.Kind.Audio) {
+          setRemoteAudioTracks((prev) => prev.filter((t) => t.sid !== track.sid));
+        }
+      })
       .on(RoomEvent.ParticipantConnected, (participant) => {
         setStatus(`Remote joined: ${participant.identity}`);
-        setRemoteParticipants((prev) => [...prev, participant]);
+        setRemoteParticipants((prev) => {
+          if (prev.some((p) => p.identity === participant.identity)) return prev;
+          return [...prev, participant];
+        });
       })
       .on(RoomEvent.ParticipantDisconnected, (participant) => {
         setStatus(`Remote left: ${participant.identity}`);
         setRemoteParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
+        setRemoteVideoTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
+        setRemoteAudioTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
       })
-      .on(RoomEvent.Disconnected, () => onClose())
-      .on(RoomEvent.LocalTrackPublished, attachLocalVideo);
+      .on(RoomEvent.Disconnected, () => onClose());
 
     async function connect() {
       setStatus('Connecting…');
-      await room.connect(livekitUrl, token);
+      await lkRoom.connect(livekitUrl, token);
       if (disposed) return;
 
-      await room.localParticipant.setCameraEnabled(true);
-      await room.localParticipant.setMicrophoneEnabled(true);
+      await lkRoom.localParticipant.setCameraEnabled(true);
+      await lkRoom.localParticipant.setMicrophoneEnabled(true);
       setLocalVideoEnabled(true);
       setLocalAudioEnabled(true);
-      attachLocalVideo();
-      attachExistingRemoteTracks();
+      syncLocalVideo();
+      syncRemoteParticipants();
+      setRoom(lkRoom);
       setStatus(`Joined: ${roomName}`);
       setConnecting(false);
-    }
-
-    function attachExistingRemoteTracks() {
-      room.remoteParticipants.forEach((participant) => {
-        participant.trackPublications.forEach((publication) => {
-          if (publication.track) {
-            attachRemoteTrack(publication.track as RemoteTrack, publication, participant);
-          }
-        });
-      });
-    }
-
-    function attachLocalVideo() {
-      const container = localRef.current;
-      if (!container) return;
-      const elements: HTMLElement[] = [];
-      room.localParticipant.videoTrackPublications.forEach((publication) => {
-        const element = publication.videoTrack?.attach();
-        if (element) {
-          element.className = 'w-full h-full object-cover bg-slate-900';
-          elements.push(element);
-        }
-      });
-      container.replaceChildren(...elements);
     }
 
     connect().catch((err) => {
@@ -134,47 +129,32 @@ export function VideoConsultationRoom({
 
     return () => {
       disposed = true;
-      room.disconnect().catch(() => {});
+      lkRoom.disconnect().catch(() => {});
     };
   }, [livekitUrl, token, roomName, onClose]);
 
   async function toggleCam() {
-    const room = roomRef.current;
     if (!room) return;
-
     const nextEnabled = !localVideoEnabled;
     await room.localParticipant.setCameraEnabled(nextEnabled);
     setLocalVideoEnabled(nextEnabled);
-
-    const container = localRef.current;
-    if (!container) return;
     if (!nextEnabled) {
-      container.replaceChildren();
-      return;
+      setLocalVideoTrack(null);
+    } else {
+      const cameraPub = room.localParticipant.getTrackPublication(Track.Source.Camera);
+      setLocalVideoTrack((cameraPub?.track as LocalVideoTrack | undefined) ?? null);
     }
-
-    const elements: HTMLElement[] = [];
-    room.localParticipant.videoTrackPublications.forEach((publication) => {
-      const element = publication.videoTrack?.attach();
-      if (element) {
-        element.className = 'w-full h-full object-cover bg-slate-900';
-        elements.push(element);
-      }
-    });
-    container.replaceChildren(...elements);
   }
 
   async function toggleMic() {
-    const room = roomRef.current;
     if (!room) return;
-
     const nextEnabled = !localAudioEnabled;
     await room.localParticipant.setMicrophoneEnabled(nextEnabled);
     setLocalAudioEnabled(nextEnabled);
   }
 
   function hangUp() {
-    roomRef.current?.disconnect();
+    room?.disconnect();
     onClose();
   }
 
@@ -199,8 +179,10 @@ export function VideoConsultationRoom({
             <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
               You: {displayName || identity}
             </div>
-            <div ref={localRef} className="flex-1 bg-slate-950">
-              {!localVideoEnabled && (
+            <div className="relative flex-1 bg-slate-950">
+              {localVideoTrack ? (
+                <VideoRenderer track={localVideoTrack} muted className="absolute inset-0 h-full w-full" />
+              ) : (
                 <div className="flex h-full items-center justify-center text-sm text-slate-500">
                   Camera is off
                 </div>
@@ -213,12 +195,25 @@ export function VideoConsultationRoom({
             <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
               Remote ({remoteParticipants.length})
             </div>
-            <div ref={remoteRef} className="flex-1 bg-slate-950">
-              {remoteParticipants.length === 0 && (
+            <div className="relative flex-1 bg-slate-950">
+              {remoteVideoTracks.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-slate-500">
                   Waiting for others to join…
                 </div>
+              ) : (
+                <div className="absolute inset-0 grid grid-cols-1">
+                  {remoteVideoTracks.map((track) => (
+                    <VideoRenderer
+                      key={track.sid}
+                      track={track}
+                      className="h-full w-full"
+                    />
+                  ))}
+                </div>
               )}
+              {remoteAudioTracks.map((track) => (
+                <AudioRenderer key={track.sid} track={track} />
+              ))}
             </div>
           </div>
         </div>
@@ -265,4 +260,50 @@ export function VideoConsultationRoom({
       </footer>
     </div>
   );
+}
+
+function VideoRenderer({
+  track,
+  muted,
+  className,
+}: {
+  track: LocalVideoTrack | RemoteVideoTrack;
+  muted?: boolean;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    track.attach(el);
+    return () => {
+      track.detach(el);
+    };
+  }, [track]);
+
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted={muted}
+      className={`object-cover bg-slate-900 ${className ?? ''}`}
+    />
+  );
+}
+
+function AudioRenderer({ track }: { track: RemoteAudioTrack }) {
+  const ref = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    track.attach(el);
+    return () => {
+      track.detach(el);
+    };
+  }, [track]);
+
+  return <audio ref={ref} autoPlay className="hidden" />;
 }

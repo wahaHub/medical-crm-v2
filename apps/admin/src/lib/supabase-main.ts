@@ -34,6 +34,8 @@ export interface VideoConsultation {
   id: string;
   case_id: string | null;
   patient_id: string | null;
+  patient_name: string | null;
+  patient_email: string | null;
   room_name: string;
   status: 'PENDING_CONFIRMATION' | 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'REJECTED';
   scheduled_at: string | null;

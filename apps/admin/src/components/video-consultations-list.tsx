@@ -188,8 +188,21 @@ export function VideoConsultationsList({ initialData }: Props) {
     {
       key: 'patient',
       header: 'Patient',
-      className: 'w-40',
-      render: (c) => <span className="text-slate-500">{c.patient_id || '—'}</span>,
+      className: 'w-48',
+      render: (c) => {
+        const display = c.patient_name || c.patient_email || c.patient_id || '—';
+        return (
+          <div className="text-sm">
+            <div className="font-medium text-slate-900">{display}</div>
+            {c.patient_name && c.patient_email && (
+              <div className="text-xs text-slate-500">{c.patient_email}</div>
+            )}
+            {!c.patient_name && c.patient_id && (
+              <div className="text-xs text-slate-400">{c.patient_id}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'actions',
@@ -303,6 +316,7 @@ export function VideoConsultationsList({ initialData }: Props) {
           token={roomToken.token}
           livekitUrl={roomToken.livekitUrl}
           identity={roomToken.identity}
+          displayName={joining?.doctor_name || roomToken.identity}
           roomName={roomToken.roomName}
           onClose={() => setRoomToken(null)}
         />

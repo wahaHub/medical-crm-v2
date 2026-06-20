@@ -97,8 +97,19 @@ export function VideoConsultationRoom({
       setLocalVideoEnabled(true);
       setLocalAudioEnabled(true);
       attachLocalVideo();
+      attachExistingRemoteTracks();
       setStatus(`Joined: ${roomName}`);
       setConnecting(false);
+    }
+
+    function attachExistingRemoteTracks() {
+      room.remoteParticipants.forEach((participant) => {
+        participant.trackPublications.forEach((publication) => {
+          if (publication.track) {
+            attachRemoteTrack(publication.track as RemoteTrack, publication, participant);
+          }
+        });
+      });
     }
 
     function attachLocalVideo() {
@@ -182,53 +193,51 @@ export function VideoConsultationRoom({
       </header>
 
       <main className="relative flex flex-1 overflow-hidden p-4">
+        <div className="grid h-full w-full grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* Local (self) video */}
+          <div className="relative flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+            <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
+              You: {displayName || identity}
+            </div>
+            <div ref={localRef} className="flex-1 bg-slate-950">
+              {!localVideoEnabled && (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                  Camera is off
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Remote video */}
+          <div className="relative flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+            <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
+              Remote ({remoteParticipants.length})
+            </div>
+            <div ref={remoteRef} className="flex-1 bg-slate-950">
+              {remoteParticipants.length === 0 && (
+                <div className="flex h-full items-center justify-center text-sm text-slate-500">
+                  Waiting for others to join…
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {connecting && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white">
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-slate-950/80 text-white">
             <LoadingSpinner size="lg" />
             <span className="text-sm">Joining room…</span>
           </div>
         )}
 
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80">
             <div className="max-w-md rounded-xl bg-rose-500/10 p-6 text-center text-rose-200">
               <p className="font-medium">Could not join room</p>
               <p className="mt-2 text-sm">{error}</p>
               <Button variant="outline" className="mt-4" onClick={onClose}>
                 Close
               </Button>
-            </div>
-          </div>
-        )}
-
-        {!connecting && !error && (
-          <div className="grid h-full w-full grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Local (self) video */}
-            <div className="relative flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-              <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
-                You: {displayName || identity}
-              </div>
-              <div ref={localRef} className="flex-1 bg-slate-950">
-                {!localVideoEnabled && (
-                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                    Camera is off
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Remote video */}
-            <div className="relative flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-              <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
-                Remote ({remoteParticipants.length})
-              </div>
-              <div ref={remoteRef} className="flex-1 bg-slate-950">
-                {remoteParticipants.length === 0 && (
-                  <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                    Waiting for others to join…
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}

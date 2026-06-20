@@ -3,6 +3,8 @@ import { listVideoConsultations, requireAdminSession } from '@/lib/supabase-main
 import { VideoConsultationsList } from '@/components/video-consultations-list';
 import type { VideoConsultationListResponse } from '@/lib/video-consultation-types';
 
+export const dynamic = 'force-dynamic';
+
 export default async function VideoConsultationsPage() {
   let initial: VideoConsultationListResponse;
   try {

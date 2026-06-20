@@ -14,11 +14,12 @@
   "dependencies": {
     "@medical-crm/config": "workspace:*",
     "@medical-crm/i18n": "workspace:*",
-    "@medical-crm/validation": "workspace:*",
     "@medical-crm/ui": "workspace:*",
+    "@medical-crm/validation": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "framer-motion": "^12.38.0",
     "iron-session": "^8.0.0",
+    "livekit-client": "^2.19.2",
     "lucide-react": "^0.577.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
@@ -26,6 +27,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.0",
     "dotenv": "^17.2.3",
     "tailwindcss": "^4.0.0",

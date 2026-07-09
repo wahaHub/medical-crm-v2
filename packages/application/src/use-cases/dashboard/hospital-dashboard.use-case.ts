@@ -29,13 +29,17 @@ export class HospitalDashboardUseCase {
 
     // 2. Pending quotes for this hospital
     const pendingQuotesResult = await this.quoteRepo.findByHospitalId(hospitalId, {
-      status: 'PENDING',
-      page: 1,
-      limit: 1,
+      ...withDefaultPatientEmailExclusions({
+        status: 'PENDING',
+        page: 1,
+        limit: 1,
+      }),
     });
 
     // 3. Today's consultations via consultation stats
-    const consultationStats = await this.consultationRepo.countByFilters({ hospitalId });
+    const consultationStats = await this.consultationRepo.countByFilters(
+      withDefaultPatientEmailExclusions({ hospitalId }),
+    );
 
     // 4. Active orders — stub at 0 (orders don't have hospitalId)
     const activeOrders = 0;

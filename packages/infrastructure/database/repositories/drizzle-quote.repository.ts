@@ -50,10 +50,15 @@ export class DrizzleQuoteRepository implements IQuoteRepository {
     }
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     const where = and(...conditions);
+    const needsPatientJoin = Boolean(
+      query.patientSiteScope || query.excludedPatientEmailDomains?.length,
+    );
 
-    const [rows, countResult] = query.patientSiteScope
+    const [rows, countResult] = needsPatientJoin
       ? await Promise.all([
           this.db
             .select({ quotes })
@@ -86,11 +91,25 @@ export class DrizzleQuoteRepository implements IQuoteRepository {
         ]);
 
     return {
-      data: query.patientSiteScope
+      data: needsPatientJoin
         ? (rows as Array<{ quotes: QuoteRow }>).map((r) => this.rowToEntity(r.quotes))
         : (rows as QuoteRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(${users.email} is null or not (${sql.join(
+      patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+      sql` or `,
+    )}))`;
   }
 
   async save(entity: Quote, tx?: unknown): Promise<Quote> {

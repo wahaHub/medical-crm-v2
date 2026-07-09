@@ -9,6 +9,7 @@ export interface OrderListQuery {
   page: number;
   limit: number;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface IOrderRepository {

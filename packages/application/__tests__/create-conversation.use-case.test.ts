@@ -4,6 +4,7 @@ import type { IConversationRepository } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
 import { ValidationError } from '@medical-crm/utils';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 describe('CreateConversationUseCase', () => {
   let useCase: CreateConversationUseCase;
@@ -22,6 +23,13 @@ describe('CreateConversationUseCase', () => {
     role: 'HOSPITAL',
     hospitalId: 'h-1',
   };
+
+  function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+    return {
+      assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+      ...overrides,
+    } as unknown as AdminPatientSiteAccessPolicy;
+  }
 
   beforeEach(() => {
     mockConversationRepo = {
@@ -53,6 +61,28 @@ describe('CreateConversationUseCase', () => {
     expect(result.category).toBe('HOSPITAL_PATIENT');
     expect(result.hospitalId).toBe('h-1'); // auto-filled from actor
     expect(mockConversationRepo.findOrCreateHospitalPatientConversation).toHaveBeenCalledOnce();
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('blocks HOSPITAL actor from creating conversations for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new CreateConversationUseCase(
+      mockConversationRepo,
+      undefined,
+      undefined,
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute(
+        { category: 'HOSPITAL_PATIENT', caseId: 'case-1' },
+        hospitalActor,
+      ),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockConversationRepo.findOrCreateHospitalPatientConversation).not.toHaveBeenCalled();
     expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 

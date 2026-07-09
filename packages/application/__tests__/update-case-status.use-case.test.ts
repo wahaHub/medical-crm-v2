@@ -3,11 +3,13 @@ import { UpdateCaseStatusUseCase } from '../src/use-cases/cases/update-case-stat
 import type { ICaseRepository, ICaseProgressRepository, CaseAssignmentStatus } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 describe('UpdateCaseStatusUseCase', () => {
   let useCase: UpdateCaseStatusUseCase;
   let mockCaseRepo: ICaseRepository;
   let mockProgressRepo: ICaseProgressRepository;
+  let mockAdminAccess: AdminPatientSiteAccessPolicy;
 
   const adminActor: Actor = {
     userId: 'admin-1',
@@ -80,7 +82,12 @@ describe('UpdateCaseStatusUseCase', () => {
       save: vi.fn().mockImplementation((progress) => Promise.resolve(progress)),
     };
 
-    useCase = new UpdateCaseStatusUseCase(mockCaseRepo, mockProgressRepo);
+    mockAdminAccess = {
+      assertActorCanAccessCaseEntity: vi.fn().mockResolvedValue(undefined),
+      assertStaffCaseNotExcludedByPatientEmail: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AdminPatientSiteAccessPolicy;
+
+    useCase = new UpdateCaseStatusUseCase(mockCaseRepo, mockProgressRepo, mockAdminAccess);
   });
 
   it('calls entity.transitionAssignmentStatus() and saves the updated case', async () => {
@@ -156,6 +163,19 @@ describe('UpdateCaseStatusUseCase', () => {
 
     const savedProgress = (mockProgressRepo.save as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(savedProgress.recordedById).toBe('staff-99');
+  });
+
+  it('blocks hospitals from updating status for excluded patient email cases', async () => {
+    vi.mocked(mockAdminAccess.assertStaffCaseNotExcludedByPatientEmail).mockRejectedValueOnce(
+      new Error('Case case-id-1 not found'),
+    );
+
+    await expect(
+      useCase.execute('case-id-1', 'ASSIGNED', hospitalActor),
+    ).rejects.toThrow('Case case-id-1 not found');
+
+    expect(mockCaseRepo.save).not.toHaveBeenCalled();
+    expect(mockProgressRepo.save).not.toHaveBeenCalled();
   });
 
   it('allows transitioning back from ASSIGNED to UNASSIGNED', async () => {

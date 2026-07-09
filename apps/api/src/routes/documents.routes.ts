@@ -375,6 +375,8 @@ app.openapi(uploadDocumentRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
 
+  await svc.uploadDocument.assertCanUpload(caseId, actor);
+
   // Get upload URL
   const uploadResult = await svc.mediaUpload.createUploadIntent({
     policyId: 'case_document',
@@ -435,6 +437,7 @@ app.openapi(notifyPatientDocumentAvailableRoute, async (c) => {
   if (!caseEntity) {
     return c.json({ error: 'Case not found' }, 404);
   }
+  await svc.adminPatientSiteAccess.assertCaseNotExcludedByPatientEmail(caseEntity);
   if (actor.role === 'HOSPITAL') {
     await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
   }

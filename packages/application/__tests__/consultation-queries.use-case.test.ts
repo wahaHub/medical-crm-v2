@@ -5,6 +5,7 @@ import { ListCaseConsultationsUseCase } from '../src/use-cases/consultations/lis
 import type { IConsultationRepository, IConsultationTranscriptRepository, ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { Consultation, ConsultationTranscript, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ─── Factories ───────────────────────────────────────────────────────────────
 
@@ -91,6 +92,15 @@ const adminActor: Actor = { userId: 'admin-1', email: 'admin@test.com', role: 'A
 const hospitalActor: Actor = { userId: 'h-1', email: 'h@test.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 const otherHospitalActor: Actor = { userId: 'h-2', email: 'h2@test.com', role: 'HOSPITAL', hospitalId: 'hosp-2' };
 
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    assertActorCanAccessCaseEntity: vi.fn().mockResolvedValue(undefined),
+    assertStaffCaseNotExcludedByPatientEmail: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
+
 // ─── GetConsultationTranscriptUseCase ────────────────────────────────────────
 
 describe('GetConsultationTranscriptUseCase', () => {
@@ -129,6 +139,23 @@ describe('GetConsultationTranscriptUseCase', () => {
 
     expect(result.id).toBe('transcript-1');
     expect(result.consultationId).toBe('consult-1');
+  });
+
+  it('blocks hospital transcript access for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new GetConsultationTranscriptUseCase(
+      mockConsultationRepo,
+      mockTranscriptRepo,
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute('consult-1', hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockTranscriptRepo.findByConsultationId).not.toHaveBeenCalled();
   });
 
   it('throws ForbiddenError when HOSPITAL actor does not own the consultation', async () => {
@@ -196,7 +223,10 @@ describe('GetConsultationStatsUseCase', () => {
     const result = await useCase.execute(hospitalActor);
 
     expect(result).toEqual(mockStats);
-    expect(mockConsultationRepo.countByFilters).toHaveBeenCalledWith({ hospitalId: 'hosp-1' });
+    expect(mockConsultationRepo.countByFilters).toHaveBeenCalledWith({
+      hospitalId: 'hosp-1',
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 
   it('returns the correct stats shape', async () => {

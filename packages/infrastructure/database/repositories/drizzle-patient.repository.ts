@@ -58,6 +58,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
         () => this.db
           .select({
             id: users.id,
+            email: users.email,
             patientCode: users.patientCode,
             preferredLanguage: users.preferredLanguage,
             site: users.patientSite,
@@ -75,6 +76,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
       const row = rows[0]!;
       return {
         id: row.id,
+        email: row.email,
         patientCode: row.patientCode ?? null,
         preferredLanguage: row.preferredLanguage,
         site: row.site ?? null,
@@ -89,6 +91,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
         () => this.db
           .select({
             id: users.id,
+            email: users.email,
             patientCode: users.patientCode,
             preferredLanguage: users.preferredLanguage,
           })
@@ -101,6 +104,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
       const row = rows[0]!;
       return {
         id: row.id,
+        email: row.email,
         patientCode: row.patientCode ?? null,
         preferredLanguage: row.preferredLanguage,
         site: 'china',

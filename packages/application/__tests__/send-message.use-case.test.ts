@@ -12,6 +12,7 @@ import type {
   TransactionRunner,
 } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,13 @@ const patientActor: Actor = {
   role: 'PATIENT',
   hospitalId: null,
 };
+
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
@@ -775,5 +783,35 @@ describe('SendMessageUseCase', () => {
         hospitalActor,
       ),
     ).rejects.toThrow('Hospital cannot access admin-patient conversations');
+  });
+
+  it('blocks HOSPITAL sends for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new SendMessageUseCase(
+      mockConversationRepo,
+      mockMessageRepo,
+      mockTranslationService,
+      mockMessageTaskQueue,
+      mockPatientRepo,
+      mockUserRepo,
+      mockCaseRepo,
+      mockTxRunner,
+      adminAccess,
+    );
+    mockConversationRepo.findById = vi.fn().mockResolvedValue(
+      makeConversation({ category: 'HOSPITAL_PATIENT', hospitalId: 'hosp-1', caseId: 'case-1' }),
+    );
+
+    await expect(
+      useCase.execute(
+        'conv-1',
+        { content: 'blocked', messageType: 'TEXT' },
+        hospitalActor,
+      ),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockMessageRepo.save).not.toHaveBeenCalled();
   });
 });

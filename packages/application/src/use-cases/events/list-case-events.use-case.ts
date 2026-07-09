@@ -19,6 +19,7 @@ export class ListCaseEventsUseCase {
     if (!caseEntity) {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);
     } else if (actor.role === 'ADMIN') {

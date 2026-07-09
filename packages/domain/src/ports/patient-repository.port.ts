@@ -2,6 +2,7 @@ export type PatientSite = 'beauty' | 'china';
 
 export interface PatientBasicInfo {
   id: string;
+  email?: string | null;
   patientCode: string | null;
   preferredLanguage: string;
   site?: PatientSite | null;

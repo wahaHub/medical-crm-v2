@@ -187,11 +187,16 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
     }
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const { page, limit } = query;
+    const needsPatientJoin = Boolean(
+      query.patientSiteScope || query.excludedPatientEmailDomains?.length,
+    );
 
-    const [rows, countResult] = query.patientSiteScope
+    const [rows, countResult] = needsPatientJoin
       ? await Promise.all([
           this.db
             .select({ questionCollectorResponses })
@@ -224,11 +229,25 @@ export class DrizzleQuestionCollectorRepository implements IQuestionCollectorRep
         ]);
 
     return {
-      data: query.patientSiteScope
+      data: needsPatientJoin
         ? (rows as Array<{ questionCollectorResponses: QCResponseRow }>).map((r) => this.rowToResponse(r.questionCollectorResponses))
         : (rows as QCResponseRow[]).map((r) => this.rowToResponse(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(${users.email} is null or not (${sql.join(
+      patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+      sql` or `,
+    )}))`;
   }
 
   async saveResponse(entity: QCResponse): Promise<QCResponse> {

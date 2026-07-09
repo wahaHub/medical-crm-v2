@@ -8,6 +8,7 @@ import { RequestRefundUseCase } from '../src/use-cases/orders/request-refund.use
 import type { IOrderRepository } from '@medical-crm/domain';
 import { Order, OrderNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ——— Actors ———
 const adminActor: Actor = {
@@ -77,6 +78,14 @@ function createMockOrderRepo(): IOrderRepository {
     save: vi.fn().mockImplementation((e) => Promise.resolve(e)),
     nextOrderNumber: vi.fn().mockResolvedValue('ORD-20260316-0001'),
   };
+}
+
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    assertActorCanAccessCaseOrPatient: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
 }
 
 // ============================================================================
@@ -184,6 +193,7 @@ describe('ListOrdersUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
@@ -199,6 +209,7 @@ describe('ListOrdersUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
   });
 
@@ -210,6 +221,21 @@ describe('ListOrdersUseCase', () => {
     await uc.execute({ page: 1, limit: 20 }, patientActor);
 
     expect(repo.findAll).toHaveBeenCalledWith({ page: 1, limit: 20, patientId: 'patient-1' });
+  });
+
+  it('admin filters example.com orders when listing a specific case', async () => {
+    (repo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+
+    const uc = new ListOrdersUseCase(repo);
+    await uc.execute({ page: 1, limit: 20, caseId: 'case-1' }, adminActor);
+
+    expect(repo.findAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      caseId: 'case-1',
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 });
 
@@ -241,6 +267,30 @@ describe('GetOrderUseCase', () => {
     const result = await uc.execute('order-1', adminActor);
 
     expect(result.id).toBe('order-1');
+  });
+
+  it('checks hospital direct reads against case access policy', async () => {
+    const order = makeMockOrder({ patientId: 'patient-1', caseId: 'case-1' });
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(order);
+
+    const uc = new GetOrderUseCase(repo, adminAccess);
+
+    await expect(uc.execute('order-1', hospitalActor)).rejects.toThrow('Case case-1 not found');
+    expect(adminAccess.assertActorCanAccessCase).toHaveBeenCalledWith(hospitalActor, 'case-1');
+  });
+
+  it('denies hospital direct reads for orders without a case', async () => {
+    const order = makeMockOrder({ patientId: 'patient-1', caseId: null });
+    const adminAccess = makeAdminAccess();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(order);
+
+    const uc = new GetOrderUseCase(repo, adminAccess);
+
+    await expect(uc.execute('order-1', hospitalActor)).rejects.toThrow('Not authorized');
+    expect(adminAccess.assertActorCanAccessCase).not.toHaveBeenCalled();
   });
 
   it('throws ForbiddenError for other patient', async () => {

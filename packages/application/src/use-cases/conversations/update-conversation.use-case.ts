@@ -4,7 +4,7 @@ import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO } from '../../mappers/conversation.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export interface UpdateConversationInput {
   title?: string;
@@ -30,7 +30,7 @@ export class UpdateConversationUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
-    await assertAdminCanAccessConversationCase(actor, entity, this.adminAccess);
+    await assertStaffCanAccessConversationCase(actor, entity, this.adminAccess);
 
     if (input.title !== undefined) entity.title = input.title;
     entity.updatedAt = new Date();

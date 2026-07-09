@@ -9,6 +9,7 @@ import { CloseTicketUseCase } from '../src/use-cases/tickets/close-ticket.use-ca
 import type { ISupportTicketRepository, ISupportTicketReplyRepository } from '@medical-crm/domain';
 import { SupportTicket, TicketNumber, SupportTicketReply } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ——— Actors ———
 const adminActor: Actor = {
@@ -37,6 +38,13 @@ const otherPatientActor: Actor = {
   email: 'other@test.com',
   role: 'PATIENT',
   hospitalId: null,
+};
+
+const hospitalActor: Actor = {
+  userId: 'hospital-user-1',
+  email: 'hospital@test.com',
+  role: 'HOSPITAL',
+  hospitalId: 'hosp-1',
 };
 
 // ——— Mocks ———
@@ -98,6 +106,14 @@ function createMockReplyRepo(): ISupportTicketReplyRepository {
   };
 }
 
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    assertActorCanAccessCaseOrPatient: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
+
 // ============================================================================
 // CreateTicketUseCase
 // ============================================================================
@@ -105,6 +121,7 @@ describe('CreateTicketUseCase', () => {
   let ticketRepo: ISupportTicketRepository;
 
   beforeEach(() => {
+    mockTranslationTaskService.enqueue.mockClear();
     ticketRepo = createMockTicketRepo();
   });
 
@@ -133,6 +150,24 @@ describe('CreateTicketUseCase', () => {
 
     expect(result.patientId).toBe('admin-1');
     expect(result.status).toBe('OPEN');
+  });
+
+  it('blocks staff from creating tickets linked to excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    const uc = new CreateTicketUseCase(ticketRepo, mockTranslationTaskService as any, adminAccess);
+
+    await expect(
+      uc.execute({
+        type: 'FEEDBACK',
+        description: 'Admin ticket',
+        caseId: 'case-1',
+      }, adminActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(ticketRepo.save).not.toHaveBeenCalled();
+    expect(mockTranslationTaskService.enqueue).not.toHaveBeenCalled();
   });
 
   it('uses default MEDIUM priority when not specified', async () => {
@@ -167,6 +202,7 @@ describe('ListTicketsUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
@@ -182,6 +218,7 @@ describe('ListTicketsUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
   });
 
@@ -194,6 +231,29 @@ describe('ListTicketsUseCase', () => {
 
     expect(ticketRepo.findByPatientId).toHaveBeenCalledWith('patient-1', expect.anything());
     expect(result.data).toHaveLength(1);
+  });
+
+  it('does not treat hospital users as ticket patients', async () => {
+    const uc = new ListTicketsUseCase(ticketRepo);
+
+    await expect(uc.execute({ page: 1, limit: 20 }, hospitalActor)).rejects.toThrow('Only admins and patients');
+    expect(ticketRepo.findByPatientId).not.toHaveBeenCalled();
+    expect(ticketRepo.findAll).not.toHaveBeenCalled();
+  });
+
+  it('admin filters example.com tickets when listing a specific case', async () => {
+    (ticketRepo.findAll as ReturnType<typeof vi.fn>).mockResolvedValue({ data: [], total: 0 });
+
+    const uc = new ListTicketsUseCase(ticketRepo);
+    await uc.execute({ page: 1, limit: 20, caseId: 'case-1' }, adminActor);
+
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({
+      page: 1,
+      limit: 20,
+      caseId: 'case-1',
+      patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 });
 
@@ -266,6 +326,32 @@ describe('GetTicketUseCase', () => {
 
     const uc = new GetTicketUseCase(ticketRepo, replyRepo);
     await expect(uc.execute('ticket-1', otherPatientActor)).rejects.toThrow('Not authorized');
+  });
+
+  it('checks hospital direct reads against case access policy', async () => {
+    const ticket = makeMockTicket({ patientId: 'patient-1', caseId: 'case-1' });
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
+
+    const uc = new GetTicketUseCase(ticketRepo, replyRepo, adminAccess);
+
+    await expect(uc.execute('ticket-1', hospitalActor)).rejects.toThrow('Case case-1 not found');
+    expect(adminAccess.assertActorCanAccessCase).toHaveBeenCalledWith(hospitalActor, 'case-1');
+    expect(replyRepo.findByTicketId).not.toHaveBeenCalled();
+  });
+
+  it('denies hospital direct reads for tickets without a case', async () => {
+    const ticket = makeMockTicket({ patientId: 'hospital-user-1', caseId: null });
+    const adminAccess = makeAdminAccess();
+    (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
+
+    const uc = new GetTicketUseCase(ticketRepo, replyRepo, adminAccess);
+
+    await expect(uc.execute('ticket-1', hospitalActor)).rejects.toThrow('Not authorized');
+    expect(adminAccess.assertActorCanAccessCase).not.toHaveBeenCalled();
+    expect(replyRepo.findByTicketId).not.toHaveBeenCalled();
   });
 });
 
@@ -375,6 +461,36 @@ describe('ReplyToTicketUseCase', () => {
     );
 
     expect(result.isInternalNote).toBe(true);
+  });
+
+  it('checks hospital replies against case access policy', async () => {
+    const ticket = makeMockTicket({ patientId: 'patient-1', caseId: 'case-1', status: 'ASSIGNED' });
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
+
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any, adminAccess);
+
+    await expect(
+      uc.execute('ticket-1', { content: 'Hospital reply' }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+    expect(adminAccess.assertActorCanAccessCase).toHaveBeenCalledWith(hospitalActor, 'case-1');
+    expect(replyRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('denies hospital replies for tickets without a case', async () => {
+    const ticket = makeMockTicket({ patientId: 'hospital-user-1', caseId: null, status: 'ASSIGNED' });
+    const adminAccess = makeAdminAccess();
+    (ticketRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(ticket);
+
+    const uc = new ReplyToTicketUseCase(ticketRepo, replyRepo, mockTranslationTaskService as any, adminAccess);
+
+    await expect(
+      uc.execute('ticket-1', { content: 'Hospital reply' }, hospitalActor),
+    ).rejects.toThrow('Not authorized');
+    expect(adminAccess.assertActorCanAccessCase).not.toHaveBeenCalled();
+    expect(replyRepo.save).not.toHaveBeenCalled();
   });
 });
 

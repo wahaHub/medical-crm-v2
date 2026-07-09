@@ -4,7 +4,7 @@ import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export class GetMessageUseCase {
   constructor(
@@ -31,7 +31,7 @@ export class GetMessageUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
-    await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
+    await assertStaffCanAccessConversationCase(actor, conversation, this.adminAccess);
 
     const message = await this.messageRepo.findById(messageId);
     if (!message || message.conversationId !== conversationId) {

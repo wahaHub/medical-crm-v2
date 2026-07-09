@@ -10,10 +10,12 @@ export interface ConsultationListQuery {
   caseId?: string;
   status?: ConsultationStatus;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface ConsultationCountFilters {
   hospitalId?: string;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface ConsultationStats {

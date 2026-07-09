@@ -1,6 +1,7 @@
 import type { IConsultationRepository, ConsultationStats } from '@medical-crm/domain';
 import { ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class GetConsultationStatsUseCase {
   constructor(private readonly consultationRepo: IConsultationRepository) {}
@@ -10,6 +11,8 @@ export class GetConsultationStatsUseCase {
       throw new ForbiddenError('Only hospital users can view consultation stats');
     }
 
-    return this.consultationRepo.countByFilters({ hospitalId: actor.hospitalId! });
+    return this.consultationRepo.countByFilters(
+      withDefaultPatientEmailExclusions({ hospitalId: actor.hospitalId! }),
+    );
   }
 }

@@ -43,7 +43,7 @@ const mockServices = {
   updateCaseStatus: { execute: vi.fn() },
   advanceCaseStage: { execute: vi.fn() },
   getCaseStats: { execute: vi.fn() },
-  uploadDocument: { execute: vi.fn() },
+  uploadDocument: { assertCanUpload: vi.fn(), execute: vi.fn() },
   listDocuments: { execute: vi.fn() },
   getDocumentPreview: { execute: vi.fn() },
   deleteDocument: { execute: vi.fn() },
@@ -54,7 +54,10 @@ const mockServices = {
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
-  adminPatientSiteAccess: { assertActorCanAccessCaseEntity: vi.fn() },
+  adminPatientSiteAccess: {
+    assertActorCanAccessCaseEntity: vi.fn(),
+    assertCaseNotExcludedByPatientEmail: vi.fn(),
+  },
   documentRepo: { findById: vi.fn() },
   patientRepo: { findById: vi.fn() },
   hospitalRepo: { findById: vi.fn() },
@@ -154,6 +157,7 @@ describe('Documents routes', () => {
       assignedHospitalId: 'hospital-1',
     });
     mockServices.adminPatientSiteAccess.assertActorCanAccessCaseEntity.mockResolvedValue(undefined);
+    mockServices.adminPatientSiteAccess.assertCaseNotExcludedByPatientEmail.mockResolvedValue(undefined);
     mockServices.patientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       site: 'beauty',
@@ -203,6 +207,7 @@ describe('Documents routes', () => {
       name: 'Associated Hospital',
     });
     mockServices.chcRepo.findByCaseAndHospital.mockResolvedValue(null);
+    mockServices.uploadDocument.assertCanUpload.mockResolvedValue(undefined);
     mockReadFile.mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(new Uint8Array([37, 80, 68, 70]), {
       status: 200,
@@ -242,9 +247,27 @@ describe('Documents routes', () => {
       expect(json.upload.uploadUrl).toBe('https://storage.example.com/upload');
       expect(mockServices.mediaUpload.createUploadIntent).toHaveBeenCalledOnce();
       expect(mockServices.uploadDocument.execute).toHaveBeenCalledOnce();
+      expect(mockServices.uploadDocument.assertCanUpload).toHaveBeenCalledWith(CASE_UUID, expect.objectContaining({
+        userId: 'u-1',
+        role: 'ADMIN',
+      }));
 
       const [input] = mockServices.uploadDocument.execute.mock.calls[0]!;
       expect(input).toMatchObject({ caseId: CASE_UUID, fileName: 'report.pdf', storageKey: 'crm/dev/cases/documents/case-1/asset-1/report.pdf' });
+    });
+
+    it('checks access before creating the upload intent', async () => {
+      mockServices.uploadDocument.assertCanUpload.mockRejectedValue(new ForbiddenError('Access denied to this case'));
+
+      const res = await app.request(`/api/v2/cases/${CASE_UUID}/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockServices.mediaUpload.createUploadIntent).not.toHaveBeenCalled();
+      expect(mockServices.uploadDocument.execute).not.toHaveBeenCalled();
     });
 
     it('does not notify the patient before the invitation file upload completes', async () => {

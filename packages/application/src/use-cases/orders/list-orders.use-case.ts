@@ -3,6 +3,7 @@ import type { OrderDTO } from '../../dtos/order.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toOrderDTO } from '../../mappers/order.mapper.js';
 import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class ListOrdersUseCase {
   constructor(private readonly orderRepo: IOrderRepository) {}
@@ -15,9 +16,11 @@ export class ListOrdersUseCase {
     const patientSiteScope = getAdminPatientSiteScope(actor);
     const effectiveQuery: OrderListQuery = actor.role === 'PATIENT'
       ? { ...query, patientId: actor.userId }
-      : patientSiteScope
-        ? { ...query, patientSiteScope }
-        : query;
+      : withDefaultPatientEmailExclusions(
+          patientSiteScope
+            ? { ...query, patientSiteScope }
+            : query,
+        );
 
     const result = await this.orderRepo.findAll(effectiveQuery);
 

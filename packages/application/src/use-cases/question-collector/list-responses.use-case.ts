@@ -4,6 +4,7 @@ import type { QCResponseDTO } from '../../dtos/question-collector.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQCResponseDTO } from '../../mappers/question-collector.mapper.js';
 import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export interface ListResponsesQuery {
   caseId?: string;
@@ -23,7 +24,7 @@ export class ListResponsesUseCase {
 
     const patientSiteScope = getAdminPatientSiteScope(actor);
     const result = await this.qcRepo.findAllResponses(
-      patientSiteScope ? { ...query, patientSiteScope } : query,
+      withDefaultPatientEmailExclusions(patientSiteScope ? { ...query, patientSiteScope } : query),
     );
     return {
       data: result.data.map(toQCResponseDTO),

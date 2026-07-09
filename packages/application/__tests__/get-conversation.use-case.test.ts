@@ -4,6 +4,7 @@ import { UpdateConversationUseCase } from '../src/use-cases/conversations/update
 import type { IConversationRepository } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 const makeConversation = (overrides: Partial<ConstructorParameters<typeof Conversation>[0]> = {}) =>
   new Conversation({
@@ -24,6 +25,13 @@ const makeConversation = (overrides: Partial<ConstructorParameters<typeof Conver
 const adminActor: Actor = { userId: 'admin-1', email: 'admin@t.com', role: 'ADMIN', hospitalId: null };
 const hospitalActor: Actor = { userId: 'h-1', email: 'h@t.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 const otherHospitalActor: Actor = { userId: 'h-2', email: 'h2@t.com', role: 'HOSPITAL', hospitalId: 'hosp-2' };
+
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
 
 describe('GetConversationUseCase', () => {
   let useCase: GetConversationUseCase;
@@ -128,5 +136,18 @@ describe('UpdateConversationUseCase', () => {
   it('HOSPITAL can update own conversation', async () => {
     const result = await useCase.execute('conv-1', { title: 'Hospital Update' }, hospitalActor);
     expect(result.title).toBe('Hospital Update');
+  });
+
+  it('HOSPITAL cannot update a conversation for an excluded patient email case', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new UpdateConversationUseCase(mockConversationRepo, adminAccess);
+
+    await expect(
+      useCase.execute('conv-1', { title: 'Hospital Update' }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockConversationRepo.save).not.toHaveBeenCalled();
   });
 });

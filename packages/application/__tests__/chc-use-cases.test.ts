@@ -340,7 +340,10 @@ describe('ListCaseHospitalContactsUseCase', () => {
 
     const result = await useCase.execute({ page: 1, limit: 20 }, hospitalActor);
 
-    expect(mockRepo.findByHospitalId).toHaveBeenCalledWith('hosp-1', expect.objectContaining({ hospitalId: 'hosp-1' }));
+    expect(mockRepo.findByHospitalId).toHaveBeenCalledWith('hosp-1', expect.objectContaining({
+      hospitalId: 'hosp-1',
+      excludedPatientEmailDomains: ['example.com'],
+    }));
     expect(result.data).toHaveLength(1);
     expect(result.total).toBe(1);
   });

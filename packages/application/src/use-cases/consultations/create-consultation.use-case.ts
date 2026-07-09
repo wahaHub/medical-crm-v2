@@ -31,6 +31,7 @@ export class CreateConsultationUseCase {
     if (!caseEntity) {
       throw new NotFoundError(`Case ${input.caseId} not found`);
     }
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
 
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo);

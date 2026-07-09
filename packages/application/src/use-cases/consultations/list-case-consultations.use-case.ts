@@ -23,6 +23,7 @@ export class ListCaseConsultationsUseCase {
     if (!caseEntity) {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
 
     // Hospital users can only see consultations for cases assigned to their hospital
     if (actor.role === 'HOSPITAL') {

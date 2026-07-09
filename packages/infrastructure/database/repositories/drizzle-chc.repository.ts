@@ -1,8 +1,8 @@
-import { eq, and, sql, count, inArray, ne } from 'drizzle-orm';
+import { eq, and, sql, count, inArray, ne, type SQL } from 'drizzle-orm';
 import type { ICHCRepository, CHCListQuery } from '@medical-crm/domain';
 import { CaseHospitalContact } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { caseHospitalContacts } from '../schema/index.js';
+import { caseHospitalContacts, cases, users } from '../schema/index.js';
 
 export class DrizzleCHCRepository implements ICHCRepository {
   constructor(private readonly db: CrmDb) {}
@@ -57,7 +57,7 @@ export class DrizzleCHCRepository implements ICHCRepository {
   ): Promise<{ data: CaseHospitalContact[]; total: number }> {
     const { page, limit, subStatus } = query;
 
-    const conditions = [eq(caseHospitalContacts.hospitalId, hospitalId)];
+    const conditions: SQL[] = [eq(caseHospitalContacts.hospitalId, hospitalId)];
     if (subStatus) {
       conditions.push(
         eq(
@@ -66,6 +66,8 @@ export class DrizzleCHCRepository implements ICHCRepository {
         ),
       );
     }
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     const where = and(...conditions);
 
@@ -87,6 +89,26 @@ export class DrizzleCHCRepository implements ICHCRepository {
       data: rows.map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),
     };
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`not exists (
+      select 1
+      from ${cases}
+      inner join ${users} on ${cases.patientId} = ${users.id}
+      where ${cases.id} = ${caseHospitalContacts.caseId}
+        and (${sql.join(
+          patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+          sql` or `,
+        )})
+    )`;
   }
 
   async save(entity: CaseHospitalContact, tx?: unknown): Promise<CaseHospitalContact> {

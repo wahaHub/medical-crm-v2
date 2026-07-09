@@ -23,7 +23,7 @@ export class GetConsultationTranscriptUseCase {
         throw new ForbiddenError('Access denied to this consultation');
       }
     }
-    if (actor.role === 'ADMIN') {
+    if (actor.role === 'ADMIN' || actor.role === 'HOSPITAL') {
       await this.adminAccess?.assertActorCanAccessCase(actor, consultation.caseId);
     }
 

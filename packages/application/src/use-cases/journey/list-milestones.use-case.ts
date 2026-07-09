@@ -21,6 +21,7 @@ export class ListMilestonesUseCase {
   ): Promise<JourneyMilestoneDTO[]> {
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
 
     // AuthZ + determine visibility
     let visibleOnly = options?.visibleOnly ?? false;

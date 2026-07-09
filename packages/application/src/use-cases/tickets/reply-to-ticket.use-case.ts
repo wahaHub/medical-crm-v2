@@ -29,12 +29,15 @@ export class ReplyToTicketUseCase {
     const ticket = await this.ticketRepo.findById(ticketId);
     if (!ticket) throw new NotFoundError(`Ticket ${ticketId} not found`);
 
-    // Access control: patients can only reply to their own tickets
-    if (actor.role !== 'ADMIN' && ticket.patientId !== actor.userId) {
-      throw new ForbiddenError('Not authorized to reply to this ticket');
-    }
     if (actor.role === 'ADMIN') {
       await this.adminAccess?.assertActorCanAccessCaseOrPatient(actor, { caseId: ticket.caseId, patientId: ticket.patientId });
+    } else if (actor.role === 'HOSPITAL') {
+      if (!ticket.caseId) {
+        throw new ForbiddenError('Not authorized to reply to this ticket');
+      }
+      await this.adminAccess?.assertActorCanAccessCase(actor, ticket.caseId);
+    } else if (ticket.patientId !== actor.userId) {
+      throw new ForbiddenError('Not authorized to reply to this ticket');
     }
 
     // Only admins can create internal notes

@@ -23,6 +23,7 @@ import { toHospitalCaseDetailDTO } from '../../mappers/case.mapper.js';
 import { toDocumentDTO } from '../../mappers/document.mapper.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
 import { assertHospitalCaseAccess } from './hospital-case-access.js';
+import { isDefaultExcludedPatientEmail } from '../../access/patient-email-domain-exclusions.js';
 
 const MESSAGE_PAGE_LIMIT = 100;
 
@@ -73,6 +74,10 @@ export class GetHospitalCaseDetailUseCase {
       ),
       this.conversationRepo.findAdminPatientByCaseId?.(caseId) ?? Promise.resolve(null),
     ]);
+
+    if (isDefaultExcludedPatientEmail(patientInfo?.email)) {
+      throw new NotFoundError(`Case ${caseId} not found`);
+    }
 
     const sectionConversationMap: Record<HospitalCaseMessageSectionDTO['id'], Conversation | null> = {
       'admin-patient': adminPatientConversation?.category === 'ADMIN_PATIENT'

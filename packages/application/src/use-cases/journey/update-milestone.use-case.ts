@@ -30,6 +30,7 @@ export class UpdateMilestoneUseCase {
     if (this.caseRepo && this.adminAccess) {
       const caseEntity = await this.caseRepo.findById(milestone.caseId);
       if (!caseEntity) throw new NotFoundError(`Case ${milestone.caseId} not found`);
+      await this.adminAccess.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
       await this.adminAccess.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
 

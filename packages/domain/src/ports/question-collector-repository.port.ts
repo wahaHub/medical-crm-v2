@@ -17,6 +17,7 @@ export interface QCResponseListQuery {
   page: number;
   limit: number;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface IQuestionCollectorRepository {

@@ -26,6 +26,7 @@ export class UpdateCaseUseCase {
     const entity = await this.caseRepo.findById(caseId);
     if (!entity) throw new NotFoundError(`Case ${caseId} not found`);
     if (actor.role === 'HOSPITAL') {
+      await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, entity);
       await assertHospitalCaseAccess(entity, actor.hospitalId, this.chcRepo);
     } else {
       await this.adminAccess?.assertActorCanAccessCaseEntity(actor, entity);

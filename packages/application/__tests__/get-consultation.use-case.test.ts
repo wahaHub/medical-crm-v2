@@ -3,6 +3,7 @@ import { GetConsultationUseCase } from '../src/use-cases/consultations/get-consu
 import type { IConsultationRepository } from '@medical-crm/domain';
 import { Consultation } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 const makeConsultation = (overrides: Partial<ConstructorParameters<typeof Consultation>[0]> = {}) =>
   new Consultation({
@@ -38,6 +39,13 @@ const adminActor: Actor = { userId: 'admin-1', email: 'admin@test.com', role: 'A
 const hospitalActor: Actor = { userId: 'h-1', email: 'h@test.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 const otherHospitalActor: Actor = { userId: 'h-2', email: 'h2@test.com', role: 'HOSPITAL', hospitalId: 'hosp-2' };
 
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
+
 describe('GetConsultationUseCase', () => {
   let useCase: GetConsultationUseCase;
   let mockConsultationRepo: IConsultationRepository;
@@ -66,6 +74,17 @@ describe('GetConsultationUseCase', () => {
 
     expect(result.id).toBe('consult-1');
     expect(result.hospitalId).toBe('hosp-1');
+  });
+
+  it('blocks hospital consultation detail for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new GetConsultationUseCase(mockConsultationRepo, adminAccess);
+
+    await expect(
+      useCase.execute('consult-1', hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
   });
 
   it('throws ForbiddenError when HOSPITAL actor does not own the consultation', async () => {

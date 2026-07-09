@@ -32,6 +32,7 @@ export class GetDocumentPreviewUseCase {
     if (!caze) {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caze);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else if (actor.role !== 'ADMIN') {

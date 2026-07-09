@@ -29,6 +29,9 @@ export class GetQuoteUseCase {
     if (actor.role === 'ADMIN') {
       await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
     }
+    if (actor.role === 'HOSPITAL') {
+      await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
+    }
 
     return toQuoteDTO(entity);
   }

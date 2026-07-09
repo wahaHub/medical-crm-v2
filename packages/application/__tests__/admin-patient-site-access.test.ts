@@ -51,6 +51,21 @@ describe('admin patient site access', () => {
       .rejects.toThrow('Access denied to this case scope');
   });
 
+  it('treats example.com patient cases as missing for shared case-page access', async () => {
+    const caseRepo = { findById: vi.fn().mockResolvedValue({ id: 'case-1', patientId: 'patient-1' }) };
+    const userRepo = {
+      findById: vi.fn().mockResolvedValue({
+        id: 'patient-1',
+        email: 'patient@example.com',
+        patientSite: 'china',
+      }),
+    };
+    const policy = new AdminPatientSiteAccessPolicy(caseRepo as never, userRepo as never);
+
+    await expect(policy.assertCaseNotExcludedByPatientEmail({ id: 'case-1', patientId: 'patient-1' } as never))
+      .rejects.toThrow('Case case-1 not found');
+  });
+
   it('allows in-scope case and patient access', async () => {
     const caseRepo = { findById: vi.fn().mockResolvedValue({ id: 'case-1', patientId: 'patient-1' }) };
     const userRepo = { findById: vi.fn().mockResolvedValue({ id: 'patient-1', patientSite: 'beauty' }) };

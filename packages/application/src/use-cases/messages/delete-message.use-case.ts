@@ -2,7 +2,7 @@ import type { IConversationRepository, IMessageRepository } from '@medical-crm/d
 import { NotFoundError, ForbiddenError } from '@medical-crm/utils';
 import type { Actor } from '../../types/actor.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export class DeleteMessageUseCase {
   constructor(
@@ -28,7 +28,7 @@ export class DeleteMessageUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
-    await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
+    await assertStaffCanAccessConversationCase(actor, conversation, this.adminAccess);
 
     const message = await this.messageRepo.findById(messageId);
     if (!message || message.conversationId !== conversationId) {

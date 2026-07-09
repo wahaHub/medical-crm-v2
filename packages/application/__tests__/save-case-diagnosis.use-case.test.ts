@@ -3,6 +3,7 @@ import type { ICaseProgressRepository, ICaseRepository, ICHCRepository } from '@
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 import { SaveCaseDiagnosisUseCase } from '../src/use-cases/cases/save-case-diagnosis.use-case.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 const hospitalActor: Actor = {
   userId: 'hospital-user-1',
@@ -39,6 +40,7 @@ describe('SaveCaseDiagnosisUseCase', () => {
   let mockCaseRepo: ICaseRepository;
   let mockProgressRepo: ICaseProgressRepository;
   let mockChcRepo: ICHCRepository;
+  let mockAdminAccess: AdminPatientSiteAccessPolicy;
   let useCase: SaveCaseDiagnosisUseCase;
   let savedSnapshots: Array<{ primaryDiagnosis: string | null; diagnosisCode: string | null }>;
 
@@ -100,7 +102,11 @@ describe('SaveCaseDiagnosisUseCase', () => {
       save: vi.fn(),
       rejectOthersByCaseExcept: vi.fn(),
     };
-    useCase = new SaveCaseDiagnosisUseCase(mockCaseRepo, mockProgressRepo, mockChcRepo);
+    mockAdminAccess = {
+      assertActorCanAccessCaseEntity: vi.fn().mockResolvedValue(undefined),
+      assertStaffCaseNotExcludedByPatientEmail: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AdminPatientSiteAccessPolicy;
+    useCase = new SaveCaseDiagnosisUseCase(mockCaseRepo, mockProgressRepo, mockChcRepo, mockAdminAccess);
   });
 
   it('allows distributed hospitals to save diagnosis and progress in one use case', async () => {
@@ -134,5 +140,20 @@ describe('SaveCaseDiagnosisUseCase', () => {
       primaryDiagnosis: 'Original diagnosis',
       diagnosisCode: 'OLD.1',
     });
+  });
+
+  it('blocks hospitals from saving diagnosis for excluded patient email cases', async () => {
+    vi.mocked(mockAdminAccess.assertStaffCaseNotExcludedByPatientEmail).mockRejectedValueOnce(
+      new Error('Case case-1 not found'),
+    );
+
+    await expect(
+      useCase.execute('case-1', {
+        title: 'Updated diagnosis',
+      }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockCaseRepo.save).not.toHaveBeenCalled();
+    expect(mockProgressRepo.save).not.toHaveBeenCalled();
   });
 });

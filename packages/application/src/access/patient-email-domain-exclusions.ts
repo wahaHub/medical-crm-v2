@@ -8,3 +8,11 @@ export function withDefaultPatientEmailExclusions<T extends object>(input: T): T
     excludedPatientEmailDomains: [...DEFAULT_EXCLUDED_PATIENT_EMAIL_DOMAINS],
   };
 }
+
+export function isDefaultExcludedPatientEmail(email: string | null | undefined): boolean {
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail) return false;
+  return DEFAULT_EXCLUDED_PATIENT_EMAIL_DOMAINS.some((domain) =>
+    normalizedEmail.endsWith(`@${domain}`),
+  );
+}

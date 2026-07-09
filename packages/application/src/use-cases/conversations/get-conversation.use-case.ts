@@ -4,7 +4,7 @@ import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO } from '../../mappers/conversation.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export class GetConversationUseCase {
   constructor(
@@ -25,7 +25,10 @@ export class GetConversationUseCase {
         throw new ForbiddenError('Access denied to this conversation');
       }
     }
-    await assertAdminCanAccessConversationCase(actor, entity, this.adminAccess);
+    await assertStaffCanAccessConversationCase(actor, entity, this.adminAccess);
+    if ((actor.role === 'ADMIN' || actor.role === 'HOSPITAL') && entity.caseId) {
+      await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
+    }
     return toConversationDTO(entity);
   }
 }

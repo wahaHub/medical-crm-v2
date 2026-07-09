@@ -2,7 +2,7 @@ import { eq, and, sql, count, ilike, type SQL } from 'drizzle-orm';
 import type { ISupportTicketRepository, TicketListQuery } from '@medical-crm/domain';
 import { SupportTicket, TicketNumber } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { supportTickets, users } from '../schema/index.js';
+import { cases, supportTickets, users } from '../schema/index.js';
 import { patientSiteScopeSql } from './patient-site-scope-sql.js';
 
 type SupportTicketRow = typeof supportTickets.$inferSelect;
@@ -142,6 +142,31 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
     }
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(
+      ${supportTickets.caseId} is null
+      or not exists (
+        select 1
+        from ${cases}
+        inner join ${users} on ${cases.patientId} = ${users.id}
+        where ${cases.id} = ${supportTickets.caseId}
+          and (${sql.join(
+            patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+            sql` or `,
+          )})
+      )
+    )`;
   }
 
   private async queryWithPagination(
@@ -150,8 +175,11 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
   ): Promise<{ data: SupportTicket[]; total: number }> {
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const needsPatientJoin = Boolean(
+      query.patientSiteScope,
+    );
 
-    const [rows, countResult] = query.patientSiteScope
+    const [rows, countResult] = needsPatientJoin
       ? await Promise.all([
           this.db
             .select({ supportTickets })
@@ -182,7 +210,7 @@ export class DrizzleSupportTicketRepository implements ISupportTicketRepository 
         ]);
 
     return {
-      data: query.patientSiteScope
+      data: needsPatientJoin
         ? (rows as Array<{ supportTickets: SupportTicketRow }>).map((r) => this.rowToEntity(r.supportTickets))
         : (rows as SupportTicketRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),

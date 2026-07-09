@@ -36,6 +36,8 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
     if (status) conditions.push(eq(consultations.status, status));
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     // Cursor-based pagination: composite (scheduledAt, id) DESC
     if (cursor) {
@@ -48,8 +50,9 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const needsPatientJoin = Boolean(patientSiteScope || query.excludedPatientEmailDomains?.length);
 
-    const rows = patientSiteScope
+    const rows = needsPatientJoin
       ? await this.db
           .select({ consultations })
           .from(consultations)
@@ -66,7 +69,7 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
 
     const hasMore = rows.length > limit;
     const data = hasMore ? rows.slice(0, limit) : rows;
-    const consultationRows = patientSiteScope
+    const consultationRows = needsPatientJoin
       ? (data as Array<{ consultations: ConsultationRow }>).map((r) => r.consultations)
       : data as ConsultationRow[];
 
@@ -157,22 +160,34 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
   async countByFilters(filters: ConsultationCountFilters): Promise<ConsultationStats> {
     const { hospitalId } = filters;
 
-    const baseCondition = hospitalId ? eq(consultations.hospitalId, hospitalId) : undefined;
+    const conditions: SQL[] = [];
+    if (hospitalId) conditions.push(eq(consultations.hospitalId, hospitalId));
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(filters.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const needsPatientJoin = Boolean(filters.excludedPatientEmailDomains?.length);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayIso = today.toISOString();
 
-    const result = await this.db
-      .select({
-        total: count(),
-        scheduled: sql<number>`COUNT(*) FILTER (WHERE ${consultations.status} = 'SCHEDULED')`,
-        completed: sql<number>`COUNT(*) FILTER (WHERE ${consultations.status} = 'COMPLETED')`,
-        todayCount: sql<number>`COUNT(*) FILTER (WHERE ${consultations.scheduledAt} >= ${todayIso}::timestamp AND ${consultations.scheduledAt} < (${todayIso}::timestamp + INTERVAL '1 day'))`,
-        needsTranslation: sql<number>`COUNT(*) FILTER (WHERE ${consultations.aiTranslation} = true AND ${consultations.status} = 'SCHEDULED')`,
-      })
-      .from(consultations)
-      .where(baseCondition);
+    const selection = {
+      total: count(),
+      scheduled: sql<number>`COUNT(*) FILTER (WHERE ${consultations.status} = 'SCHEDULED')`,
+      completed: sql<number>`COUNT(*) FILTER (WHERE ${consultations.status} = 'COMPLETED')`,
+      todayCount: sql<number>`COUNT(*) FILTER (WHERE ${consultations.scheduledAt} >= ${todayIso}::timestamp AND ${consultations.scheduledAt} < (${todayIso}::timestamp + INTERVAL '1 day'))`,
+      needsTranslation: sql<number>`COUNT(*) FILTER (WHERE ${consultations.aiTranslation} = true AND ${consultations.status} = 'SCHEDULED')`,
+    };
+    const result = needsPatientJoin
+      ? await this.db
+          .select(selection)
+          .from(consultations)
+          .innerJoin(users, eq(consultations.patientId, users.id))
+          .where(where)
+      : await this.db
+          .select(selection)
+          .from(consultations)
+          .where(where);
 
     const row = result[0];
     return {
@@ -182,6 +197,20 @@ export class DrizzleConsultationRepository implements IConsultationRepository {
       todayCount: Number(row?.todayCount ?? 0),
       needsTranslation: Number(row?.needsTranslation ?? 0),
     };
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(${users.email} is null or not (${sql.join(
+      patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+      sql` or `,
+    )}))`;
   }
 
   private rowToEntity(row: typeof consultations.$inferSelect): Consultation {

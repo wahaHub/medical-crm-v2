@@ -5,18 +5,30 @@ import type {
 } from '@medical-crm/domain';
 import { NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../types/actor.js';
-import type { AdminPatientSiteAccessPolicy } from './admin-patient-site-access.js';
+import {
+  isStaffActor,
+  type AdminPatientSiteAccessPolicy,
+} from './admin-patient-site-access.js';
+
+export async function assertStaffCanAccessConversationCase(
+  actor: Actor,
+  conversation: Conversation,
+  adminAccess?: AdminPatientSiteAccessPolicy,
+): Promise<void> {
+  if (!isStaffActor(actor) || !conversation.caseId || !adminAccess) {
+    return;
+  }
+
+  await adminAccess.assertActorCanAccessCase(actor, conversation.caseId);
+}
 
 export async function assertAdminCanAccessConversationCase(
   actor: Actor,
   conversation: Conversation,
   adminAccess?: AdminPatientSiteAccessPolicy,
 ): Promise<void> {
-  if (actor.role !== 'ADMIN' || !conversation.caseId || !adminAccess) {
-    return;
-  }
-
-  await adminAccess.assertActorCanAccessCase(actor, conversation.caseId);
+  if (actor.role !== 'ADMIN') return;
+  await assertStaffCanAccessConversationCase(actor, conversation, adminAccess);
 }
 
 export async function assertAdminCanAccessMessageConversationCase(
@@ -34,7 +46,7 @@ export async function assertAdminCanAccessMessageConversationCase(
     throw new NotFoundError(`Conversation ${message.conversationId} not found`);
   }
 
-  await assertAdminCanAccessConversationCase(actor, conversation, adminAccess);
+  await assertStaffCanAccessConversationCase(actor, conversation, adminAccess);
 }
 
 export async function isAdminMessageConversationCaseAllowed(

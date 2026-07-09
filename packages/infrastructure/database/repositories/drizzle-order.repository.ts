@@ -2,7 +2,7 @@ import { eq, and, sql, count, ilike, type SQL } from 'drizzle-orm';
 import type { IOrderRepository, OrderListQuery } from '@medical-crm/domain';
 import { Order, OrderNumber } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
-import { orders, users } from '../schema/index.js';
+import { cases, orders, users } from '../schema/index.js';
 import { patientSiteScopeSql } from './patient-site-scope-sql.js';
 
 type OrderRow = typeof orders.$inferSelect;
@@ -122,6 +122,31 @@ export class DrizzleOrderRepository implements IOrderRepository {
     }
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(
+      ${orders.caseId} is null
+      or not exists (
+        select 1
+        from ${cases}
+        inner join ${users} on ${cases.patientId} = ${users.id}
+        where ${cases.id} = ${orders.caseId}
+          and (${sql.join(
+            patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+            sql` or `,
+          )})
+      )
+    )`;
   }
 
   private async queryWithPagination(
@@ -130,8 +155,11 @@ export class DrizzleOrderRepository implements IOrderRepository {
   ): Promise<{ data: Order[]; total: number }> {
     const { page, limit } = query;
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const needsPatientJoin = Boolean(
+      query.patientSiteScope,
+    );
 
-    const [rows, countResult] = query.patientSiteScope
+    const [rows, countResult] = needsPatientJoin
       ? await Promise.all([
           this.db
             .select({ orders })
@@ -162,7 +190,7 @@ export class DrizzleOrderRepository implements IOrderRepository {
         ]);
 
     return {
-      data: query.patientSiteScope
+      data: needsPatientJoin
         ? (rows as Array<{ orders: OrderRow }>).map((r) => this.rowToEntity(r.orders))
         : (rows as OrderRow[]).map((r) => this.rowToEntity(r)),
       total: Number(countResult[0]?.total ?? 0),

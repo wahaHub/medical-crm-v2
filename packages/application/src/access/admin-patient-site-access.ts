@@ -7,8 +7,13 @@ import type {
 } from '@medical-crm/domain';
 import { ForbiddenError, NotFoundError } from '@medical-crm/utils';
 import type { Actor } from '../types/actor.js';
+import { isDefaultExcludedPatientEmail } from './patient-email-domain-exclusions.js';
 
 const BEAUTY_ADMIN_DOMAIN = '@medorabeauty.com';
+
+export function isStaffActor(actor: Actor): boolean {
+  return actor.role === 'ADMIN' || actor.role === 'HOSPITAL';
+}
 
 export function getAdminPatientSiteScope(actor: Actor): PatientSiteAccessScope | null {
   if (actor.role !== 'ADMIN') return null;
@@ -47,7 +52,23 @@ export class AdminPatientSiteAccessPolicy {
     return patient?.patientSite ?? null;
   }
 
+  async assertCaseNotExcludedByPatientEmail(caseEntity: Pick<Case, 'id' | 'patientId'>): Promise<void> {
+    const patient = await this.userRepo.findById(caseEntity.patientId);
+    if (isDefaultExcludedPatientEmail(patient?.email)) {
+      throw new NotFoundError(`Case ${caseEntity.id} not found`);
+    }
+  }
+
+  async assertStaffCaseNotExcludedByPatientEmail(
+    actor: Actor,
+    caseEntity: Pick<Case, 'id' | 'patientId'>,
+  ): Promise<void> {
+    if (!isStaffActor(actor)) return;
+    await this.assertCaseNotExcludedByPatientEmail(caseEntity);
+  }
+
   async assertActorCanAccessCaseEntity(actor: Actor, caseEntity: Case): Promise<void> {
+    await this.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
     const scope = getAdminPatientSiteScope(actor);
     if (!scope) return;
     assertPatientSiteAllowedByScope(scope, await this.resolveCasePatientSite(caseEntity));

@@ -3,6 +3,7 @@ import type { ICaseRepository, ICHCRepository } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 import { UpdateCaseUseCase } from '../src/use-cases/cases/update-case.use-case.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 const hospitalActor: Actor = {
   userId: 'hospital-user-1',
@@ -44,6 +45,7 @@ const makeCase = (assignedHospitalId: string | null = 'hosp-1') =>
 describe('UpdateCaseUseCase', () => {
   let mockCaseRepo: ICaseRepository;
   let mockChcRepo: ICHCRepository;
+  let mockAdminAccess: AdminPatientSiteAccessPolicy;
   let useCase: UpdateCaseUseCase;
 
   beforeEach(() => {
@@ -62,7 +64,11 @@ describe('UpdateCaseUseCase', () => {
       save: vi.fn(),
       rejectOthersByCaseExcept: vi.fn(),
     };
-    useCase = new UpdateCaseUseCase(mockCaseRepo, mockChcRepo);
+    mockAdminAccess = {
+      assertActorCanAccessCaseEntity: vi.fn().mockResolvedValue(undefined),
+      assertStaffCaseNotExcludedByPatientEmail: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AdminPatientSiteAccessPolicy;
+    useCase = new UpdateCaseUseCase(mockCaseRepo, mockChcRepo, mockAdminAccess);
   });
 
   it('updates diagnosis fields for admins', async () => {
@@ -108,5 +114,23 @@ describe('UpdateCaseUseCase', () => {
     const savedCase = vi.mocked(mockCaseRepo.save).mock.calls[0]?.[0];
     expect(savedCase?.primaryDiagnosis).toBe('Distributed diagnosis');
     expect(savedCase?.diagnosisCode).toBe('B02.2');
+  });
+
+  it('blocks hospitals from updating excluded patient email cases', async () => {
+    vi.mocked(mockAdminAccess.assertStaffCaseNotExcludedByPatientEmail).mockRejectedValueOnce(
+      new Error('Case case-1 not found'),
+    );
+
+    await expect(
+      useCase.execute('case-1', {
+        primaryDiagnosis: 'Should not save',
+      }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockAdminAccess.assertStaffCaseNotExcludedByPatientEmail).toHaveBeenCalledWith(
+      hospitalActor,
+      expect.objectContaining({ id: 'case-1' }),
+    );
+    expect(mockCaseRepo.save).not.toHaveBeenCalled();
   });
 });

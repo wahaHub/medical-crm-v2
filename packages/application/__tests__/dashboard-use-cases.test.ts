@@ -349,8 +349,16 @@ describe('AdminDashboardUseCase', () => {
     await uc.execute(adminActor);
 
     const expectedScope = { mode: 'EXCLUDE', site: 'beauty' };
-    expect(caseRepo.countByFilters).toHaveBeenCalledWith({ patientSiteScope: expectedScope });
-    expect(caseRepo.findMany).toHaveBeenCalledWith({ page: 1, limit: 5, patientSiteScope: expectedScope });
+    expect(caseRepo.countByFilters).toHaveBeenCalledWith({
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(caseRepo.findMany).toHaveBeenCalledWith({
+      page: 1,
+      limit: 5,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
     expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
     expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
   });
@@ -372,8 +380,16 @@ describe('AdminDashboardUseCase', () => {
     await uc.execute(beautyAdminActor);
 
     const expectedScope = { mode: 'ONLY', site: 'beauty' };
-    expect(caseRepo.countByFilters).toHaveBeenCalledWith({ patientSiteScope: expectedScope });
-    expect(caseRepo.findMany).toHaveBeenCalledWith({ page: 1, limit: 5, patientSiteScope: expectedScope });
+    expect(caseRepo.countByFilters).toHaveBeenCalledWith({
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(caseRepo.findMany).toHaveBeenCalledWith({
+      page: 1,
+      limit: 5,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
     expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
     expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
   });
@@ -445,6 +461,16 @@ describe('HospitalDashboardUseCase', () => {
       treatmentStage: 'IN_TREATMENT',
       createdAt: '2026-03-16T00:00:00.000Z',
     });
+    expect(caseRepo.countByFilters).toHaveBeenCalledWith({
+      hospitalId: 'hospital-1',
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(caseRepo.findMany).toHaveBeenCalledWith({
+      page: 1,
+      limit: 5,
+      hospitalId: 'hospital-1',
+      excludedPatientEmailDomains: ['example.com'],
+    }, 'hospital-1');
   });
 
   it('throws ForbiddenError when non-hospital accesses hospital dashboard', async () => {

@@ -14,11 +14,13 @@ export interface CaseListQuery {
   hospitalId?: string;
   search?: string;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface CaseCountFilters {
   hospitalId?: string;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface CaseStats {

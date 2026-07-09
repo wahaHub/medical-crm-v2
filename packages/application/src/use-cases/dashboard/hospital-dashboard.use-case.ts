@@ -2,6 +2,7 @@ import type { ICaseRepository, IQuoteRepository, IConsultationRepository } from 
 import { ForbiddenError } from '@medical-crm/utils';
 import type { HospitalDashboardDTO } from '../../dtos/dashboard.dto.js';
 import type { Actor } from '../../types/actor.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class HospitalDashboardUseCase {
   constructor(
@@ -22,7 +23,9 @@ export class HospitalDashboardUseCase {
     const hospitalId = actor.hospitalId;
 
     // 1. Case stats scoped to this hospital
-    const caseStats = await this.caseRepo.countByFilters({ hospitalId });
+    const caseStats = await this.caseRepo.countByFilters(
+      withDefaultPatientEmailExclusions({ hospitalId }),
+    );
 
     // 2. Pending quotes for this hospital
     const pendingQuotesResult = await this.quoteRepo.findByHospitalId(hospitalId, {
@@ -39,7 +42,7 @@ export class HospitalDashboardUseCase {
 
     // 5. Recent cases for this hospital
     const recentCasesResult = await this.caseRepo.findMany(
-      { page: 1, limit: 5, hospitalId },
+      withDefaultPatientEmailExclusions({ page: 1, limit: 5, hospitalId }),
       hospitalId,
     );
 

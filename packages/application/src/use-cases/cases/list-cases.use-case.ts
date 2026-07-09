@@ -5,6 +5,7 @@ import type { CaseDTO } from '../../dtos/case.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toCaseDTO } from '../../mappers/case.mapper.js';
 import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class ListCasesUseCase {
   constructor(private readonly caseRepo: ICaseRepository) {}
@@ -16,7 +17,9 @@ export class ListCasesUseCase {
       hospitalId = actor.hospitalId;
     }
     const patientSiteScope = getAdminPatientSiteScope(actor);
-    const scopedQuery = patientSiteScope ? { ...query, patientSiteScope } : query;
+    const scopedQuery = withDefaultPatientEmailExclusions(
+      patientSiteScope ? { ...query, patientSiteScope } : query,
+    );
     const result = await this.caseRepo.findMany(scopedQuery, hospitalId);
     return {
       ...result,

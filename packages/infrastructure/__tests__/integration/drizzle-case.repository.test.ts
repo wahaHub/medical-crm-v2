@@ -8,8 +8,10 @@ import { eq } from 'drizzle-orm';
 
 // Shared IDs for the test suite
 const TEST_PATIENT_ID = randomUUID();
+const EXAMPLE_PATIENT_ID = randomUUID();
 const TEST_HOSPITAL_ID = randomUUID();
 const TEST_HOSPITAL_ID_2 = randomUUID();
+const FILTER_TEST_HOSPITAL_ID = randomUUID();
 
 let repo: DrizzleCaseRepository;
 
@@ -44,6 +46,13 @@ beforeAll(async () => {
       type: 'COSMETIC',
       updatedAt: now,
     },
+    {
+      id: FILTER_TEST_HOSPITAL_ID,
+      name: 'Example Filter Test Hospital',
+      status: 'ACTIVE',
+      type: 'COSMETIC',
+      updatedAt: now,
+    },
   ]).onConflictDoNothing();
 
   await testDb.insert(users).values({
@@ -51,6 +60,17 @@ beforeAll(async () => {
     email: `test-patient-${TEST_PATIENT_ID}@integration.test`,
     name: 'Test Patient',
     role: 'PATIENT',
+    patientSite: 'china',
+    preferredLanguage: 'en',
+    updatedAt: now,
+  }).onConflictDoNothing();
+
+  await testDb.insert(users).values({
+    id: EXAMPLE_PATIENT_ID,
+    email: `sample-${EXAMPLE_PATIENT_ID}@example.com`,
+    name: 'Example Test Patient',
+    role: 'PATIENT',
+    patientSite: 'china',
     preferredLanguage: 'en',
     updatedAt: now,
   }).onConflictDoNothing();
@@ -61,9 +81,11 @@ afterAll(async () => {
   await cleanupTestCases();
 
   // Remove seeded users and hospitals
+  await testDb.delete(users).where(eq(users.id, EXAMPLE_PATIENT_ID));
   await testDb.delete(users).where(eq(users.id, TEST_PATIENT_ID));
   await testDb.delete(hospitals).where(eq(hospitals.id, TEST_HOSPITAL_ID));
   await testDb.delete(hospitals).where(eq(hospitals.id, TEST_HOSPITAL_ID_2));
+  await testDb.delete(hospitals).where(eq(hospitals.id, FILTER_TEST_HOSPITAL_ID));
 });
 
 function makeCase(overrides: Partial<{
@@ -73,13 +95,14 @@ function makeCase(overrides: Partial<{
   hospitalId: string | null;
   status: 'ACTIVE' | 'DRAFT';
   stage: 'PENDING_ASSIGNMENT' | 'TRANSFERRED_TO_HOSPITAL';
+  patientId: string;
 }> = {}): Case {
   const id = overrides.id ?? randomUUID();
   const cn = overrides.caseNumber ?? nextTestCaseNumber();
   return new Case({
     id,
     caseNumber: new CaseNumber(cn),
-    patientId: TEST_PATIENT_ID,
+    patientId: overrides.patientId ?? TEST_PATIENT_ID,
     patientName: overrides.patientName ?? 'Integration Test Patient',
     patientCountry: 'US',
     patientLanguage: 'en',
@@ -240,5 +263,43 @@ describe('DrizzleCaseRepository integration', () => {
     const stats = await repo.countByFilters({});
 
     expect(stats.total).toBeGreaterThanOrEqual(0);
+  });
+
+  it('excludes cases owned by patients whose email ends with example.com from lists and stats', async () => {
+    const marker = `ExampleDomainFilter-${randomUUID().slice(0, 8)}`;
+    const visibleCaseNumber = nextTestCaseNumber();
+    const exampleCaseNumber = nextTestCaseNumber();
+
+    await repo.save(makeCase({
+      caseNumber: visibleCaseNumber,
+      patientName: marker,
+      patientId: TEST_PATIENT_ID,
+      hospitalId: FILTER_TEST_HOSPITAL_ID,
+    }));
+    await repo.save(makeCase({
+      caseNumber: exampleCaseNumber,
+      patientName: marker,
+      patientId: EXAMPLE_PATIENT_ID,
+      hospitalId: FILTER_TEST_HOSPITAL_ID,
+    }));
+
+    const result = await repo.findMany({
+      page: 1,
+      limit: 100,
+      search: marker,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    const caseNumbers = result.data.map((c) => c.caseNumber.value);
+
+    expect(caseNumbers).toContain(visibleCaseNumber);
+    expect(caseNumbers).not.toContain(exampleCaseNumber);
+    expect(result.total).toBe(1);
+
+    const stats = await repo.countByFilters({
+      hospitalId: FILTER_TEST_HOSPITAL_ID,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+
+    expect(stats.total).toBe(1);
   });
 });

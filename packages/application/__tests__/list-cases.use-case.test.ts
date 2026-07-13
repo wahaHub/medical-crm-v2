@@ -37,7 +37,10 @@ describe('ListCasesUseCase', () => {
   it('forces hospitalId filter for HOSPITAL actor', async () => {
     const query: CaseListQuery = { page: 1, limit: 20 };
     await useCase.execute(query, hospitalActor);
-    expect(mockCaseRepo.findMany).toHaveBeenCalledWith(query, 'hosp-1');
+    expect(mockCaseRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      excludedPatientEmailDomains: ['example.com'],
+    }, 'hosp-1');
   });
 
   it('does not force hospitalId for ADMIN actor', async () => {
@@ -45,6 +48,7 @@ describe('ListCasesUseCase', () => {
     await useCase.execute(query, adminActor);
     expect(mockCaseRepo.findMany).toHaveBeenCalledWith({
       ...query,
+      excludedPatientEmailDomains: ['example.com'],
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
     }, undefined);
   });
@@ -54,6 +58,7 @@ describe('ListCasesUseCase', () => {
     await useCase.execute(query, beautyAdminActor);
     expect(mockCaseRepo.findMany).toHaveBeenCalledWith({
       ...query,
+      excludedPatientEmailDomains: ['example.com'],
       patientSiteScope: { mode: 'ONLY', site: 'beauty' },
     }, undefined);
   });

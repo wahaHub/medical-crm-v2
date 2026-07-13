@@ -3,6 +3,7 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { AdminDashboardDTO } from '../../dtos/dashboard.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { getAdminPatientSiteScope } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class AdminDashboardUseCase {
   constructor(
@@ -19,7 +20,9 @@ export class AdminDashboardUseCase {
     const patientSiteScope = getAdminPatientSiteScope(actor) ?? undefined;
 
     // 1. Case stats via existing countByFilters method
-    const caseStats = await this.caseRepo.countByFilters({ patientSiteScope });
+    const caseStats = await this.caseRepo.countByFilters(
+      withDefaultPatientEmailExclusions({ patientSiteScope }),
+    );
 
     // 2. Open tickets count — use findAll with status=OPEN and limit 1 to just get the total
     const openTicketsResult = await this.ticketRepo.findAll({
@@ -38,7 +41,9 @@ export class AdminDashboardUseCase {
     });
 
     // 4. Recent cases — use findMany with limit=5
-    const recentCasesResult = await this.caseRepo.findMany({ page: 1, limit: 5, patientSiteScope });
+    const recentCasesResult = await this.caseRepo.findMany(
+      withDefaultPatientEmailExclusions({ page: 1, limit: 5, patientSiteScope }),
+    );
 
     return {
       stats: {

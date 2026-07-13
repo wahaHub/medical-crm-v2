@@ -31,6 +31,20 @@ export class DrizzleCaseRepository implements ICaseRepository {
     return tx ? (tx as CrmDb) : this.db;
   }
 
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(${users.email} is null or not (${sql.join(
+      patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+      sql` or `,
+    )}))`;
+  }
+
   async findById(id: string, tx?: unknown): Promise<Case | null> {
     const rows = await withTransientDatabaseRetry(
       'load case by id',
@@ -55,6 +69,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
     if (effectiveHospitalId) conditions.push(this.buildHospitalAccessCondition(effectiveHospitalId));
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     // New model filters take priority; compat aliases map old → new columns
     if (query.assignmentStatus) {
@@ -220,6 +236,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
     if (filters.hospitalId) conditions.push(this.buildHospitalAccessCondition(filters.hospitalId));
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, filters.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(filters.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const result = await withTransientDatabaseRetry(

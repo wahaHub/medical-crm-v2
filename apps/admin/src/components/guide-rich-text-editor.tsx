@@ -10,6 +10,7 @@ import {
   Bold, Heading2, Heading3, ImagePlus, Italic, Link2, List, ListOrdered, Quote, Redo2, RemoveFormatting, Underline, Undo2,
 } from 'lucide-react';
 import { type GuideContentDocument, withGuideImagePreviews } from '@/lib/guides';
+import { uploadFileWithProgress } from '@/lib/upload-file';
 
 interface UploadInitResponse {
   upload?: { uploadUrl: string; storageKey: string };
@@ -41,6 +42,7 @@ export function GuideRichTextEditor({
   onChange: (document: GuideContentDocument) => void;
 }) {
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const serializedDocument = useMemo(() => JSON.stringify(withGuideImagePreviews(document, imageUrls)), [document, imageUrls]);
@@ -78,6 +80,7 @@ export function GuideRichTextEditor({
     if (!file) return;
     setError(null);
     setIsUploading(true);
+    setUploadProgress(0);
     try {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('Use a JPG, PNG, or WebP image.');
       const initResponse = await fetch('/api/guides/images/upload-init', {
@@ -87,8 +90,8 @@ export function GuideRichTextEditor({
       });
       const init = await initResponse.json() as UploadInitResponse;
       if (!initResponse.ok || !init.upload || !init.asset) throw new Error(init.error ?? init.message ?? 'Unable to initialize image upload');
-      const uploadResponse = await fetch(init.upload.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      if (!uploadResponse.ok) throw new Error('Unable to upload image');
+      setUploadProgress(8);
+      await uploadFileWithProgress(init.upload.uploadUrl, file, setUploadProgress);
       editor?.chain().focus().insertContent({
         type: 'image',
         attrs: { src: URL.createObjectURL(file), storageKey: init.asset.storageKey, alt: '', title: '' },
@@ -97,6 +100,7 @@ export function GuideRichTextEditor({
       setError(cause instanceof Error ? cause.message : 'Unable to upload image');
     } finally {
       setIsUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
@@ -119,6 +123,7 @@ export function GuideRichTextEditor({
       <ToolbarButton editor={editor} label="Redo" onClick={() => editor?.chain().focus().redo().run()}><Redo2 size={16} /></ToolbarButton>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void uploadImage(event.target.files?.[0])} />
     </div>
+    {uploadProgress !== null && <div className="border-b border-cyan-100 bg-cyan-50 px-4 py-3" aria-live="polite"><div className="mb-1.5 flex items-center justify-between text-xs font-medium text-cyan-900"><span>Uploading article image</span><span>{uploadProgress}%</span></div><div role="progressbar" aria-label="Article image upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress} className="h-2 overflow-hidden rounded-full bg-cyan-100"><div className="h-full rounded-full bg-cyan-700 transition-[width] duration-150" style={{ width: `${uploadProgress}%` }} /></div></div>}
     {error && <p className="border-b border-rose-100 bg-rose-50 px-4 py-2 text-sm text-rose-800">{error}</p>}
     <EditorContent editor={editor} />
   </div>;

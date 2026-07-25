@@ -255,6 +255,28 @@ app.openapi(createRoute({
 });
 
 app.openapi(createRoute({
+  method: 'get', path: '/api/v2/guides/procedures',
+  request: { query: procedureDirectoryQuerySchema },
+  responses: { 200: { description: 'One page of the procedure directory' } },
+}), async (c) => {
+  const actor = requireAdmin(c.get('session') as Session);
+  const { page, search } = c.req.valid('query');
+  const hospitalPage = await getServices().listHospitals.execute({ page, limit: 8, status: 'ACTIVE' }, actor);
+  const rows = await Promise.all(hospitalPage.data.map(async (hospital) => {
+    const procedures = await getServices().getProcedures.execute(hospital.id, actor);
+    return procedures.map((procedure) => ({
+      procedureId: procedure.id,
+      hospitalId: hospital.id,
+      procedureName: procedure.procedureName,
+      hospitalName: hospital.nameEn || hospital.name,
+    }));
+  }));
+  const term = search?.toLowerCase();
+  const data = rows.flat().filter((item) => !term || `${item.procedureName} ${item.hospitalName}`.toLowerCase().includes(term));
+  return c.json({ data, page, hasMore: hospitalPage.hasMore });
+});
+
+app.openapi(createRoute({
   method: 'get', path: '/api/v2/guides/{id}', request: { params: idParams }, responses: { 200: { description: 'Guide' } },
 }), async (c) => {
   requireAdmin(c.get('session') as Session);
@@ -279,28 +301,6 @@ app.openapi(createRoute({
   const values = valuesFor(input, slug);
   const [guide] = await db.update(guides).set({ ...values, publishedAt: input.status === 'PUBLISHED' ? existing.publishedAt ?? new Date().toISOString() : null }).where(eq(guides.id, id)).returning();
   return c.json(await toGuideResponse(guide!));
-});
-
-app.openapi(createRoute({
-  method: 'get', path: '/api/v2/guides/procedures',
-  request: { query: procedureDirectoryQuerySchema },
-  responses: { 200: { description: 'One page of the procedure directory' } },
-}), async (c) => {
-  const actor = requireAdmin(c.get('session') as Session);
-  const { page, search } = c.req.valid('query');
-  const hospitalPage = await getServices().listHospitals.execute({ page, limit: 8, status: 'ACTIVE' }, actor);
-  const rows = await Promise.all(hospitalPage.data.map(async (hospital) => {
-    const procedures = await getServices().getProcedures.execute(hospital.id, actor);
-    return procedures.map((procedure) => ({
-      procedureId: procedure.id,
-      hospitalId: hospital.id,
-      procedureName: procedure.procedureName,
-      hospitalName: hospital.nameEn || hospital.name,
-    }));
-  }));
-  const term = search?.toLowerCase();
-  const data = rows.flat().filter((item) => !term || `${item.procedureName} ${item.hospitalName}`.toLowerCase().includes(term));
-  return c.json({ data, page, hasMore: hospitalPage.hasMore });
 });
 
 app.openapi(createRoute({

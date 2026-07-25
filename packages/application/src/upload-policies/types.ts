@@ -3,6 +3,8 @@ import type { StorageBackend } from '@medical-crm/domain';
 export type UploadFeature =
   | 'message_attachment'
   | 'package_image'
+  | 'guide_hero_image'
+  | 'guide_content_image'
   | 'case_document'
   | 'chatbot_request_docs'
   | 'ticket_reply_attachment'
@@ -14,6 +16,8 @@ export type UploadFeature =
 export type UploadPolicyId =
   | 'message_attachment'
   | 'package_image'
+  | 'guide_hero_image'
+  | 'guide_content_image'
   | 'case_document'
   | 'chatbot_request_docs'
   | 'ticket_reply_attachment'
@@ -36,6 +40,7 @@ export type UploadPolicyId =
 export type UploadOwnerType =
   | 'conversation'
   | 'package'
+  | 'guide'
   | 'case'
   | 'ai_chat_session'
   | 'ticket_reply'
@@ -80,7 +85,7 @@ export function sanitizeFileName(fileName: string): string {
     fileName
       .toLowerCase()
       .replace(/\s+/g, '_')
-      .replace(/[^a-z0-9_.\-]/g, '')
+      .replace(/[^a-z0-9_.-]/g, '')
       .replace(/_+/g, '_')
       .replace(/^_|_$/g, '') || 'file'
   );

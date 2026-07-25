@@ -2,6 +2,8 @@ export { UploadPolicyRegistry } from './registry.js';
 export { resolveMaterialsPolicyId } from './policy-resolver.js';
 export { messageAttachmentPolicy } from './message-attachment.policy.js';
 export { packageImagePolicy } from './package-image.policy.js';
+export { guideHeroImagePolicy } from './guide-hero-image.policy.js';
+export { guideContentImagePolicy } from './guide-content-image.policy.js';
 export { caseDocumentPolicy } from './case-document.policy.js';
 export { chatbotRequestDocsPolicy } from './chatbot-request-docs.policy.js';
 export { ticketReplyAttachmentPolicy } from './ticket-reply-attachment.policy.js';

@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum, numeric, check } from "drizzle-orm/pg-core"
+import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreignKey, uuid, jsonb, boolean, bigint, unique, pgPolicy, pgEnum, numeric, check, date } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const aiSummaryStatus = pgEnum("AISummaryStatus", ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'])
@@ -1161,6 +1161,34 @@ export const chatbotFaqCategories = pgTable("chatbot_faq_categories", {
 	index("chatbot_faq_categories_hospital_type_idx").using("btree", table.hospitalType.asc().nullsLast()),
 	index("chatbot_faq_categories_is_active_idx").using("btree", table.isActive.asc().nullsLast()),
 	index("chatbot_faq_categories_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast()),
+]);
+
+export const guides = pgTable("guides", {
+	id: uuid().defaultRandom().primaryKey().notNull(),
+	slug: varchar({ length: 220 }).notNull(),
+	title: varchar({ length: 300 }).notNull(),
+	subtitle: text(),
+	heroImageStorageKey: text("hero_image_url"),
+	category: varchar({ length: 80 }).notNull(),
+	reviewedBy: varchar("reviewed_by", { length: 200 }),
+	updatedDate: date("updated_date", { mode: 'string' }).notNull(),
+	keyTakeaways: jsonb("key_takeaways").default([]).notNull(),
+	contentSections: jsonb("content_sections").default([]).notNull(),
+	contentDocument: jsonb("content_document").default({ type: 'doc', content: [{ type: 'paragraph' }] }).notNull(),
+	contentHtml: text("content_html").default('').notNull(),
+	contentText: text("content_text").default('').notNull(),
+	relatedHospitalIds: jsonb("related_hospital_ids").default([]).notNull(),
+	relatedTreatments: jsonb("related_treatments").default([]).notNull(),
+	relatedGuideIds: jsonb("related_guide_ids").default([]).notNull(),
+	faqs: jsonb().default([]).notNull(),
+	status: varchar({ length: 20 }).default('DRAFT').notNull(),
+	publishedAt: timestamp("published_at", { withTimezone: true, mode: 'string' }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	uniqueIndex("guides_slug_key").on(table.slug),
+	index("guides_category_idx").using("btree", table.category.asc().nullsLast()),
+	index("guides_status_updated_at_idx").using("btree", table.status.asc().nullsLast(), table.updatedAt.desc().nullsLast()),
 ]);
 
 export const emailTemplates = pgTable("email_templates", {

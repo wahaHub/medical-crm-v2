@@ -295,6 +295,8 @@ import {
   UploadPolicyRegistry,
   messageAttachmentPolicy,
   packageImagePolicy,
+  guideHeroImagePolicy,
+  guideContentImagePolicy,
   caseDocumentPolicy,
   chatbotRequestDocsPolicy,
   ticketReplyAttachmentPolicy,
@@ -769,6 +771,8 @@ export function getServices(): AppServices {
     const uploadPolicyRegistry = new UploadPolicyRegistry([
       messageAttachmentPolicy,
       packageImagePolicy,
+      guideHeroImagePolicy,
+      guideContentImagePolicy,
       caseDocumentPolicy,
       chatbotRequestDocsPolicy,
       ticketReplyAttachmentPolicy,

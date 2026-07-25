@@ -3,13 +3,14 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 import { LoadingSpinner, SidebarNav, type NavItem, useOptimisticNavigationState } from '@medical-crm/ui';
-import { LayoutDashboard, FolderOpen, Building2, LogOut, MessageSquare, ShoppingCart, Package, Ticket, ClipboardList, HelpCircle, Settings as SettingsIcon, Video } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, Building2, LogOut, MessageSquare, ShoppingCart, Package, Ticket, ClipboardList, HelpCircle, Settings as SettingsIcon, Video, BookOpen } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 const NAV_ITEMS: NavItem[] = [
   { key: 'dashboard', icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard', href: '/' },
   { key: 'cases', icon: <FolderOpen className="h-5 w-5" />, label: 'Cases', href: '/cases' },
   { key: 'video-consultations', icon: <Video className="h-5 w-5" />, label: 'Video', href: '/video-consultations' },
+  { key: 'guides', icon: <BookOpen className="h-5 w-5" />, label: 'Guides', href: '/guides' },
   { key: 'hospitals', icon: <Building2 className="h-5 w-5" />, label: 'Hospitals', href: '/hospitals' },
   { key: 'messages', icon: <MessageSquare className="h-5 w-5" />, label: 'Messages', href: '/messages' },
   { key: 'orders', icon: <ShoppingCart className="h-5 w-5" />, label: 'Orders', href: '/orders' },
@@ -23,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
 function getActiveKey(pathname: string): string {
   if (pathname.startsWith('/cases')) return 'cases';
   if (pathname.startsWith('/video-consultations')) return 'video-consultations';
+  if (pathname.startsWith('/guides')) return 'guides';
   if (pathname.startsWith('/hospitals')) return 'hospitals';
   if (pathname.startsWith('/messages')) return 'messages';
   if (pathname.startsWith('/orders')) return 'orders';

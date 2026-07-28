@@ -221,20 +221,27 @@ export class InitOnboardingUseCase {
     await this.conversationRepo.findOrCreateAdminPatientConversation(adminConversation);
 
     const widgetSessionId = `widget-chat:${patient.id}:${savedCase.id}`;
-    const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site);
-    if (!existingWidgetChatSession) {
-      await this.aiChatSessionRepo.save(new AiChatSession({
-        id: generateId(),
-        sessionId: widgetSessionId,
-        site: input.site,
-        sessionSecretHash: null,
-        difyConversationId: null,
-        patientId: patient.id,
-        hospitalType: 'REGULAR',
-        status: 'ACTIVE',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
+    try {
+      const existingWidgetChatSession = await this.aiChatSessionRepo.findBySessionId(widgetSessionId, input.site);
+      if (!existingWidgetChatSession) {
+        await this.aiChatSessionRepo.save(new AiChatSession({
+          id: generateId(),
+          sessionId: widgetSessionId,
+          site: input.site,
+          sessionSecretHash: null,
+          difyConversationId: null,
+          patientId: patient.id,
+          hospitalType: 'REGULAR',
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }));
+      }
+    } catch (error) {
+      // Gracefully degrade when the chat session tables/columns are not yet
+      // migrated (common during local development). Onboarding can still succeed
+      // and the widget will bootstrap itself on first use.
+      console.warn('init-onboarding: aiChatSession lookup/save failed, degrading gracefully.', error);
     }
 
     // 3. Create session token for the patient

@@ -1,33 +1,12 @@
 import { getSession } from './session';
+import postgres from 'postgres';
 
-const supabaseUrl = process.env.MAIN_SUPABASE_URL;
-const serviceKey = process.env.MAIN_SUPABASE_SERVICE_KEY;
-
-function getHeaders() {
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error('MAIN_SUPABASE_URL and MAIN_SUPABASE_SERVICE_KEY are required');
+function getDbSql() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error('DATABASE_URL is required');
   }
-  return {
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation',
-  };
-}
-
-function buildUrl(path: string, searchParams?: Record<string, string | undefined>) {
-  if (!supabaseUrl) {
-    throw new Error('MAIN_SUPABASE_URL is required');
-  }
-  const url = new URL(`${supabaseUrl}/rest/v1${path}`);
-  if (searchParams) {
-    Object.entries(searchParams).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        url.searchParams.set(key, value);
-      }
-    });
-  }
-  return url.toString();
+  return postgres(url, { max: 10 });
 }
 
 export interface VideoConsultation {
@@ -51,6 +30,7 @@ export interface VideoConsultation {
   started_at: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+  patient_language: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
@@ -65,28 +45,22 @@ export async function requireAdminSession() {
 }
 
 export async function listVideoConsultations(options?: { status?: string; doctorId?: string }): Promise<VideoConsultation[]> {
-  const params: Record<string, string> = {
-    select: '*',
-    order: 'scheduled_at.asc',
-  };
-  if (options?.status) {
-    params.status = `in.(${options.status})`;
-  }
-  if (options?.doctorId) {
-    params.doctor_id = `eq.${options.doctorId}`;
-  }
+  const sql = getDbSql();
 
-  const res = await fetch(buildUrl('/video_consultations', params), {
-    headers: getHeaders(),
-    cache: 'no-store',
-  });
+  const statuses = options?.status
+    ? options.status.split(',').map((s) => s.trim()).filter(Boolean)
+    : null;
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase query failed: ${res.status} ${text}`);
-  }
+  const rows = await sql<VideoConsultation[]>`
+    SELECT *
+    FROM public.video_consultations
+    WHERE 1 = 1
+      ${statuses ? sql`AND status IN ${sql(statuses)}` : sql``}
+      ${options?.doctorId ? sql`AND doctor_id = ${options.doctorId}` : sql``}
+    ORDER BY scheduled_at DESC
+  `;
 
-  return (await res.json()) as VideoConsultation[];
+  return rows;
 }
 
 export async function updateVideoConsultationStatus(
@@ -94,27 +68,56 @@ export async function updateVideoConsultationStatus(
   status: VideoConsultation['status'],
   note?: string,
 ): Promise<VideoConsultation> {
-  const body = {
-    status,
-    doctor_response_at: new Date().toISOString(),
-    doctor_response_note: note ?? null,
-  };
+  const sql = getDbSql();
 
-  const res = await fetch(buildUrl(`/video_consultations?id=eq.${id}`), {
-    method: 'PATCH',
-    headers: getHeaders(),
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  });
+  const [updated] = await sql<VideoConsultation[]>`
+    UPDATE public.video_consultations
+    SET
+      status = ${status},
+      doctor_response_at = ${new Date().toISOString()},
+      doctor_response_note = ${note ?? null}
+    WHERE id = ${id}
+    RETURNING *
+  `;
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Supabase update failed: ${res.status} ${text}`);
-  }
-
-  const data = (await res.json()) as VideoConsultation[];
-  if (!data[0]) {
+  if (!updated) {
     throw new Error(`Video consultation ${id} not found after update`);
   }
-  return data[0];
+  return updated;
+}
+
+export async function completeVideoConsultation(id: string): Promise<VideoConsultation> {
+  const sql = getDbSql();
+
+  const [existing] = await sql<VideoConsultation[]>`
+    SELECT * FROM public.video_consultations WHERE id = ${id}
+  `;
+  if (!existing) {
+    throw new Error(`Video consultation ${id} not found`);
+  }
+  if (existing.status === 'COMPLETED' || existing.status === 'CANCELLED') {
+    return existing;
+  }
+
+  const endedAt = new Date().toISOString();
+  const durationSeconds = existing.started_at
+    ? Math.max(
+        0,
+        Math.round(
+          (new Date(endedAt).getTime() - new Date(existing.started_at).getTime()) / 1000,
+        ),
+      )
+    : null;
+
+  const [updated] = await sql<VideoConsultation[]>`
+    UPDATE public.video_consultations
+    SET status = ${'COMPLETED'}, ended_at = ${endedAt}, duration_seconds = ${durationSeconds}
+    WHERE id = ${id}
+    RETURNING *
+  `;
+
+  if (!updated) {
+    throw new Error(`Video consultation ${id} not found after update`);
+  }
+  return updated;
 }

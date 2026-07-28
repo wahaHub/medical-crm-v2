@@ -21,6 +21,14 @@ import type {
   LiveKitTokenResponse,
 } from '@/lib/video-consultation-types';
 
+function sortByScheduledDesc(list: VideoConsultation[]): VideoConsultation[] {
+  return [...list].sort((a, b) => {
+    const aTime = a.scheduled_at ? new Date(a.scheduled_at).getTime() : 0;
+    const bTime = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 type TabKey = 'all' | 'pending' | 'scheduled' | 'in_progress' | 'closed';
 
 const TABS: { key: TabKey; label: string; statuses: VideoConsultation['status'][] }[] = [
@@ -45,14 +53,17 @@ interface Props {
 }
 
 export function VideoConsultationsList({ initialData }: Props) {
-  const [consultations, setConsultations] = useState<VideoConsultation[]>(initialData.consultations ?? []);
+  const [consultations, setConsultations] = useState<VideoConsultation[]>(
+    initialData.consultations ? sortByScheduledDesc(initialData.consultations) : [],
+  );
   const [activeTab, setActiveTab] = useState<TabKey>('all');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialData.error ?? null);
 
   const [confirming, setConfirming] = useState<VideoConsultation | null>(null);
   const [rejecting, setRejecting] = useState<VideoConsultation | null>(null);
   const [joining, setJoining] = useState<VideoConsultation | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [roomToken, setRoomToken] = useState<LiveKitTokenResponse | null>(null);
 
   const filtered = useMemo(() => {
@@ -76,7 +87,7 @@ export function VideoConsultationsList({ initialData }: Props) {
     setError(null);
     try {
       const data = await queryFetch<VideoConsultationListResponse>('/api/video-consultations');
-      setConsultations(data.consultations ?? []);
+      setConsultations(sortByScheduledDesc(data.consultations ?? []));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load consultations.';
       setError(message);
@@ -128,8 +139,34 @@ export function VideoConsultationsList({ initialData }: Props) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to enter room.';
       setError(message);
-    } finally {
       setJoining(null);
+    }
+  }
+
+  async function handleComplete(consultation: VideoConsultation) {
+    if (!window.confirm(`End meeting "${consultation.title || 'Untitled'}"? The doctor's time slot will be freed.`)) {
+      return;
+    }
+    setCompletingId(consultation.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/video-consultations/${consultation.id}/complete`, {
+        method: 'POST',
+      });
+      const data = (await res.json().catch(() => ({ error: 'invalid response' }))) as {
+        success?: boolean;
+        consultation?: VideoConsultation;
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.consultation) {
+        throw new Error(data.error || 'Failed to end meeting');
+      }
+      updateConsultation(data.consultation);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to end meeting';
+      setError(message);
+    } finally {
+      setCompletingId(null);
     }
   }
 
@@ -207,7 +244,7 @@ export function VideoConsultationsList({ initialData }: Props) {
     {
       key: 'actions',
       header: 'Actions',
-      className: 'w-64',
+      className: 'w-72',
       render: (c) => {
         if (c.status === 'PENDING_CONFIRMATION') {
           return (
@@ -233,27 +270,63 @@ export function VideoConsultationsList({ initialData }: Props) {
 
         if (isRoomOpen(c)) {
           return (
-            <Button
-              size="sm"
-              className="h-8 gap-1"
-              onClick={() => void handleJoin(c)}
-              disabled={joining?.id === c.id}
-            >
-              {joining?.id === c.id ? (
-                <LoadingSpinner size="sm" />
-              ) : (
-                <Video className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-8 gap-1"
+                onClick={() => void handleJoin(c)}
+                disabled={joining?.id === c.id}
+              >
+                {joining?.id === c.id ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <Video className="h-3.5 w-3.5" />
+                )}
+                Enter room
+              </Button>
+              {(c.status === 'SCHEDULED' || c.status === 'IN_PROGRESS') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 gap-1 whitespace-nowrap text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                  onClick={() => void handleComplete(c)}
+                  disabled={completingId === c.id}
+                  title="End meeting"
+                >
+                  {completingId === c.id ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    <PhoneOff className="h-3.5 w-3.5" />
+                  )}
+                  End meeting
+                </Button>
               )}
-              Enter room
-            </Button>
+            </div>
           );
         }
 
         if (c.status === 'SCHEDULED') {
           return (
-            <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-              <PhoneOff className="h-3.5 w-3.5" /> Opens at {formatTime(new Date(c.scheduled_at!))}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-400">
+                <PhoneOff className="h-3.5 w-3.5" /> Opens at {formatTime(new Date(c.scheduled_at!))}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0 gap-1 whitespace-nowrap text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                onClick={() => void handleComplete(c)}
+                disabled={completingId === c.id}
+                title="End meeting"
+              >
+                {completingId === c.id ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <PhoneOff className="h-3.5 w-3.5" />
+                )}
+                End meeting
+              </Button>
+            </div>
           );
         }
 
@@ -311,14 +384,19 @@ export function VideoConsultationsList({ initialData }: Props) {
         variant="danger"
       />
 
-      {roomToken && (
+      {roomToken && joining && (
         <VideoConsultationRoom
           token={roomToken.token}
           livekitUrl={roomToken.livekitUrl}
           identity={roomToken.identity}
-          displayName={joining?.doctor_name || roomToken.identity}
+          displayName={joining.doctor_name || roomToken.identity}
           roomName={roomToken.roomName}
-          onClose={() => setRoomToken(null)}
+          consultationId={joining.id}
+          patientLanguage={joining.patient_language || 'en'}
+          onClose={() => {
+            setRoomToken(null);
+            setJoining(null);
+          }}
         />
       )}
     </div>

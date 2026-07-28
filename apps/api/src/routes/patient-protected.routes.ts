@@ -259,7 +259,13 @@ function isUniqueConstraintError(error: unknown): boolean {
 
 function isAllowedUploadTarget(url: URL): boolean {
   const hostname = url.hostname.toLowerCase();
-  return hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
+  const isCloudBackend = hostname.endsWith('.r2.cloudflarestorage.com') || hostname.endsWith('.amazonaws.com');
+  if (isCloudBackend) return true;
+  // Allow local dev storage endpoints (e.g. LocalFileStorageAdapter) when running locally.
+  if (process.env['NODE_ENV'] === 'development' && (hostname === 'localhost' || hostname === '127.0.0.1')) {
+    return true;
+  }
+  return false;
 }
 
 function isMechanicalModeRequest(mode: string | undefined): boolean {
@@ -862,7 +868,10 @@ app.post('/uploads/proxy', async (c) => {
     return c.json({ error: 'uploadUrl must be a valid absolute URL' }, 400);
   }
 
-  if (normalizedUrl.protocol !== 'https:' || !isAllowedUploadTarget(normalizedUrl)) {
+  const isLocalDevTarget =
+    process.env['NODE_ENV'] === 'development' &&
+    (normalizedUrl.hostname === 'localhost' || normalizedUrl.hostname === '127.0.0.1');
+  if ((normalizedUrl.protocol !== 'https:' && !isLocalDevTarget) || !isAllowedUploadTarget(normalizedUrl)) {
     return c.json({ error: 'uploadUrl target is not allowed' }, 400);
   }
 
@@ -1228,5 +1237,9 @@ app.get('/cases/:caseId/ai-summary', async (c) => {
     updatedAt: caseEntity.updatedAt.toISOString(),
   });
 });
+
+// Video consultation routes (bypasses PostgREST schema cache by using direct Postgres)
+import videoConsultationPatientRoutes from './video-consultations-patient.routes.js';
+app.route('/video-consultations', videoConsultationPatientRoutes);
 
 export default app;

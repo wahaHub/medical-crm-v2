@@ -19,6 +19,8 @@ interface Props {
   livekitUrl: string;
   identity: string;
   roomName: string;
+  consultationId: string;
+  patientLanguage: string;
   displayName?: string;
   onClose: () => void;
 }
@@ -28,6 +30,8 @@ export function VideoConsultationRoom({
   livekitUrl,
   identity,
   roomName,
+  consultationId,
+  patientLanguage,
   displayName,
   onClose,
 }: Props) {
@@ -41,6 +45,25 @@ export function VideoConsultationRoom({
   const [remoteVideoTracks, setRemoteVideoTracks] = useState<RemoteVideoTrack[]>([]);
   const [remoteAudioTracks, setRemoteAudioTracks] = useState<RemoteAudioTrack[]>([]);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
+  const audioTrackOwners = useRef<Record<string, string>>({});
+
+  const [interpretationStarted, setInterpretationStarted] = useState(false);
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
+  const [interpretationError, setInterpretationError] = useState<string | null>(null);
+  const [endingMeeting, setEndingMeeting] = useState(false);
+  const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [myLanguage] = useState('zh');
+  const [remoteLanguage] = useState(patientLanguage);
+  const [subtitles, setSubtitles] = useState<
+    Array<{
+      from: string;
+      fromLanguage: string;
+      toLanguage: string;
+      sourceText: string;
+      translatedText: string;
+      isFinal: boolean;
+    }>
+  >([]);
 
   useEffect(() => {
     let disposed = false;
@@ -67,12 +90,16 @@ export function VideoConsultationRoom({
       .on(RoomEvent.LocalTrackPublished, () => syncLocalVideo())
       .on(RoomEvent.LocalTrackUnpublished, () => syncLocalVideo())
       .on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+        console.log('[admin-room] track subscribed', participant.identity, track.kind, track.sid);
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTracks((prev) => {
             if (prev.some((t) => t.sid === track.sid)) return prev;
             return [...prev, track as RemoteVideoTrack];
           });
         } else if (track.kind === Track.Kind.Audio) {
+          if (track.sid) {
+            audioTrackOwners.current[track.sid] = participant.identity;
+          }
           setRemoteAudioTracks((prev) => {
             if (prev.some((t) => t.sid === track.sid)) return prev;
             return [...prev, track as RemoteAudioTrack];
@@ -87,6 +114,9 @@ export function VideoConsultationRoom({
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTracks((prev) => prev.filter((t) => t.sid !== track.sid));
         } else if (track.kind === Track.Kind.Audio) {
+          if (track.sid) {
+            delete audioTrackOwners.current[track.sid];
+          }
           setRemoteAudioTracks((prev) => prev.filter((t) => t.sid !== track.sid));
         }
       })
@@ -96,12 +126,26 @@ export function VideoConsultationRoom({
           if (prev.some((p) => p.identity === participant.identity)) return prev;
           return [...prev, participant];
         });
+        if (!interpretationStarted && !interpretationLoading) {
+          void startInterpretation(participant);
+        }
       })
       .on(RoomEvent.ParticipantDisconnected, (participant) => {
         setStatus(`Remote left: ${participant.identity}`);
         setRemoteParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
         setRemoteVideoTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
         setRemoteAudioTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
+      })
+      .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+        console.log('[admin-room] data received', { topic, size: payload.byteLength });
+        if (topic !== 'subtitle') return;
+        try {
+          const msg = JSON.parse(new TextDecoder().decode(payload));
+          console.log('[admin-room] subtitle msg', msg);
+          setSubtitles((prev) => [...prev.slice(-50), msg]);
+        } catch {
+          // Ignore malformed subtitle messages.
+        }
       })
       .on(RoomEvent.Disconnected, () => onClose());
 
@@ -119,6 +163,12 @@ export function VideoConsultationRoom({
       setRoom(lkRoom);
       setStatus(`Joined: ${roomName}`);
       setConnecting(false);
+
+      // If the patient is already in the room when admin joins, start interpretation immediately.
+      const existingRemote = Array.from(lkRoom.remoteParticipants.values())[0];
+      if (existingRemote) {
+        void startInterpretation(existingRemote);
+      }
     }
 
     connect().catch((err) => {
@@ -158,12 +208,94 @@ export function VideoConsultationRoom({
     onClose();
   }
 
+  async function startInterpretation(remoteParticipant?: RemoteParticipant) {
+    if (!room) return;
+    const targetParticipant = remoteParticipant ?? remoteParticipants[0];
+    if (!targetParticipant) return;
+    setInterpretationLoading(true);
+    setInterpretationError(null);
+
+    try {
+      const participants = [
+        { identity, language: myLanguage },
+        { identity: targetParticipant.identity, language: remoteLanguage },
+      ];
+
+      const res = await fetch('/api/video-consultations/interpretation/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName, participants }),
+      });
+
+      const data = (await res.json().catch(() => ({ error: 'invalid_response' }))) as {
+        success?: boolean;
+        error?: string;
+      };
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to start interpretation');
+      }
+
+      setInterpretationStarted(true);
+    } catch (err) {
+      setInterpretationError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInterpretationLoading(false);
+    }
+  }
+
+  async function stopInterpretation() {
+    if (!interpretationStarted) return;
+    try {
+      const res = await fetch('/api/video-consultations/interpretation/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({ error: 'unknown' }))) as { error?: string };
+        console.warn('Failed to stop interpretation:', data.error);
+      }
+    } catch (err) {
+      console.warn('Error stopping interpretation:', err);
+    }
+    setInterpretationStarted(false);
+  }
+
+  async function endMeeting() {
+    if (!window.confirm('结束会议？该操作会标记面诊为已完成并释放医生的时间安排。')) {
+      return;
+    }
+    setEndingMeeting(true);
+    setMeetingError(null);
+    try {
+      await stopInterpretation();
+      const res = await fetch(`/api/video-consultations/${consultationId}/complete`, {
+        method: 'POST',
+      });
+      const data = (await res.json().catch(() => ({ error: 'invalid response' }))) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to end meeting');
+      }
+      hangUp();
+    } catch (err) {
+      setMeetingError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEndingMeeting(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950">
       <header className="flex items-center justify-between border-b border-slate-800 bg-slate-900 px-6 py-4">
         <div>
           <h2 className="text-lg font-semibold text-white">{roomName}</h2>
-          <p className="text-xs text-slate-400">{status}</p>
+          <p className="text-xs text-slate-400">
+            {status} · Remote audio tracks: {remoteAudioTracks.length}
+          </p>
         </div>
         <button onClick={hangUp} className="text-slate-400 hover:text-white">
           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -211,9 +343,18 @@ export function VideoConsultationRoom({
                   ))}
                 </div>
               )}
-              {remoteAudioTracks.map((track) => (
-                <AudioRenderer key={track.sid} track={track} />
-              ))}
+              {remoteAudioTracks
+                .filter((track) => {
+                  const owner = track.sid ? audioTrackOwners.current[track.sid] : undefined;
+                  const isBotTrack = owner?.startsWith('translator-') ?? false;
+                  if (interpretationStarted) {
+                    return isBotTrack;
+                  }
+                  return true;
+                })
+                .map((track) => (
+                  <AudioRenderer key={track.sid} track={track} />
+                ))}
             </div>
           </div>
         </div>
@@ -238,6 +379,29 @@ export function VideoConsultationRoom({
         )}
       </main>
 
+      <section className="border-t border-slate-800 bg-slate-900 px-6 py-3">
+        <div className="mx-auto max-w-4xl">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Live Subtitles
+          </h3>
+          <div className="max-h-32 overflow-y-auto rounded-lg bg-slate-950 p-3 text-sm">
+            {subtitles.length === 0 ? (
+              <p className="text-slate-500 italic">No subtitles yet. Make sure a remote participant is speaking and their microphone is on.</p>
+            ) : (
+              subtitles.map((s, idx) => (
+                <div key={idx} className="mb-2 last:mb-0">
+                  <span className="text-xs text-slate-500">
+                    {s.fromLanguage} → {s.toLanguage}
+                    {!s.isFinal && <span className="ml-1 italic">(typing…)</span>}
+                  </span>
+                  <p className="text-slate-200">{s.translatedText || s.sourceText}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
       <footer className="flex items-center justify-center gap-4 border-t border-slate-800 bg-slate-900 px-6 py-4">
         <button
           onClick={() => void toggleMic()}
@@ -257,7 +421,52 @@ export function VideoConsultationRoom({
         >
           <PhoneOff className="h-5 w-5" />
         </button>
+        <button
+          onClick={() => void endMeeting()}
+          disabled={endingMeeting}
+          className="ml-2 inline-flex items-center gap-2 rounded-full bg-rose-700 px-4 py-2 text-sm font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+        >
+          {endingMeeting ? (
+            <>
+              <LoadingSpinner size="sm" className="text-white" />
+              Ending…
+            </>
+          ) : (
+            'End Meeting'
+          )}
+        </button>
+        {!interpretationStarted && (
+          <button
+            onClick={() => void startInterpretation()}
+            disabled={interpretationLoading || remoteParticipants.length === 0}
+            title={
+              remoteParticipants.length === 0
+                ? 'Waiting for a remote participant to join'
+                : 'Start real-time translation'
+            }
+            className="ml-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {interpretationLoading
+              ? 'Starting…'
+              : remoteParticipants.length === 0
+                ? 'Waiting for remote participant…'
+                : 'Start Translation'}
+          </button>
+        )}
+        {interpretationStarted && (
+          <span className="ml-2 text-sm text-teal-400">Translation active</span>
+        )}
       </footer>
+      {interpretationError && (
+        <div className="border-t border-red-900/50 bg-red-950/50 px-6 py-2 text-center text-sm text-red-200">
+          Translation error: {interpretationError}
+        </div>
+      )}
+      {meetingError && (
+        <div className="border-t border-red-900/50 bg-red-950/50 px-6 py-2 text-center text-sm text-red-200">
+          End meeting error: {meetingError}
+        </div>
+      )}
     </div>
   );
 }

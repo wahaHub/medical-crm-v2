@@ -22,7 +22,8 @@
     "@medical-crm/utils": "workspace:*",
     "@medical-crm/validation": "workspace:*",
     "hono": "^4.7.0",
-    "hono-rate-limiter": "^0.4.0"
+    "hono-rate-limiter": "^0.4.0",
+    "stripe": "^22.3.1"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

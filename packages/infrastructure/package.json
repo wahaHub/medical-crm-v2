@@ -23,6 +23,7 @@
     "./storage/registry": "./storage/storage-adapter-registry.ts",
     "./storage/routed": "./storage/routed-storage.service.ts",
     "./storage/server-side-upload": "./storage/server-side-upload.service.ts",
+    "./storage/local-file": "./storage/local-file-storage.adapter.ts",
     "./services": "./services/index.ts"
   },
   "scripts": {

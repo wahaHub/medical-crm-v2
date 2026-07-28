@@ -4,26 +4,35 @@ import { sanitizeRichText } from '@medical-crm/utils';
 const beautyProcedureCategorySchema = z.enum(['face', 'body', 'non-surgical', 'hair']);
 
 // POST /api/patient/onboarding/init
-export const initOnboardingSchema = z.object({
-  email: z.string().email().max(255),
-  name: z.string().min(1).max(100),
-  phone: z.string().trim().min(5).max(20).optional(),
-  age: z.string().trim().max(20).optional(),
-  gender: z.string().trim().max(40).optional(),
-  country: z.string().trim().max(120).optional(),
-  whatsapp: z.string().trim().max(120).optional(),
-  messenger: z.string().trim().max(120).optional(),
-  department: z.string().trim().max(120).optional(),
-  departmentCode: z.string().trim().max(120).optional(),
-  disease: z.string().trim().max(500).optional(),
-  preferredLanguage: z.string().min(2).max(10).default('en'),
-  procedureId: z.string().uuid().optional(),
-  destination: z.string().max(100).optional(),
-  treatmentTime: z.string().trim().max(120).optional(),
-  category: beautyProcedureCategorySchema.optional(),
-  registerToken: z.string().min(1).optional(),
-  captchaToken: z.string().min(1).optional(),
-});
+export const initOnboardingSchema = z
+  .object({
+    email: z.string().email().max(255),
+    name: z.string().min(1).max(100),
+    phone: z.string().trim().min(5).max(20).optional(),
+    age: z.string().trim().max(20).optional(),
+    gender: z.string().trim().max(40).optional(),
+    country: z.string().trim().max(120).optional(),
+    countryOfOrigin: z.string().trim().max(120).optional(),
+    whatsapp: z.string().trim().max(120).optional(),
+    messenger: z.string().trim().max(120).optional(),
+    department: z.string().trim().max(120).optional(),
+    departmentCode: z.string().trim().max(120).optional(),
+    disease: z.string().trim().max(500).optional(),
+    preferredLanguage: z.string().min(2).max(10).default('en'),
+    procedureId: z.string().trim().max(200).optional(),
+    destination: z.string().max(100).optional(),
+    treatmentTime: z.string().trim().max(120).optional(),
+    category: beautyProcedureCategorySchema.optional(),
+    registerToken: z.string().min(1).optional(),
+    captchaToken: z.string().min(1).optional(),
+  })
+  .transform((data) => {
+    const { countryOfOrigin, ...rest } = data;
+    return {
+      ...rest,
+      country: data.country ?? countryOfOrigin,
+    };
+  });
 
 // POST /api/patient/match-hospitals
 export const matchHospitalsSchema = z.object({

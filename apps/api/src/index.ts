@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { extname } from 'node:path';
 import { DomainError, mapErrorToStatus } from '@medical-crm/utils';
 import { applySecurityMiddleware, perUserRateLimiter } from './middleware/security.js';
 import { authMiddleware } from '@medical-crm/infrastructure/auth';
@@ -7,20 +8,112 @@ import { isTransientDatabaseError } from '@medical-crm/infrastructure/database/r
 import routes from './routes/index.js';
 import internalRoutes from './routes/internal.routes.js';
 import resendInboundRoutes from './routes/resend-inbound.routes.js';
+import stripeWebhookRoutes from './routes/stripe-webhook.routes.js';
 import {
   forgotHospitalPasswordSchema,
   registerHospitalUserSchema,
   resetHospitalPasswordSchema,
 } from '@medical-crm/validation';
 import { getServices } from './composition-root.js';
+import { LocalFileStorageAdapter } from '@medical-crm/infrastructure/storage/local-file';
+
+const EXT_TO_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.tiff': 'image/tiff',
+  '.tif': 'image/tiff',
+  '.heic': 'image/heic',
+  '.heif': 'image/heif',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.txt': 'text/plain',
+  '.csv': 'text/csv',
+  '.rtf': 'application/rtf',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.zip': 'application/zip',
+};
+
+function mimeTypeFromKey(key: string): string {
+  const ext = extname(key).toLowerCase();
+  return EXT_TO_MIME[ext] ?? 'application/octet-stream';
+}
 
 const app = new Hono();
+
+// Outermost wrapper: relax Cross-Origin-Resource-Policy for local-uploads
+// AFTER the global secureHeaders middleware has run. The admin dashboard runs
+// on a different origin in development (localhost:3002 vs API localhost:3001)
+// and embeds uploaded images/PDFs via <img> / <iframe>.
+app.use('*', async (c, next) => {
+  await next();
+  if (c.req.path === '/api/local-uploads') {
+    c.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  }
+});
 
 // Apply security middleware stack (runs before auth)
 applySecurityMiddleware(app);
 
 // Health check (no auth required)
 app.get('/health', (c) => c.json({ status: 'ok', version: '2.0.0' }));
+
+// Local filesystem upload/download handler used by LocalFileStorageAdapter in dev.
+// The signed URL itself acts as the authorization token, so no session auth is required.
+app.put('/api/local-uploads', async (c) => {
+  const keyParam = c.req.query('key');
+  if (!keyParam) return c.json({ error: 'key is required' }, 400);
+
+  const storage = getServices().localFileStorage;
+  if (!storage || !(storage instanceof LocalFileStorageAdapter)) {
+    return c.json({ error: 'Local file storage is not enabled' }, 503);
+  }
+
+  const key = Buffer.from(keyParam, 'base64url').toString('utf-8');
+  const data = Buffer.from(await c.req.arrayBuffer());
+  await storage.saveFile(key, data);
+  return c.body(null, 204);
+});
+
+app.get('/api/local-uploads', async (c) => {
+  const keyParam = c.req.query('key');
+  if (!keyParam) return c.json({ error: 'key is required' }, 400);
+
+  const storage = getServices().localFileStorage;
+  if (!storage || !(storage instanceof LocalFileStorageAdapter)) {
+    return c.json({ error: 'Local file storage is not enabled' }, 503);
+  }
+
+  const key = Buffer.from(keyParam, 'base64url').toString('utf-8');
+  try {
+    const data = await storage.readFile(key);
+    const contentType = mimeTypeFromKey(key);
+    c.header('Content-Type', contentType);
+    // Only force download for non-browser-renderable types. Images, videos and PDFs
+    // should render inline when used as <img> / <iframe> sources in the admin UI.
+    const isInlineRenderable = contentType.startsWith('image/')
+      || contentType.startsWith('video/')
+      || contentType === 'application/pdf';
+    if (c.req.query('download') === '1' && !isInlineRenderable) {
+      const fileName = key.split('/').pop() ?? 'download';
+      c.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    }
+    return c.body(data as any);
+  } catch {
+    return c.json({ error: 'File not found' }, 404);
+  }
+});
 
 // --- Routes that skip Keycloak auth (mounted BEFORE auth middleware) ---
 
@@ -73,9 +166,11 @@ app.post('/api/v2/auth/hospital/reset-password', async (c) => {
 import patientPublicRoutes from './routes/patient-public.routes.js';
 import patientAuthRoutes from './routes/patient-auth.routes.js';
 import patientProtectedRoutes from './routes/patient-protected.routes.js';
+import patientPaymentRoutes from './routes/patient-payments.routes.js';
 import { chatbotPublicRoutes } from './routes/chatbot.routes.js';
 import { chatbotV3PublicRoutes } from './routes/chatbot-v3.routes.js';
 app.route('/api/patient', patientPublicRoutes);
+app.route('/api/patient', patientPaymentRoutes);
 app.route('/api/patient', patientAuthRoutes);
 
 // Patient protected routes (patient JWT auth, not Keycloak)
@@ -98,6 +193,9 @@ app.route('/', internalRoutes);
 
 // Public: Resend inbound email webhook (Svix signature auth, not Keycloak)
 app.route('/api/webhooks/resend', resendInboundRoutes);
+
+// Public: Stripe webhook (signature verification, not Keycloak)
+app.route('/api/webhooks/stripe', stripeWebhookRoutes);
 
 // --- Auth middleware for everything else under /api/v2/* ---
 app.use('/api/v2/*', authMiddleware, perUserRateLimiter);

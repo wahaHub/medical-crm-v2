@@ -5529,12 +5529,21 @@ describe('chatbot-v3 runtime', () => {
     expect(result.writeIntents?.statusPatch).not.toEqual(expect.objectContaining({
       journeyCurrentStage: 'EXPLAIN_PROCESS',
     }));
+    expect(result.writeIntents?.statusPatch).toEqual(expect.objectContaining({
+      docUploadStatus: 'SUBMITTED',
+      supportingDocuments: [
+        {
+          path: 'chatbot/session-later-stage-faq-recovery-1/report.pdf',
+          name: 'report.pdf',
+        },
+      ],
+    }));
     expect(response.cards).toEqual([
       expect.objectContaining({
         cardType: 'UPLOAD_RECORDS',
         payload: expect.objectContaining({
           required: true,
-          uploadedCount: 2,
+          uploadedCount: 1,
         }),
       }),
     ]);

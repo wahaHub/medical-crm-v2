@@ -2375,7 +2375,7 @@ function deriveEffectiveAttachmentStatusPatch(
   if (
     attachments.length === 0
     || result.decision.dispatchAgent !== 'RecordsAgent'
-    || result.journey.stage !== 'COLLECT_MINIMAL_MEDICAL_FACTS'
+    || !['COLLECT_MINIMAL_MEDICAL_FACTS', 'COLLECT_MEDICAL_INPUTS'].includes(result.journey.stage)
   ) {
     return undefined;
   }

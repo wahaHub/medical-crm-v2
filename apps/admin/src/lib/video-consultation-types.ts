@@ -19,6 +19,7 @@ export interface VideoConsultation {
   started_at: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+  patient_language: string | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;

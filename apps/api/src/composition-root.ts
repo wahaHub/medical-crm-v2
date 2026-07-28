@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type {
   ICaseRepository,
   IDocumentRepository,
@@ -284,6 +285,7 @@ import {
 import { SupabaseStorageAdapter } from '@medical-crm/infrastructure/storage';
 import { R2StorageAdapter } from '@medical-crm/infrastructure/storage/r2';
 import { S3StorageAdapter } from '@medical-crm/infrastructure/storage/s3';
+import { LocalFileStorageAdapter } from '@medical-crm/infrastructure/storage/local-file';
 import { StorageAdapterRegistry } from '@medical-crm/infrastructure/storage/registry';
 import { RoutedStorageService } from '@medical-crm/infrastructure/storage/routed';
 import { ServerSideUploadService } from '@medical-crm/infrastructure/storage/server-side-upload';
@@ -335,6 +337,7 @@ interface AppServices {
   aiSyncOutboxRepo: IAiSyncOutboxRepository;
   difyDocumentMappingRepo: IDifyDocumentMappingRepository;
   storage: IStorageService;
+  localFileStorage?: LocalFileStorageAdapter;
   txRunner: DrizzleTransactionRunner;
   mediaUpload: MediaUploadService;
   difyApi: DifyApiClientService;
@@ -735,10 +738,25 @@ export function getServices(): AppServices {
       cloudfrontUrl: process.env['AWS_CLOUDFRONT_URL'],
     });
 
+    // In local development, when R2 credentials are placeholders, fall back to
+    // filesystem storage so uploads work without real cloud credentials.
+    const useLocalFileStorage =
+      process.env['USE_LOCAL_FILE_STORAGE'] === 'true' ||
+      (process.env['NODE_ENV'] === 'development' &&
+        (process.env['R2_ACCOUNT_ID'] ?? '').startsWith('local-'));
+
+    let localFileStorage: LocalFileStorageAdapter | undefined;
+    if (useLocalFileStorage) {
+      const storageDir = process.env['LOCAL_FILE_STORAGE_DIR'] ?? join(process.cwd(), '..', '..', 'tmp', 'local-storage');
+      const baseUrl = process.env['LOCAL_FILE_STORAGE_BASE_URL'] ?? 'http://localhost:3001/api/local-uploads';
+      localFileStorage = new LocalFileStorageAdapter({ storageDir, baseUrl });
+      console.info('[Storage] Using local filesystem storage for R2 backends in development.');
+    }
+
     const storageAdapterRegistry = new StorageAdapterRegistry(
       {
-        'r2-private': r2Adapter,
-        'r2-materials-beauty': r2MaterialsBeautyAdapter,
+        'r2-private': localFileStorage ?? r2Adapter,
+        'r2-materials-beauty': localFileStorage ?? r2MaterialsBeautyAdapter,
         's3-materials': s3Adapter,
         'supabase-legacy': supabaseLegacyAdapter,
       },
@@ -1143,6 +1161,7 @@ export function getServices(): AppServices {
       idempotencyExecutor: idempotencyGuard,
       caseRepo, adminPatientSiteAccess, documentRepo, progressRepo, hospitalRepo, patientRepo, chcRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
+      localFileStorage,
       txRunner,
       mediaUpload: mediaUploadService,
       difyApi: difyApiClient,

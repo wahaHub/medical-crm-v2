@@ -13,7 +13,8 @@ export default async function VideoConsultationsPage() {
     initial = { success: true, consultations };
   } catch (err) {
     console.error('[VideoConsultationsPage] Error:', err);
-    initial = { success: true, consultations: [] };
+    const message = err instanceof Error ? err.message : 'Failed to load video consultations.';
+    initial = { success: false, error: message, consultations: [] };
   }
 
   return (

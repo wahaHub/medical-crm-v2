@@ -12,3 +12,4 @@ dify/
 .worktrees/
 .vercel
 __pycache__/
+tmp/

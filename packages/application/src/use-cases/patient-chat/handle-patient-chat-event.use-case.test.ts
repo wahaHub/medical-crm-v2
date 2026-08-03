@@ -41,6 +41,7 @@ describe('HandlePatientChatEventUseCase', () => {
       messageRepo as any,
       { findBySessionId: vi.fn().mockResolvedValue(null) } as any,
       getPatientSessionDetail as any,
+      { execute: vi.fn() },
       { execute: vi.fn() } as any,
     );
     const attachments = Array.from({ length: 5 }, (_, index) => ({

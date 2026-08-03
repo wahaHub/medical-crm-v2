@@ -597,6 +597,7 @@ export { GetPatientCaseDetailUseCase } from './use-cases/patient-dashboard/get-p
 export { GetPatientConversationsUseCase } from './use-cases/patient-dashboard/get-patient-conversations.use-case.js';
 export { GetPatientSessionDetailUseCase } from './use-cases/patient-dashboard/get-patient-session-detail.use-case.js';
 export { HandlePatientChatEventUseCase } from './use-cases/patient-chat/handle-patient-chat-event.use-case.js';
+export { SendRecordsUploadConfirmationUseCase } from './use-cases/patient-chat/send-records-upload-confirmation.use-case.js';
 export { PatientAcceptQuoteUseCase } from './use-cases/patient-dashboard/patient-accept-quote.use-case.js';
 export { PatientRejectQuoteUseCase } from './use-cases/patient-dashboard/patient-reject-quote.use-case.js';
 export { SelectHospitalsUseCase } from './use-cases/patient-dashboard/select-hospitals.use-case.js';

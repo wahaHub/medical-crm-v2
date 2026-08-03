@@ -43,6 +43,7 @@ describe('NotificationEmailService reply-to routing', () => {
       sendHospitalInvitation: vi.fn(),
       sendPatientMagicLink: vi.fn(),
       sendPatientOnboardingConfirmation: vi.fn(),
+      sendPatientRecordsUploadConfirmation: vi.fn(),
       sendAdminNewCaseAlert: vi.fn(),
       sendAdminNewMessageAlert: vi.fn(),
       sendAdminNewTicketAlert: vi.fn(),

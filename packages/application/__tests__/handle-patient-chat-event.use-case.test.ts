@@ -59,6 +59,7 @@ describe('HandlePatientChatEventUseCase', () => {
   let aiChatSessionRepo: IAiChatSessionRepository;
   let getPatientSessionDetail: Pick<GetPatientSessionDetailUseCase, 'execute'>;
   let uploadDocument: { execute: ReturnType<typeof vi.fn> };
+  let sendRecordsUploadConfirmation: { execute: ReturnType<typeof vi.fn> };
   let useCase: HandlePatientChatEventUseCase;
 
   beforeEach(() => {
@@ -100,12 +101,16 @@ describe('HandlePatientChatEventUseCase', () => {
     uploadDocument = {
       execute: vi.fn().mockResolvedValue({ documentId: 'doc-1' }),
     };
+    sendRecordsUploadConfirmation = {
+      execute: vi.fn().mockResolvedValue(undefined),
+    };
     useCase = new HandlePatientChatEventUseCase(
       conversationRepo,
       messageRepo,
       aiChatSessionRepo,
       getPatientSessionDetail as GetPatientSessionDetailUseCase,
       uploadDocument,
+      sendRecordsUploadConfirmation,
     );
   });
 
@@ -195,6 +200,65 @@ describe('HandlePatientChatEventUseCase', () => {
       }),
       undefined,
     );
+    expect(sendRecordsUploadConfirmation.execute).toHaveBeenCalledWith({
+      patientId: 'patient-1',
+      site: 'beauty',
+      fileName: 'report.pdf',
+      locale: 'en',
+    });
+  });
+
+  it('does not send duplicate upload confirmation emails for repeated completion events', async () => {
+    vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(makeUploadMessage({
+      deliveryStatus: 'sent',
+      metadata: { uploadStatus: 'uploaded' },
+    }));
+
+    await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      eventType: 'ATTACHMENT_UPLOAD_COMPLETED',
+      clientMessageId: 'client-upload-1',
+      locale: 'en',
+      payload: { attachments: makeUploadMessage().attachments },
+    });
+
+    expect(uploadDocument.execute).not.toHaveBeenCalled();
+    expect(sendRecordsUploadConfirmation.execute).not.toHaveBeenCalled();
+  });
+
+  it('keeps a completed upload successful when the confirmation email fails', async () => {
+    const uploadMessage = makeUploadMessage();
+    vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(uploadMessage);
+    vi.mocked(messageRepo.claimDeliveryStatus).mockResolvedValue(makeUploadMessage({
+      deliveryStatus: 'pending',
+      metadata: { uploadStatus: 'processing' },
+    }));
+    sendRecordsUploadConfirmation.execute.mockRejectedValue(new Error('Resend unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      eventType: 'ATTACHMENT_UPLOAD_COMPLETED',
+      clientMessageId: 'client-upload-1',
+      locale: 'en',
+      payload: { attachments: uploadMessage.attachments },
+    })).resolves.toEqual(expect.objectContaining({ sessionId: 'widget-chat:patient-1:case-1' }));
+
+    expect(messageRepo.updateDeliveryStatus).toHaveBeenCalledWith(
+      'msg-upload-1',
+      'sent',
+      expect.objectContaining({ uploadStatus: 'uploaded' }),
+      undefined,
+    );
+    expect(warn).toHaveBeenCalledWith(
+      'Failed to send medical records upload confirmation email:',
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 
   it('does not duplicate advisor handoff on repeated action events with the same client message id', async () => {

@@ -71,6 +71,29 @@ describe('ResendEmailService patient notifications', () => {
       to: ['patient@example.com'],
     }));
   });
+
+  it('sends medical records upload confirmations through Resend', async () => {
+    const service = new ResendEmailService({
+      apiKey: 'resend-test-key',
+      from: 'Configured Sender <configured@example.com>',
+    });
+
+    await service.sendPatientRecordsUploadConfirmation({
+      to: 'patient@example.com',
+      patientName: 'Patient One',
+      fileName: 'report.pdf',
+      dashboardLink: 'https://patient.example.com/dashboard',
+      locale: 'en',
+    });
+
+    const request = vi.mocked(fetchWithEmailTimeout).mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual(expect.objectContaining({
+      from: patientFrom,
+      to: ['patient@example.com'],
+      subject: "We've received your medical records",
+      text: expect.stringContaining('report.pdf'),
+    }));
+  });
 });
 
 describe('SmtpEmailService patient notifications', () => {

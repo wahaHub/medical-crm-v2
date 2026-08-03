@@ -44,6 +44,16 @@ export class StubEmailService implements IEmailService {
     );
   }
 
+  async sendPatientRecordsUploadConfirmation(params: {
+    to: string;
+    patientName: string;
+    fileName: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    console.log(`[STUB EMAIL] Patient records upload confirmation to ${params.to} (${params.locale ?? 'default'}): ${params.patientName} :: ${params.fileName} :: ${params.dashboardLink}`);
+  }
+
   async sendAdminNewCaseAlert(params: {
     to: string;
     patientName: string;

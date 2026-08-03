@@ -104,6 +104,7 @@ describe('hospital password reset use cases', () => {
       sendHospitalPasswordReset: vi.fn().mockResolvedValue(undefined),
       sendPatientMagicLink: vi.fn(),
       sendPatientOnboardingConfirmation: vi.fn(),
+      sendPatientRecordsUploadConfirmation: vi.fn(),
       sendAdminNewCaseAlert: vi.fn(),
       sendAdminNewMessageAlert: vi.fn(),
       sendAdminNewTicketAlert: vi.fn(),

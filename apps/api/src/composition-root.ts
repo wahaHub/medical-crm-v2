@@ -173,6 +173,7 @@ import {
   GetPatientConversationsUseCase,
   GetPatientSessionDetailUseCase,
   HandlePatientChatEventUseCase,
+  SendRecordsUploadConfirmationUseCase,
   PatientAcceptQuoteUseCase,
   PatientRejectQuoteUseCase,
   GetIntakeTemplateUseCase,
@@ -937,6 +938,24 @@ export function getServices(): AppServices {
           throw error;
         }
       },
+      async sendPatientRecordsUploadConfirmation(params: {
+        to: string;
+        patientName: string;
+        fileName: string;
+        dashboardLink: string;
+        locale?: string | null;
+      }) {
+        try {
+          await rawEmailService.sendPatientRecordsUploadConfirmation(params);
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[EMAIL] Patient records upload confirmation failed in development, falling back to preview log.', error);
+            await fallbackEmailService.sendPatientRecordsUploadConfirmation(params);
+            return;
+          }
+          throw error;
+        }
+      },
       async sendAdminNewCaseAlert(params: {
         to: string;
         patientName: string;
@@ -1148,12 +1167,14 @@ export function getServices(): AppServices {
       routedStorageService,
       hospitalRepo,
     );
+    const sendRecordsUploadConfirmation = new SendRecordsUploadConfirmationUseCase(userRepo, emailService);
     const handlePatientChatEvent = new HandlePatientChatEventUseCase(
       conversationRepo,
       messageRepo,
       aiChatSessionRepo,
       getPatientSessionDetail,
       uploadDocument,
+      sendRecordsUploadConfirmation,
     );
 
     _services = {

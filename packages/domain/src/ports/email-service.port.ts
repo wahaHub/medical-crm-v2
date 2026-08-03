@@ -28,6 +28,13 @@ export interface IEmailService {
       treatmentTimeline?: string | null;
     };
   }): Promise<void>;
+  sendPatientRecordsUploadConfirmation(params: {
+    to: string;
+    patientName: string;
+    fileName: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void>;
   sendAdminNewCaseAlert(params: {
     to: string;
     patientName: string;

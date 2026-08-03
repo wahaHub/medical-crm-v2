@@ -4,6 +4,7 @@ import { buildHospitalInvitationEmail } from './hospital-invitation-email.templa
 import { buildHospitalPasswordResetEmail } from './hospital-password-reset-email.template.js';
 import { buildPatientMagicLinkEmail } from './patient-magic-link-email.template.js';
 import { buildPatientOnboardingEmail } from './patient-onboarding-email.template.js';
+import { buildPatientRecordsUploadEmail } from './patient-records-upload-email.template.js';
 import { buildAdminNewCaseEmail } from './admin-new-case-email.template.js';
 import { buildAdminNewMessageEmail } from './admin-new-message-email.template.js';
 import { buildAdminNewTicketEmail } from './admin-new-ticket-email.template.js';
@@ -154,6 +155,19 @@ export class SmtpEmailService implements IEmailService {
       subject: content.subject,
       text: content.text,
       html: content.html,
+    });
+  }
+
+  async sendPatientRecordsUploadConfirmation(params: {
+    to: string;
+    patientName: string;
+    fileName: string;
+    dashboardLink: string;
+    locale?: string | null;
+  }): Promise<void> {
+    const content = buildPatientRecordsUploadEmail(params);
+    await this.sendRaw(params.to, content.subject, content.text, content.html, {
+      from: PATIENT_NOTIFICATION_FROM,
     });
   }
 

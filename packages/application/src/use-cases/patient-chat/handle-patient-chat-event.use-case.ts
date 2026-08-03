@@ -13,6 +13,7 @@ import type { GetPatientSessionDetailUseCase } from '../patient-dashboard/get-pa
 import { patientChatCopy, type PatientChatLocale } from './patient-chat-i18n.js';
 import { PatientChatMessageWriter } from './patient-chat-message-writer.js';
 import type { PatientChatActionKey } from './patient-chat-actions.js';
+import type { SendRecordsUploadConfirmationUseCase } from './send-records-upload-confirmation.use-case.js';
 
 export type PatientChatEventType =
   | 'ACTION_SELECTED'
@@ -62,6 +63,7 @@ export class HandlePatientChatEventUseCase {
     private readonly aiChatSessionRepo: IAiChatSessionRepository,
     private readonly getPatientSessionDetail: GetPatientSessionDetailUseCase,
     private readonly uploadDocument: UploadDocumentPort,
+    private readonly sendRecordsUploadConfirmation: Pick<SendRecordsUploadConfirmationUseCase, 'execute'>,
   ) {
     this.writer = new PatientChatMessageWriter(conversationRepo, messageRepo);
   }
@@ -306,7 +308,7 @@ export class HandlePatientChatEventUseCase {
         storageKey: attachment.storageKey,
       }, { role: 'PATIENT', userId: input.patientId, email: '', hospitalId: null });
       documentId = result.documentId;
-    } catch (error) {
+    } catch {
       await this.writer.updateAttachmentStatus({
         messageId: claimed.id,
         status: 'failed',
@@ -342,6 +344,17 @@ export class HandlePatientChatEventUseCase {
       locale: input.locale,
       metadata: { eventType: input.eventType, source: 'mechanical_bot', documentId },
     });
+
+    try {
+      await this.sendRecordsUploadConfirmation.execute({
+        patientId: input.patientId,
+        site: input.site,
+        fileName: attachment.fileName,
+        locale: input.locale,
+      });
+    } catch (error) {
+      console.warn('Failed to send medical records upload confirmation email:', error);
+    }
   }
 
   private async handleAttachmentFailed(input: HandlePatientChatEventInput, conversationId: string): Promise<void> {

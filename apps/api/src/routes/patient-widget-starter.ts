@@ -3,8 +3,8 @@ import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { extractStoredChatbotBlocks } from './chatbot-block-builder.js';
 
-const GENERIC_WIDGET_STARTER_CONTENT = 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.';
-const WIDGET_STARTER_VERSION = 'static-v1';
+const GENERIC_WIDGET_STARTER_CONTENT = 'Hello, welcome to Medora Health. We have received your initial intake information. If you have any medical records available, please upload them here. Our medical team will review your information and, if appropriate, arrange an online consultation with a doctor in China as soon as possible.';
+const WIDGET_STARTER_VERSION = 'static-v2';
 
 function isWidgetStarterMessage(message: { role: string; content: string; metadata: Record<string, unknown> }): boolean {
   if (message.role !== 'ASSISTANT') {

@@ -51,10 +51,10 @@ export function resolvePatientChatState(input: ResolvePatientChatStateInput): Pa
     botMode: 'mechanical',
     availableActions: buildMechanicalActions(input, locale),
     composerPolicy: {
-      textEnabled: false,
+      textEnabled: true,
       attachmentsEnabled: true,
-      sendEnabledWhen: 'attachment_only',
-      placeholder: patientChatCopy(locale, 'composer.mechanical'),
+      sendEnabledWhen: 'text_or_attachment',
+      placeholder: patientChatCopy(locale, 'composer.human'),
     },
   };
 }
@@ -83,23 +83,7 @@ function buildMechanicalActions(
   input: ResolvePatientChatStateInput,
   locale: ReturnType<typeof normalizePatientChatLocale>,
 ): PatientChatStateDTO['availableActions'] {
-  const actions: PatientChatStateDTO['availableActions'] = [
-    { id: 'VIEW_PROCESS', label: patientChatCopy(locale, 'action.viewProcess'), icon: 'route' },
-  ];
-
-  if (!input.medicalRecordsUploaded) {
-    actions.push({ id: 'UPLOAD_RECORDS', label: patientChatCopy(locale, 'action.uploadRecords'), icon: 'upload' });
-  }
-
-  if (!input.advisorRequested) {
-    actions.push({ id: 'CONTACT_ADVISOR', label: patientChatCopy(locale, 'action.contactAdvisor'), icon: 'handshake' });
-  }
-
-  actions.push({
-    id: 'OPEN_QUESTIONNAIRE',
-    label: patientChatCopy(locale, input.questionnaireSubmitted ? 'action.openQuestionnaire' : 'action.openQuestionnaire'),
-    icon: 'clipboard',
-  });
-
-  return actions;
+  return input.medicalRecordsUploaded
+    ? []
+    : [{ id: 'UPLOAD_RECORDS', label: patientChatCopy(locale, 'action.uploadRecords'), icon: 'upload' }];
 }

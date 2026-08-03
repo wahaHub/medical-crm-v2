@@ -495,13 +495,35 @@ describe('patientProtectedRoutes', () => {
     );
   });
 
-  it('still rejects mechanical care-team text sends while AI is active', async () => {
+  it('allows mechanical care-team text sends while AI is active', async () => {
+    const sendMessage = {
+      execute: vi.fn().mockResolvedValue({
+        message: {
+          id: 'msg-mechanical-text',
+          conversationId: 'conv-1',
+          senderId: 'patient-1',
+          senderRole: 'PATIENT',
+          senderName: null,
+          content: 'Please read this',
+          originalLanguage: null,
+          translatedContent: null,
+          messageType: 'TEXT',
+          moderationStatus: 'ALLOWED',
+          attachments: [],
+          aiSummary: null,
+          createdAt: '2026-06-02T00:00:00.000Z',
+        },
+      }),
+    };
     mockGetServices.mockReturnValue({
       conversationRepo: {
         findByPatientId: vi.fn().mockResolvedValue([
           { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
         ]),
       },
+      sendMessage,
+      caseRepo: { findById: vi.fn().mockResolvedValue({ id: 'case-1', patientId: 'patient-1' }) },
+      notifyAdminsOfPatientMessage: { execute: vi.fn().mockResolvedValue(undefined) },
     });
 
     const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages?mode=mechanical', {
@@ -510,10 +532,12 @@ describe('patientProtectedRoutes', () => {
       body: JSON.stringify({ content: 'Please read this', messageType: 'TEXT' }),
     });
 
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({
-      error: 'Care-team AI is still active for this session',
-    });
+    expect(res.status).toBe(200);
+    expect(sendMessage.execute).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({ content: 'Please read this', messageType: 'TEXT' }),
+      expect.objectContaining({ userId: 'patient-1', role: 'PATIENT' }),
+    );
   });
 
   it('allows mechanical care-team upload initialization while AI is still active', async () => {

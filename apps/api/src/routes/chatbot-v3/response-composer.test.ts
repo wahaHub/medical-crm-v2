@@ -123,11 +123,7 @@ describe('ResponseComposer', () => {
 
     expect(response.messages[0]?.text).toContain('Online consultations are usually arranged within 24 hours.');
     expect(response.messages[0]?.text).not.toContain('focused faq retrieval query');
-    expect(response.cards).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        cardType: 'PROCESS_GUIDE',
-      }),
-    ]));
+    expect(response.cards).toEqual([]);
   });
 
   it('does not expose generic FAQ miss text when a skill-grounded pricing fallback exists', () => {
@@ -1873,11 +1869,15 @@ describe('ResponseComposer', () => {
 
     expect(response.turnOutcome.status).toBe(fixture.expected.turnOutcomeStatus);
     expect(response.handoff.required).toBe(fixture.expected.handoffRequired);
-    expect(response.cards).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        cardType: fixture.expected.cardType,
-      }),
-    ]));
+    if (fixture.expected.cardType) {
+      expect(response.cards).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          cardType: fixture.expected.cardType,
+        }),
+      ]));
+    } else {
+      expect(response.cards).toEqual([]);
+    }
     expect(response.messages[0]?.text).toContain(fixture.expected.assistantTextContains);
     for (const omitted of fixture.expected.assistantTextOmits ?? []) {
       expect(response.messages[0]?.text).not.toContain(omitted);

@@ -37,7 +37,7 @@ export interface DegradedPathFixture {
   expected: {
     assistantTextContains: string;
     assistantTextOmits?: string[];
-    cardType: string;
+    cardType: string | null;
     handoffRequired: boolean;
     turnOutcomeStatus: 'ok' | 'degraded';
   };
@@ -168,7 +168,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     sessionStatusSnapshot: null,
     expected: {
       assistantTextContains: 'I could not load that answer just now. Please try asking again, or ask in a simpler way.',
-      cardType: 'PROCESS_GUIDE',
+      cardType: null,
       handoffRequired: false,
       turnOutcomeStatus: 'degraded',
     },
@@ -206,7 +206,7 @@ export const DEGRADED_PATH_FIXTURES: DegradedPathFixture[] = [
     expected: {
       assistantTextContains: 'Here is the process',
       assistantTextOmits: ['Online consultations are usually arranged within 24 hours.'],
-      cardType: 'PROCESS_GUIDE',
+      cardType: null,
       handoffRequired: false,
       turnOutcomeStatus: 'ok',
     },

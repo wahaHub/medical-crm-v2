@@ -15,20 +15,17 @@ const baseInput = {
 };
 
 describe('resolvePatientChatState', () => {
-  it('returns backend-owned mechanical actions and attachment-only composer policy', () => {
+  it('returns the upload action with a free-text composer policy', () => {
     const state = resolvePatientChatState(baseInput);
 
     expect(state.botMode).toBe('mechanical');
     expect(state.availableActions.map((action) => action.id)).toEqual([
-      'VIEW_PROCESS',
       'UPLOAD_RECORDS',
-      'CONTACT_ADVISOR',
-      'OPEN_QUESTIONNAIRE',
     ]);
     expect(state.composerPolicy).toMatchObject({
-      textEnabled: false,
+      textEnabled: true,
       attachmentsEnabled: true,
-      sendEnabledWhen: 'attachment_only',
+      sendEnabledWhen: 'text_or_attachment',
     });
   });
 
@@ -39,10 +36,7 @@ describe('resolvePatientChatState', () => {
       medicalRecordsUploaded: true,
     });
 
-    expect(state.availableActions.map((action) => action.id)).toEqual([
-      'VIEW_PROCESS',
-      'OPEN_QUESTIONNAIRE',
-    ]);
+    expect(state.availableActions).toEqual([]);
   });
 
   it('switches to human composer policy for human takeover or hospital sessions', () => {

@@ -521,21 +521,7 @@ function buildCards(
 
   switch (visibleJourney.stage) {
     case 'EXPLAIN_PROCESS':
-      return [{
-        cardId: 'card-process-guide',
-        cardType: 'PROCESS_GUIDE',
-        payload: {
-          guideId: 'medical-travel-process',
-          title: 'Medical travel process',
-        },
-        actions: [{
-          actionType: 'OPEN_MODAL',
-          label: 'View process',
-          params: {
-            modalKey: 'MEDICAL_TRAVEL_PROCESS',
-          },
-        }],
-      }];
+      return [];
     case 'COLLECT_MINIMAL_MEDICAL_FACTS':
     case 'COLLECT_MEDICAL_INPUTS':
       return [{

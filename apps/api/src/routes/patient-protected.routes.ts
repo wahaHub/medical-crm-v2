@@ -632,14 +632,11 @@ app.post('/sessions/:sessionId/messages', async (c) => {
   const actor = toPatientActor(session);
   const conversation = await resolveFormalConversationForPatientSession(session.userId, sessionId);
   const isMechanicalMode = isMechanicalModeRequest(c.req.query('mode'));
-  const isMechanicalAttachmentOnlyMessage = isMechanicalMode
-    && (body.attachments?.length ?? 0) > 0
-    && body.content.trim().length === 0;
 
   if (
     conversation.category === 'ADMIN_PATIENT'
     && conversation.assistantMode === 'AI_ACTIVE'
-    && !isMechanicalAttachmentOnlyMessage
+    && !isMechanicalMode
   ) {
     return c.json({ error: 'Care-team AI is still active for this session' }, 409);
   }

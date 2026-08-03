@@ -290,11 +290,11 @@ describe('patientPublicRoutes', () => {
     expect(services.matchHospitals.execute).not.toHaveBeenCalled();
     const starterCreate = services.aiChatMessageRepo.create.mock.calls[0]?.[0];
     expect(starterCreate).toMatchObject({
-      content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
+      content: 'Hello, welcome to Medora Health. We have received your initial intake information. If you have any medical records available, please upload them here. Our medical team will review your information and, if appropriate, arrange an online consultation with a doctor in China as soon as possible.',
       nextAction: null,
       metadata: {
         widgetStarterSeed: true,
-        widgetStarterVersion: 'static-v1',
+        widgetStarterVersion: 'static-v2',
         draftState: 'succeeded',
         starterMode: 'static',
         blocks: [],
@@ -511,10 +511,10 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       'assistant-1',
       expect.objectContaining({
-        content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
+        content: 'Hello, welcome to Medora Health. We have received your initial intake information. If you have any medical records available, please upload them here. Our medical team will review your information and, if appropriate, arrange an online consultation with a doctor in China as soon as possible.',
         nextAction: null,
         metadata: expect.objectContaining({
-          widgetStarterVersion: 'static-v1',
+          widgetStarterVersion: 'static-v2',
           draftState: 'succeeded',
           starterMode: 'static',
         }),
@@ -598,14 +598,14 @@ describe('patientPublicRoutes', () => {
     expect(services.aiChatMessageRepo.updateMessage).toHaveBeenCalledWith(
       'assistant-1',
       expect.objectContaining({
-        content: 'Hello, welcome to Medora Health. We have received your basic intake information. The next step will appear here shortly.',
+        content: 'Hello, welcome to Medora Health. We have received your initial intake information. If you have any medical records available, please upload them here. Our medical team will review your information and, if appropriate, arrange an online consultation with a doctor in China as soon as possible.',
         nextAction: null,
         shortlist: [],
         writebackStatus: 'succeeded',
         metadata: expect.objectContaining({
           draftState: 'succeeded',
           starterMode: 'static',
-          widgetStarterVersion: 'static-v1',
+          widgetStarterVersion: 'static-v2',
           blocks: [],
         }),
       }),

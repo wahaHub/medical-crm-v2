@@ -251,7 +251,7 @@ function expectedFaqCardTypes(
     case 'RECOMMENDATION':
       return [];
     case 'EXPLAIN_PROCESS':
-      return ['PROCESS_GUIDE'];
+      return [];
     case 'COLLECT_MEDICAL_INPUTS':
       return ['UPLOAD_RECORDS'];
     case 'ONLINE_CONSULT':
@@ -287,15 +287,7 @@ function expectFaqCardPayloads(
       expect(response.cards).toEqual([]);
       return;
     case 'EXPLAIN_PROCESS':
-      expect(response.cards).toEqual([
-        expect.objectContaining({
-          cardType: 'PROCESS_GUIDE',
-          payload: expect.objectContaining({
-            guideId: 'medical-travel-process',
-            title: 'Medical travel process',
-          }),
-        }),
-      ]);
+      expect(response.cards).toEqual([]);
       return;
     case 'COLLECT_MEDICAL_INPUTS':
       expect(response.cards).toEqual([

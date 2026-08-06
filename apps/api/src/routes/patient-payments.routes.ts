@@ -60,6 +60,82 @@ export async function upsertCasePayment(caseId: string, input: UpsertPaymentInpu
 
 export { getStripe };
 
+export async function reconcileStripeCheckoutOrder(session: Stripe.Checkout.Session): Promise<string | null> {
+  const orderId = session.metadata?.orderId;
+  const caseId = session.metadata?.caseId;
+  const patientId = session.metadata?.patientId;
+  const amountTotal = session.amount_total;
+  const currency = session.currency?.toUpperCase();
+
+  if (session.payment_status !== 'paid' || !caseId || amountTotal === null || !currency) {
+    return null;
+  }
+
+  if (!orderId || !patientId) {
+    await upsertCasePayment(caseId, {
+      status: 'paid',
+      stripeSessionId: session.id,
+      amount: amountTotal,
+      currency: session.currency,
+      metadata: { ...session.metadata, source: 'legacy_stripe_checkout' },
+    });
+    return null;
+  }
+
+  const sql = getDbSql();
+  const rows = await sql<{
+    id: string;
+    status: string;
+    amount: string;
+    currency: string;
+  }[]>`
+    SELECT id, status, amount, currency
+    FROM public.orders
+    WHERE id = ${orderId}
+      AND case_id = ${caseId}
+      AND patient_id = ${patientId}
+    LIMIT 1
+  `;
+  const order = rows[0];
+  if (!order) {
+    throw new Error('Stripe checkout order metadata does not match an order');
+  }
+
+  const expectedAmount = Math.round(Number(order.amount) * 100);
+  if (expectedAmount !== amountTotal || order.currency.toUpperCase() !== currency) {
+    throw new Error('Stripe checkout amount does not match the order');
+  }
+
+  if (order.status === 'PENDING_PAYMENT') {
+    await sql`
+      UPDATE public.orders
+      SET status = 'PAID',
+          payment_method = 'STRIPE',
+          paid_at = COALESCE(paid_at, NOW()),
+          metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+            stripeSessionId: session.id,
+            stripePaymentStatus: session.payment_status,
+          })}::jsonb,
+          version = version + 1,
+          updated_at = NOW()
+      WHERE id = ${orderId}
+        AND status = 'PENDING_PAYMENT'
+    `;
+  } else if (order.status !== 'PAID') {
+    throw new Error(`Order ${orderId} cannot be marked paid from status ${order.status}`);
+  }
+
+  await upsertCasePayment(caseId, {
+    status: 'paid',
+    stripeSessionId: session.id,
+    amount: amountTotal,
+    currency: session.currency,
+    metadata: { ...session.metadata, source: 'stripe_checkout' },
+  });
+
+  return orderId;
+}
+
 function isValidChannel(value: unknown): value is 'free' | 'doctor-li' | 'custom-doctor' {
   return typeof value === 'string' && ['free', 'doctor-li', 'custom-doctor'].includes(value);
 }
@@ -149,16 +225,7 @@ app.get('/payments/checkout-session/:id', async (c) => {
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.retrieve(id);
 
-    const caseId = session.metadata?.caseId;
-    if (caseId && session.payment_status === 'paid') {
-      await upsertCasePayment(caseId, {
-        status: 'paid',
-        stripeSessionId: session.id,
-        amount: session.amount_total,
-        currency: session.currency,
-        metadata: { ...session.metadata, checkout_session_id: session.id },
-      });
-    }
+    await reconcileStripeCheckoutOrder(session);
 
     return c.json({
       id: session.id,

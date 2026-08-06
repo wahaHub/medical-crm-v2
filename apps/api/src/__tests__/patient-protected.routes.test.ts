@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundError } from '@medical-crm/utils';
 import patientProtectedRoutes from '../routes/patient-protected.routes.js';
 
-const { mockGetServices, mockSeedWidgetStarterMessage } = vi.hoisted(() => ({
+const { mockGetServices, mockSeedWidgetStarterMessage, mockGetStripe, mockReconcileStripeCheckoutOrder } = vi.hoisted(() => ({
   mockGetServices: vi.fn(),
   mockSeedWidgetStarterMessage: vi.fn(),
+  mockGetStripe: vi.fn(),
+  mockReconcileStripeCheckoutOrder: vi.fn(),
 }));
 
 vi.mock('../composition-root.js', () => ({
@@ -13,6 +15,11 @@ vi.mock('../composition-root.js', () => ({
 
 vi.mock('../routes/patient-widget-starter.js', () => ({
   seedWidgetStarterMessage: mockSeedWidgetStarterMessage,
+}));
+
+vi.mock('../routes/patient-payments.routes.js', () => ({
+  getStripe: mockGetStripe,
+  reconcileStripeCheckoutOrder: mockReconcileStripeCheckoutOrder,
 }));
 
 vi.mock('../middleware/patient-auth.middleware.js', () => ({
@@ -28,7 +35,10 @@ describe('patientProtectedRoutes', () => {
     mockGetServices.mockReset();
     mockSeedWidgetStarterMessage.mockReset();
     mockSeedWidgetStarterMessage.mockResolvedValue(undefined);
+    mockGetStripe.mockReset();
+    mockReconcileStripeCheckoutOrder.mockReset();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it('returns a thin patient session state from /me', async () => {
@@ -1112,5 +1122,90 @@ describe('patientProtectedRoutes', () => {
       subject: 'Need help',
       descriptionPreview: 'Please contact me about travel timing.',
     });
+  });
+
+  it('creates a server-priced Stripe checkout after Written Review intake', async () => {
+    const caseId = '11111111-1111-4111-8111-111111111111';
+    const orderId = '22222222-2222-4222-8222-222222222222';
+    const createCheckoutSession = vi.fn().mockResolvedValue({
+      id: 'cs_test_written_review',
+      url: 'https://checkout.stripe.com/c/pay/cs_test_written_review',
+    });
+    mockGetStripe.mockReturnValue({ checkout: { sessions: { create: createCheckoutSession } } });
+    vi.stubEnv('CHINA_ORIGIN', 'https://medicaltourismchina.health/');
+
+    const createOrder = {
+      execute: vi.fn().mockResolvedValue({
+        id: orderId,
+        caseId,
+        patientId: 'patient-1',
+        type: 'SECOND_OPINION',
+        amount: '99.00',
+        currency: 'USD',
+        status: 'PENDING_PAYMENT',
+        metadata: { serviceName: 'Written Review' },
+        version: 1,
+      }),
+    };
+    mockGetServices.mockReturnValue({
+      caseRepo: { findById: vi.fn().mockResolvedValue({ id: caseId, patientId: 'patient-1' }) },
+      createOrder,
+    });
+
+    const res = await patientProtectedRoutes.request('/orders/written-review/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId, idempotencyKey: 'written-review-intake-1' }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(createOrder.execute).toHaveBeenCalledWith(expect.objectContaining({
+      caseId,
+      type: 'SECOND_OPINION',
+      amount: '99.00',
+      currency: 'USD',
+    }), expect.objectContaining({ userId: 'patient-1', role: 'PATIENT' }));
+    expect(createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        line_items: [expect.objectContaining({
+          price_data: expect.objectContaining({ currency: 'usd', unit_amount: 9900 }),
+        })],
+        metadata: expect.objectContaining({ orderId, caseId, patientId: 'patient-1' }),
+        success_url: `https://medicaltourismchina.health/dashboard?tab=orders&orderId=${orderId}&checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `https://medicaltourismchina.health/dashboard?tab=orders&orderId=${orderId}&checkout=cancelled`,
+      }),
+      { idempotencyKey: `patient-order-checkout-${orderId}-v1` },
+    );
+    expect(await res.json()).toEqual({
+      orderId,
+      checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_written_review',
+    });
+  });
+
+  it('reopens Stripe checkout for an existing pending patient order', async () => {
+    const orderId = '22222222-2222-4222-8222-222222222222';
+    const createCheckoutSession = vi.fn().mockResolvedValue({ url: 'https://checkout.stripe.com/retry' });
+    mockGetStripe.mockReturnValue({ checkout: { sessions: { create: createCheckoutSession } } });
+    vi.stubEnv('PATIENT_APP_ORIGIN', 'https://medicaltourismchina.health');
+    mockGetServices.mockReturnValue({
+      getOrder: {
+        execute: vi.fn().mockResolvedValue({
+          id: orderId,
+          caseId: '11111111-1111-4111-8111-111111111111',
+          patientId: 'patient-1',
+          type: 'SECOND_OPINION',
+          amount: '99.00',
+          currency: 'USD',
+          status: 'PENDING_PAYMENT',
+          metadata: { serviceName: 'Written Review' },
+          version: 1,
+        }),
+      },
+    });
+
+    const res = await patientProtectedRoutes.request(`/orders/${orderId}/payment-intents`, { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ orderId, checkoutUrl: 'https://checkout.stripe.com/retry' });
   });
 });

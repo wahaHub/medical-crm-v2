@@ -7,6 +7,7 @@ import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
 import { wsManager } from '../ws/ws-manager.js';
 import { seedWidgetStarterMessage } from './patient-widget-starter.js';
+import { getStripe, reconcileStripeCheckoutOrder } from './patient-payments.routes.js';
 import {
   selectHospitalsSchema, sendPatientMessageSchema,
   listMessagesQuerySchema, patientChatEventSchema, quoteActionSchema, submitIntakeSchema,
@@ -68,6 +69,92 @@ const patientCreateOrderSchema = z.object({
   packageId: z.string().uuid(),
   idempotencyKey: z.string().max(100).optional(),
 });
+const writtenReviewCheckoutSchema = z.object({
+  caseId: z.string().uuid(),
+  idempotencyKey: z.string().min(1).max(160),
+});
+
+type PatientCheckoutOrder = {
+  id: string;
+  caseId: string | null;
+  patientId: string;
+  type: string;
+  amount: string;
+  currency: string;
+  status: string;
+  metadata: unknown;
+  version: number;
+};
+
+function checkoutOrigin(): string {
+  const configuredOrigin = process.env['CHINA_ORIGIN'] || process.env['PATIENT_APP_ORIGIN'];
+  if (!configuredOrigin) {
+    throw new Error('CHINA_ORIGIN or PATIENT_APP_ORIGIN is required for Stripe checkout');
+  }
+  return configuredOrigin.replace(/\/+$/, '');
+}
+
+function orderServiceName(order: PatientCheckoutOrder): string {
+  if (order.metadata && typeof order.metadata === 'object') {
+    const metadata = order.metadata as Record<string, unknown>;
+    if (typeof metadata['serviceName'] === 'string' && metadata['serviceName'].trim()) {
+      return metadata['serviceName'];
+    }
+    if (typeof metadata['packageName'] === 'string' && metadata['packageName'].trim()) {
+      return metadata['packageName'];
+    }
+  }
+  return order.type === 'SECOND_OPINION' ? 'Written Review' : 'Health Service';
+}
+
+async function createStripeCheckoutForOrder(order: PatientCheckoutOrder) {
+  if (order.status !== 'PENDING_PAYMENT') {
+    throw new Error(`Order ${order.id} is not awaiting payment`);
+  }
+  if (!order.caseId) {
+    throw new Error(`Order ${order.id} is not linked to a case`);
+  }
+
+  const amount = Math.round(Number(order.amount) * 100);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error(`Order ${order.id} has an invalid amount`);
+  }
+
+  const origin = checkoutOrigin();
+  const serviceName = orderServiceName(order);
+  const stripeSession = await getStripe().checkout.sessions.create({
+    mode: 'payment',
+    line_items: [{
+      price_data: {
+        currency: order.currency.toLowerCase(),
+        unit_amount: amount,
+        product_data: {
+          name: `Medora ${serviceName}`,
+          description: serviceName === 'Written Review'
+            ? 'Specialist review of medical records with a written second-opinion report.'
+            : `Medical service for order ${order.id}`,
+        },
+      },
+      quantity: 1,
+    }],
+    client_reference_id: order.id,
+    metadata: {
+      orderId: order.id,
+      caseId: order.caseId,
+      patientId: order.patientId,
+      serviceType: order.type,
+    },
+    success_url: `${origin}/dashboard?tab=orders&orderId=${encodeURIComponent(order.id)}&checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${origin}/dashboard?tab=orders&orderId=${encodeURIComponent(order.id)}&checkout=cancelled`,
+  }, {
+    idempotencyKey: `patient-order-checkout-${order.id}-v${order.version}`,
+  });
+
+  if (!stripeSession.url) {
+    throw new Error('Stripe did not return a checkout URL');
+  }
+  return stripeSession.url;
+}
 const skipMedicalFormSchema = z.object({ caseId: z.string().uuid() });
 const qcTemplateByDiseaseQuerySchema = z.object({
   disease: z.string().min(1).max(100),
@@ -1100,6 +1187,52 @@ app.get('/orders', async (c) => {
   return c.json(result);
 });
 
+// POST /orders/written-review/checkout
+app.post('/orders/written-review/checkout', async (c) => {
+  const body = writtenReviewCheckoutSchema.parse(await c.req.json());
+  const session = c.get('patientSession');
+  const services = getServices();
+  const caseEntity = await services.caseRepo.findById(body.caseId);
+  if (!caseEntity || caseEntity.patientId !== session.userId) {
+    return c.json({ error: 'Access denied to this case' }, 403);
+  }
+
+  const order = await services.createOrder.execute({
+    caseId: body.caseId,
+    type: 'SECOND_OPINION',
+    amount: '99.00',
+    currency: 'USD',
+    idempotencyKey: body.idempotencyKey,
+    metadata: {
+      source: 'WRITTEN_REVIEW_INTAKE',
+      serviceName: 'Written Review',
+    },
+  }, toPatientActor(session));
+
+  const checkoutUrl = await createStripeCheckoutForOrder(order);
+
+  return c.json({
+    orderId: order.id,
+    checkoutUrl,
+  }, 201);
+});
+
+// POST /orders/checkout-session/:sessionId/confirm
+app.post('/orders/checkout-session/:sessionId/confirm', async (c) => {
+  const patientSession = c.get('patientSession');
+  const stripeSession = await getStripe().checkout.sessions.retrieve(c.req.param('sessionId'));
+  if (stripeSession.metadata?.patientId !== patientSession.userId) {
+    return c.json({ error: 'Access denied to this checkout session' }, 403);
+  }
+
+  const orderId = await reconcileStripeCheckoutOrder(stripeSession);
+  if (!orderId) {
+    return c.json({ error: 'Payment is not complete' }, 409);
+  }
+
+  return c.json({ orderId, paymentStatus: stripeSession.payment_status });
+});
+
 // GET /orders/:orderId
 app.get('/orders/:orderId', async (c) => {
   const session = c.get('patientSession');
@@ -1135,9 +1268,10 @@ app.post('/orders', async (c) => {
 app.post('/orders/:orderId/payment-intents', async (c) => {
   const session = c.get('patientSession');
   const orderId = c.req.param('orderId');
-  const { createPaymentIntent } = getServices();
-  const result = await createPaymentIntent.execute(orderId, toPatientActor(session));
-  return c.json(result);
+  const { getOrder } = getServices();
+  const order = await getOrder.execute(orderId, toPatientActor(session));
+  const checkoutUrl = await createStripeCheckoutForOrder(order);
+  return c.json({ orderId: order.id, checkoutUrl });
 });
 
 // GET /packages

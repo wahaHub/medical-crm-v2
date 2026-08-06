@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import Stripe from 'stripe';
-import { getStripe, upsertCasePayment } from './patient-payments.routes.js';
+import { getStripe, reconcileStripeCheckoutOrder } from './patient-payments.routes.js';
 
 const app = new Hono();
 
@@ -32,22 +32,13 @@ app.post('/', async (c) => {
     return c.json({ error: message }, 400);
   }
 
-  if (event.type === 'checkout.session.completed') {
+  if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const caseId = session.metadata?.caseId;
-    if (caseId && session.payment_status === 'paid') {
-      try {
-        await upsertCasePayment(caseId, {
-          status: 'paid',
-          stripeSessionId: session.id,
-          amount: session.amount_total,
-          currency: session.currency,
-          metadata: { ...session.metadata, source: 'stripe_webhook' },
-        });
-      } catch (error) {
-        console.error('Stripe webhook upsertCasePayment failed:', error);
-        return c.json({ error: 'Failed to record payment' }, 500);
-      }
+    try {
+      await reconcileStripeCheckoutOrder(session);
+    } catch (error) {
+      console.error('Stripe webhook order reconciliation failed:', error);
+      return c.json({ error: 'Failed to record payment' }, 500);
     }
   }
 

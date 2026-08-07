@@ -278,7 +278,7 @@ describe('patientProtectedRoutes', () => {
       getPatientSessionDetail: { execute },
     });
 
-    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages');
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/messages?locale=es');
 
     expect(res.status).toBe(200);
     expect(execute).toHaveBeenCalledWith({
@@ -286,6 +286,7 @@ describe('patientProtectedRoutes', () => {
       sessionId: 'widget-chat:patient-1:case-1',
       site: 'beauty',
       limit: 50,
+      locale: 'es',
     });
     expect(await res.json()).toEqual(
       expect.objectContaining({
@@ -658,7 +659,7 @@ describe('patientProtectedRoutes', () => {
       id: expect.any(String),
       sessionId: 'ai-session-1',
       role: 'ASSISTANT',
-      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+      content: expect.stringContaining('感谢您确认医疗旅行流程'),
       metadata: expect.objectContaining({
         processConfirmationMessage: true,
         chatbotV3: expect.objectContaining({
@@ -672,13 +673,13 @@ describe('patientProtectedRoutes', () => {
       conversationId: 'conv-1',
       senderRole: 'AI',
       senderName: 'Medora AI',
-      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+      content: expect.stringContaining('感谢您确认医疗旅行流程'),
       messageType: 'TEXT',
       moderationStatus: 'ALLOWED',
     }));
     expect(conversation.updateLastMessage).toHaveBeenCalledWith(expect.objectContaining({
       id: create.mock.calls[0]?.[0]?.id,
-      content: expect.stringContaining('谢谢您确认医疗旅行流程'),
+      content: expect.stringContaining('感谢您确认医疗旅行流程'),
     }));
     expect(saveConversation).toHaveBeenCalledWith(conversation);
     expect(await res.json()).toEqual(expect.objectContaining({

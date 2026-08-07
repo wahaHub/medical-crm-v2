@@ -2,9 +2,10 @@ import { AiChatMessage } from '@medical-crm/domain';
 import { generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { extractStoredChatbotBlocks } from './chatbot-block-builder.js';
+import { patientChatCopy } from '@medical-crm/application';
 
 const GENERIC_WIDGET_STARTER_CONTENT = 'Hello, welcome to Medora Health. We have received your initial intake information. If you have any medical records available, please upload them here. Our medical team will review your information and, if appropriate, arrange an online consultation with a doctor in China as soon as possible.';
-const WIDGET_STARTER_VERSION = 'static-v2';
+const WIDGET_STARTER_VERSION = 'static-v3-i18n';
 
 function isWidgetStarterMessage(message: { role: string; content: string; metadata: Record<string, unknown> }): boolean {
   if (message.role !== 'ASSISTANT') {
@@ -19,10 +20,10 @@ function isWidgetStarterMessage(message: { role: string; content: string; metada
     && message.content.trim() === GENERIC_WIDGET_STARTER_CONTENT;
 }
 
-function isCurrentWidgetStarterVersion(message: { content: string; metadata: Record<string, unknown> }) {
+function isCurrentWidgetStarterVersion(message: { content: string; metadata: Record<string, unknown> }, expectedContent: string) {
   return message.metadata['widgetStarterSeed'] === true
     && message.metadata['widgetStarterVersion'] === WIDGET_STARTER_VERSION
-    && message.content.trim() === GENERIC_WIDGET_STARTER_CONTENT;
+    && message.content.trim() === expectedContent;
 }
 
 export async function seedWidgetStarterMessage(input: {
@@ -33,6 +34,7 @@ export async function seedWidgetStarterMessage(input: {
   destination?: string | null;
   category?: string | null;
   procedureId?: string | null;
+  locale?: string | null;
 }): Promise<void> {
   void input.caseId;
   void input.destination;
@@ -51,17 +53,18 @@ export async function seedWidgetStarterMessage(input: {
   const existingMessages = await input.services.aiChatMessageRepo.listBySession(session.id, 20);
   const existingStarterMessage = existingMessages.find((message) => isWidgetStarterMessage(message));
   const hasNonStarterMessages = existingMessages.some((message) => !isWidgetStarterMessage(message));
+  const localizedContent = patientChatCopy(input.locale, 'starter.intakeReceived');
 
   if (hasNonStarterMessages) {
     return;
   }
 
-  if (existingStarterMessage && isCurrentWidgetStarterVersion(existingStarterMessage)) {
+  if (existingStarterMessage && isCurrentWidgetStarterVersion(existingStarterMessage, localizedContent)) {
     return;
   }
 
   const payload = {
-    content: GENERIC_WIDGET_STARTER_CONTENT,
+    content: localizedContent,
     nextAction: null,
     shortlist: [] as Array<Record<string, unknown>>,
     writebackStatus: 'succeeded',

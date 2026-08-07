@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
 import { AiChatMessage, Message } from '@medical-crm/domain';
+import { patientChatCopy } from '@medical-crm/application';
 import { ForbiddenError, NotFoundError, generateId } from '@medical-crm/utils';
 import { getServices } from '../composition-root.js';
 import { patientAuthMiddleware } from '../middleware/patient-auth.middleware.js';
@@ -10,7 +11,7 @@ import { seedWidgetStarterMessage } from './patient-widget-starter.js';
 import { getStripe, reconcileStripeCheckoutOrder } from './patient-payments.routes.js';
 import {
   selectHospitalsSchema, sendPatientMessageSchema,
-  listMessagesQuerySchema, patientChatEventSchema, quoteActionSchema, submitIntakeSchema,
+  listMessagesQuerySchema, patientChatEventSchema, patientChatLocaleSchema, quoteActionSchema, submitIntakeSchema,
 } from '@medical-crm/validation';
 
 const app = new Hono();
@@ -19,14 +20,14 @@ const messageUploadInitSchema = z.object({
   fileSize: z.number().positive(),
   mimeType: z.string().min(1),
   clientMessageId: z.string().min(1).max(120).optional(),
-  locale: z.enum(['en', 'zh']).default('en'),
+  locale: patientChatLocaleSchema.default('en'),
 });
 const PROCESS_CONFIRMATION_MESSAGE_VERSION = 'process-confirmation-v1';
 const AI_MIRROR_SENDER_NAME = 'Medora AI';
 const AI_MIRROR_SENDER_ROLE = 'AI';
 const patientConversationListQuerySchema = z.object({
   caseId: z.string().uuid().optional(),
-  locale: z.enum(['en', 'zh']).optional(),
+  locale: patientChatLocaleSchema.optional(),
 });
 const patientTicketTypeSchema = z.enum([
   'GENERAL_SUPPORT',
@@ -248,32 +249,8 @@ function buildNotificationPreview(content: string | null | undefined): string {
   return normalized.length > 180 ? `${normalized.slice(0, 179).trimEnd()}...` : normalized;
 }
 
-function normalizeProcessLanguage(language: string | null | undefined): 'zh' | 'es' | 'fr' | 'de' | 'ru' | 'en' {
-  const normalized = (language ?? '').trim().toLowerCase();
-  if (normalized.startsWith('zh')) return 'zh';
-  if (normalized.startsWith('es')) return 'es';
-  if (normalized.startsWith('fr')) return 'fr';
-  if (normalized.startsWith('de')) return 'de';
-  if (normalized.startsWith('ru')) return 'ru';
-  return 'en';
-}
-
 function buildProcessConfirmationMessage(language: string | null | undefined): string {
-  switch (normalizeProcessLanguage(language)) {
-    case 'zh':
-      return '谢谢您确认医疗旅行流程。下一步，请上传或文字说明您已有的医疗资料，例如诊断证明、转诊记录、CT、MRI、X 光、超声等影像报告、病理报告、血液检查或其他检验报告、出院小结、当前用药清单、既往治疗或手术记录。所有文字和附件都会直接进入您的 CRM v2 病例，供医疗团队查看。';
-    case 'es':
-      return 'Gracias por confirmar el proceso de viaje médico. A continuación, suba o describa los documentos médicos que ya tenga, como notas de diagnóstico, derivaciones, informes de CT, MRI, rayos X o ultrasonido, patología, análisis de sangre u otros laboratorios, informes de alta, lista de medicamentos actuales y tratamientos o cirugías previas. Todo el texto y los archivos adjuntos irán directamente a su caso de CRM v2 para que el equipo médico los revise.';
-    case 'fr':
-      return 'Merci de confirmer le processus de voyage médical. Ensuite, veuillez téléverser ou décrire les documents médicaux que vous avez déjà, par exemple notes de diagnostic, courriers d’orientation, rapports de CT, IRM, radiographie ou échographie, anatomopathologie, analyses sanguines ou autres examens, comptes rendus de sortie, liste des médicaments actuels et traitements ou chirurgies antérieurs. Tous les textes et fichiers seront directement ajoutés à votre dossier CRM v2 pour examen par l’équipe médicale.';
-    case 'de':
-      return 'Vielen Dank, dass Sie den medizinischen Reiseprozess bestätigt haben. Als Nächstes laden Sie bitte die medizinischen Unterlagen hoch, die Sie bereits haben, oder beschreiben Sie sie kurz, zum Beispiel Diagnosen, Überweisungen, CT-, MRT-, Röntgen- oder Ultraschallberichte, Pathologieberichte, Blutwerte oder andere Laborberichte, Entlassungsberichte, aktuelle Medikamentenlisten sowie frühere Behandlungen oder Operationen. Alle Texte und Anhänge gehen direkt in Ihren CRM-v2-Fall, damit das medizinische Team sie prüfen kann.';
-    case 'ru':
-      return 'Спасибо, что подтвердили процесс медицинской поездки. Далее загрузите или опишите медицинские документы, которые у вас уже есть: диагнозы, направления, отчеты CT, MRI, рентгена или УЗИ, патологию, анализы крови или другие лабораторные отчеты, выписки, список текущих лекарств, а также сведения о предыдущем лечении или операциях. Весь текст и вложения попадут напрямую в ваш кейс CRM v2 для просмотра медицинской командой.';
-    case 'en':
-    default:
-      return 'Thank you for confirming the medical travel process. Next, please upload or describe the medical records you already have, such as diagnosis notes, referral records, CT, MRI, X-ray or ultrasound reports, pathology reports, blood tests or other lab reports, discharge summaries, current medication lists, and prior treatment or surgery records. All text and attachments will go directly into your CRM v2 case for the care team to review.';
-  }
+  return patientChatCopy(language, 'process.confirmationRecords');
 }
 
 function buildProcessConfirmationChatbotV3Envelope(content: string) {
@@ -833,7 +810,7 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
       conversationId: conversation.id,
       patientId: session.userId,
       clientMessageId: body.clientMessageId,
-      content: body.locale === 'zh' ? '正在上传医疗资料...' : 'Uploading medical records...',
+      content: patientChatCopy(body.locale, 'upload.started'),
       locale: body.locale,
       attachments: [{
         fileName: body.fileName,

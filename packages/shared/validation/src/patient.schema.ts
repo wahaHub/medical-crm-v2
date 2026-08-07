@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { sanitizeRichText } from '@medical-crm/utils';
 
 const beautyProcedureCategorySchema = z.enum(['face', 'body', 'non-surgical', 'hair']);
+export const patientChatLocaleSchema = z.enum(['en', 'zh', 'es', 'fr', 'de', 'ru', 'ar', 'id']);
 
 // POST /api/patient/onboarding/init
 export const initOnboardingSchema = z
@@ -116,7 +117,7 @@ export const listMessagesQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   after: z.string().uuid().optional(),
-  locale: z.enum(['en', 'zh']).optional(),
+  locale: patientChatLocaleSchema.optional(),
 });
 
 export const patientChatEventSchema = z.object({
@@ -137,7 +138,7 @@ export const patientChatEventSchema = z.object({
   actionKey: z.enum(['VIEW_PROCESS', 'UPLOAD_RECORDS', 'CONTACT_ADVISOR', 'OPEN_QUESTIONNAIRE']).optional(),
   clientMessageId: z.string().min(1).max(120).optional(),
   serverMessageId: z.string().min(1).max(120).optional(),
-  locale: z.enum(['en', 'zh']).default('en'),
+  locale: patientChatLocaleSchema.default('en'),
   payload: z.record(z.unknown()).optional(),
 });
 

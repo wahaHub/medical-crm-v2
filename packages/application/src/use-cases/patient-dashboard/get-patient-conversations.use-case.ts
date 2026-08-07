@@ -3,11 +3,12 @@ import type {
   PatientConversationSummariesDTO,
   PatientSessionSummaryDTO,
 } from '../../dtos/patient-conversation.dto.js';
+import type { PatientChatLocale } from '../patient-chat/patient-chat-i18n.js';
 
 export interface GetPatientConversationsInput {
   patientId: string;
   caseId?: string;
-  locale?: 'en' | 'zh';
+  locale?: PatientChatLocale;
 }
 
 export class GetPatientConversationsUseCase {

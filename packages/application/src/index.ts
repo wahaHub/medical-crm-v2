@@ -666,3 +666,7 @@ export { RetryTranslationUseCase } from './use-cases/translations/retry-translat
 export type { RetryTranslationInput } from './use-cases/translations/retry-translation.use-case.js';
 export { GetTranslationStatusUseCase } from './use-cases/translations/get-translation-status.use-case.js';
 export type { TranslationStatusResult } from './use-cases/translations/get-translation-status.use-case.js';
+
+// Patient chat localization
+export { PATIENT_CHAT_LOCALES, normalizePatientChatLocale, patientChatCopy } from './use-cases/patient-chat/patient-chat-i18n.js';
+export type { PatientChatLocale, PatientChatCopyKey } from './use-cases/patient-chat/patient-chat-i18n.js';

@@ -275,6 +275,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT, {
     destination: body.destination,
     category: body.category,
     procedureId: body.procedureId,
+    locale: body.preferredLanguage,
   }).catch((error) => {
     console.warn('Failed to seed initial widget chatbot message:', error);
   });

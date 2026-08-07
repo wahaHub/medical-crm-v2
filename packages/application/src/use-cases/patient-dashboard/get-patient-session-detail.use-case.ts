@@ -17,13 +17,14 @@ import type {
   PatientSessionMessageDTO,
 } from '../../dtos/patient-conversation.dto.js';
 import { resolvePatientChatState } from '../patient-chat/patient-chat-actions.js';
+import { patientChatCopy, type PatientChatLocale } from '../patient-chat/patient-chat-i18n.js';
 
 export interface GetPatientSessionDetailInput {
   patientId: string;
   sessionId: string;
   site: PatientSite;
   limit?: number;
-  locale?: 'en' | 'zh';
+  locale?: PatientChatLocale;
 }
 
 function sortSessionMessages(
@@ -94,10 +95,10 @@ export class GetPatientSessionDetailUseCase {
     ]);
     const mergedMessages = [
       ...formalMessages.data.map((message) =>
-        this.toFormalSessionMessage(input.sessionId, message, signedUrls),
+        this.toFormalSessionMessage(input.sessionId, message, signedUrls, input.locale),
       ),
       ...chatbotMessages.map((message) =>
-        this.toChatbotSessionMessage(input.sessionId, message, signedUrls),
+        this.toChatbotSessionMessage(input.sessionId, message, signedUrls, input.locale),
       ),
     ].sort(sortSessionMessages);
 
@@ -180,7 +181,7 @@ export class GetPatientSessionDetailUseCase {
       }),
       chatAuthority: adminConversation?.assistantMode ?? null,
       data: formalMessages.data.map((message) =>
-        this.toFormalSessionMessage(input.sessionId, message, signedUrls),
+        this.toFormalSessionMessage(input.sessionId, message, signedUrls, input.locale),
       ),
       total: formalMessages.total,
       page: formalMessages.page,
@@ -234,6 +235,7 @@ export class GetPatientSessionDetailUseCase {
     sessionId: string,
     message: Awaited<ReturnType<IMessageRepository['findByConversationId']>>['data'][number],
     signedUrls: Record<string, string>,
+    locale?: PatientChatLocale,
   ): PatientSessionMessageDTO {
     return {
       id: message.id,
@@ -243,7 +245,7 @@ export class GetPatientSessionDetailUseCase {
       conversationId: message.conversationId,
       senderRole: message.senderRole,
       senderName: message.senderName,
-      content: message.content,
+      content: localizeStoredPatientMessage(message.content, message.metadata, message.senderRole, locale),
       messageType: message.messageType,
       moderationStatus: message.moderationStatus,
       attachments: message.attachments.map((attachment) => toMessageAttachmentDTO(attachment, signedUrls)),
@@ -257,6 +259,7 @@ export class GetPatientSessionDetailUseCase {
     sessionId: string,
     message: AiChatMessage,
     signedUrls: Record<string, string>,
+    locale?: PatientChatLocale,
   ): PatientSessionMessageDTO {
     return {
       id: message.id,
@@ -269,7 +272,7 @@ export class GetPatientSessionDetailUseCase {
           ? 'AI'
           : 'SYSTEM',
       senderName: message.role === 'ASSISTANT' ? 'Medora AI' : null,
-      content: message.content,
+      content: localizeStoredPatientMessage(message.content, message.metadata, message.role, locale),
       messageType: message.role === 'SYSTEM' ? 'SYSTEM' : 'TEXT',
       moderationStatus: null,
       attachments: this.extractChatbotAttachments(message).map((attachment) =>
@@ -316,6 +319,57 @@ export class GetPatientSessionDetailUseCase {
       }];
     });
   }
+}
+
+function localizeStoredPatientMessage(
+  content: string,
+  metadata: Record<string, unknown>,
+  senderRole: string | null,
+  locale?: PatientChatLocale,
+): string {
+  if (!locale) {
+    return content;
+  }
+  if (metadata['widgetStarterSeed'] === true) {
+    return patientChatCopy(locale, 'starter.intakeReceived');
+  }
+  if (metadata['processConfirmationMessage'] === true) {
+    return patientChatCopy(locale, 'process.confirmationRecords');
+  }
+
+  const eventType = metadata['eventType'];
+  const actionKey = metadata['actionKey'];
+  if (eventType === 'ACTION_SELECTED') {
+    if (senderRole === 'PATIENT' || senderRole === 'USER') {
+      const actionCopyKey = actionKey === 'VIEW_PROCESS'
+        ? 'action.viewProcess'
+        : actionKey === 'UPLOAD_RECORDS'
+          ? 'action.uploadRecords'
+          : actionKey === 'CONTACT_ADVISOR'
+            ? 'action.contactAdvisor'
+            : actionKey === 'OPEN_QUESTIONNAIRE'
+              ? 'action.openQuestionnaire'
+              : null;
+      return actionCopyKey
+        ? `${patientChatCopy(locale, 'action.selected')}: ${patientChatCopy(locale, actionCopyKey)}`
+        : content;
+    }
+    if (actionKey === 'VIEW_PROCESS') return patientChatCopy(locale, 'process.prompt');
+    if (actionKey === 'UPLOAD_RECORDS') return patientChatCopy(locale, 'upload.prompt');
+    if (actionKey === 'CONTACT_ADVISOR') return patientChatCopy(locale, 'advisor.handoff');
+    if (actionKey === 'OPEN_QUESTIONNAIRE') return patientChatCopy(locale, 'questionnaire.opened');
+  }
+
+  if (eventType === 'PROCESS_GUIDE_CONFIRMED') return patientChatCopy(locale, 'process.confirmed');
+  if (eventType === 'PROCESS_GUIDE_DISMISSED') return patientChatCopy(locale, 'process.dismissed');
+  if (eventType === 'ADVISOR_HANDOFF_REQUESTED') return patientChatCopy(locale, 'advisor.handoff');
+  if (eventType === 'QUESTIONNAIRE_OPENED') return patientChatCopy(locale, 'questionnaire.opened');
+  if (eventType === 'QUESTIONNAIRE_SUBMITTED') return patientChatCopy(locale, 'questionnaire.submitted');
+  if (eventType === 'ATTACHMENT_UPLOAD_STARTED') return patientChatCopy(locale, 'upload.started');
+  if (eventType === 'ATTACHMENT_UPLOAD_COMPLETED') return patientChatCopy(locale, 'upload.succeeded');
+  if (eventType === 'ATTACHMENT_UPLOAD_FAILED') return patientChatCopy(locale, 'upload.failed');
+
+  return content;
 }
 
 function hasUploadedMedicalRecords(

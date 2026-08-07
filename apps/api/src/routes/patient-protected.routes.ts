@@ -20,6 +20,8 @@ const messageUploadInitSchema = z.object({
   fileSize: z.number().positive(),
   mimeType: z.string().min(1),
   clientMessageId: z.string().min(1).max(120).optional(),
+  uploadBatchId: z.string().min(1).max(120).optional(),
+  uploadBatchSize: z.number().int().min(1).max(20).optional(),
   locale: patientChatLocaleSchema.default('en'),
 });
 const PROCESS_CONFIRMATION_MESSAGE_VERSION = 'process-confirmation-v1';
@@ -770,9 +772,19 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
     const existingAttachment = existingMessage?.attachments[0] ?? null;
 
     if (existingMessage && existingAttachment) {
-      const existingUpload = existingMessage.deliveryStatus === 'uploading' || existingMessage.deliveryStatus === 'pending'
+      const canResumeUpload = existingMessage.deliveryStatus === 'uploading'
+        || existingMessage.deliveryStatus === 'pending'
+        || existingMessage.deliveryStatus === 'failed';
+      const existingUpload = canResumeUpload
         ? await mediaUpload.createUploadIntentForStorageKey(uploadIntentInput, existingAttachment.storageKey)
         : null;
+      const resumedMessage = existingMessage.deliveryStatus === 'failed'
+        ? await messageRepo.updateDeliveryStatus(existingMessage.id, 'uploading', {
+            eventType: 'ATTACHMENT_UPLOAD_STARTED',
+            errorCode: null,
+            uploadStatus: 'uploading',
+          })
+        : existingMessage;
 
       return c.json({
         upload: existingUpload
@@ -789,9 +801,9 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
           storageKey: existingAttachment.storageKey,
         },
         message: {
-          serverMessageId: existingMessage.id,
-          clientMessageId: existingMessage.clientMessageId,
-          deliveryStatus: existingMessage.deliveryStatus,
+          serverMessageId: resumedMessage.id,
+          clientMessageId: resumedMessage.clientMessageId,
+          deliveryStatus: resumedMessage.deliveryStatus,
         },
       }, 200);
     }
@@ -824,6 +836,8 @@ app.post('/sessions/:sessionId/attachments/upload', async (c) => {
         contentType: 'attachment',
         uploadStatus: 'uploading',
         storageKey: result.storageKey,
+        ...(body.uploadBatchId ? { uploadBatchId: body.uploadBatchId } : {}),
+        ...(body.uploadBatchSize ? { uploadBatchSize: body.uploadBatchSize } : {}),
       },
       createdAt: new Date(),
     });

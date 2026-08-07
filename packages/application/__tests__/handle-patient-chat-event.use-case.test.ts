@@ -208,6 +208,127 @@ describe('HandlePatientChatEventUseCase', () => {
     });
   });
 
+  it('writes one confirmation only when every file in the upload batch is complete', async () => {
+    const batchMetadata = { uploadBatchId: 'batch-1', uploadBatchSize: 2 };
+    const secondUpload = makeUploadMessage({
+      id: 'msg-upload-2',
+      clientMessageId: 'client-upload-2',
+      metadata: { ...batchMetadata, uploadStatus: 'uploading' },
+    });
+    const completedSecondUpload = makeUploadMessage({
+      id: 'msg-upload-2',
+      clientMessageId: 'client-upload-2',
+      deliveryStatus: 'sent',
+      metadata: { ...batchMetadata, uploadStatus: 'uploaded', documentId: 'doc-2' },
+    });
+    vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(secondUpload);
+    vi.mocked(messageRepo.claimDeliveryStatus).mockResolvedValue(makeUploadMessage({
+      id: 'msg-upload-2',
+      clientMessageId: 'client-upload-2',
+      deliveryStatus: 'pending',
+      metadata: { ...batchMetadata, uploadStatus: 'processing' },
+    }));
+    vi.mocked(messageRepo.updateDeliveryStatus).mockResolvedValue(completedSecondUpload);
+    vi.mocked(messageRepo.findByConversationId).mockResolvedValue({
+      data: [
+        makeUploadMessage({
+          deliveryStatus: 'sent',
+          metadata: { ...batchMetadata, uploadStatus: 'uploaded', documentId: 'doc-1' },
+        }),
+        completedSecondUpload,
+      ],
+      total: 2,
+      page: 1,
+      limit: 100,
+      totalPages: 1,
+      hasMore: false,
+    });
+
+    await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      eventType: 'ATTACHMENT_UPLOAD_COMPLETED',
+      clientMessageId: 'client-upload-2',
+      locale: 'zh',
+      payload: { attachments: secondUpload.attachments },
+    });
+
+    const confirmationMessages = vi.mocked(messageRepo.save).mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.metadata.uploadBatchConfirmation === true);
+    expect(confirmationMessages).toHaveLength(1);
+    expect(confirmationMessages[0]?.content).toBe('您的医疗资料已上传，顾问团队会查看。');
+    expect(confirmationMessages[0]?.metadata).toEqual(expect.objectContaining({
+      uploadBatchId: 'batch-1',
+      uploadBatchSize: 2,
+    }));
+  });
+
+  it('does not write a batch confirmation while another file is still uploading', async () => {
+    const batchMetadata = { uploadBatchId: 'batch-2', uploadBatchSize: 2 };
+    const uploadMessage = makeUploadMessage({ metadata: { ...batchMetadata, uploadStatus: 'uploading' } });
+    vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(uploadMessage);
+    vi.mocked(messageRepo.claimDeliveryStatus).mockResolvedValue(makeUploadMessage({
+      deliveryStatus: 'pending',
+      metadata: { ...batchMetadata, uploadStatus: 'processing' },
+    }));
+    vi.mocked(messageRepo.updateDeliveryStatus).mockResolvedValue(makeUploadMessage({
+      deliveryStatus: 'sent',
+      metadata: { ...batchMetadata, uploadStatus: 'uploaded' },
+    }));
+    vi.mocked(messageRepo.findByConversationId).mockResolvedValue({
+      data: [
+        makeUploadMessage({ deliveryStatus: 'sent', metadata: { ...batchMetadata, uploadStatus: 'uploaded' } }),
+        makeUploadMessage({
+          id: 'msg-upload-pending',
+          clientMessageId: 'client-upload-pending',
+          metadata: { ...batchMetadata, uploadStatus: 'uploading' },
+        }),
+      ],
+      total: 2,
+      page: 1,
+      limit: 100,
+      totalPages: 1,
+      hasMore: false,
+    });
+
+    await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      eventType: 'ATTACHMENT_UPLOAD_COMPLETED',
+      clientMessageId: 'client-upload-1',
+      locale: 'en',
+      payload: { attachments: uploadMessage.attachments },
+    });
+
+    expect(messageRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('marks the file message failed without creating an additional system message', async () => {
+    const uploadMessage = makeUploadMessage();
+    vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(uploadMessage);
+
+    await useCase.execute({
+      patientId: 'patient-1',
+      sessionId: 'widget-chat:patient-1:case-1',
+      site: 'beauty',
+      eventType: 'ATTACHMENT_UPLOAD_FAILED',
+      clientMessageId: 'client-upload-1',
+      locale: 'en',
+      payload: { errorCode: 'UPLOAD_FAILED' },
+    });
+
+    expect(messageRepo.updateDeliveryStatus).toHaveBeenCalledWith(
+      'msg-upload-1',
+      'failed',
+      expect.objectContaining({ uploadStatus: 'failed' }),
+      undefined,
+    );
+    expect(messageRepo.save).not.toHaveBeenCalled();
+  });
+
   it('does not send duplicate upload confirmation emails for repeated completion events', async () => {
     vi.mocked(messageRepo.findByConversationClientMessageId).mockResolvedValue(makeUploadMessage({
       deliveryStatus: 'sent',

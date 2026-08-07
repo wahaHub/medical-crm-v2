@@ -232,7 +232,7 @@ export class HandlePatientChatEventUseCase {
       conversationId,
       patientId: input.patientId,
       clientMessageId: input.clientMessageId,
-      content: input.locale === 'zh' ? '正在上传医疗资料...' : 'Uploading medical records...',
+      content: patientChatCopy(input.locale, 'upload.started'),
       locale: input.locale,
       attachments: [attachment],
       metadata: {
@@ -318,16 +318,10 @@ export class HandlePatientChatEventUseCase {
           uploadStatus: 'failed',
         },
       });
-      await this.writer.writeMechanical({
-        conversationId,
-        content: patientChatCopy(input.locale, 'upload.failed'),
-        locale: input.locale,
-        metadata: { eventType: input.eventType, source: 'mechanical_bot' },
-      });
       return;
     }
 
-    await this.writer.updateAttachmentStatus({
+    const completedMessage = await this.writer.updateAttachmentStatus({
       messageId: claimed.id,
       status: 'sent',
       metadataPatch: {
@@ -338,12 +332,12 @@ export class HandlePatientChatEventUseCase {
       },
     });
 
-    await this.writer.writeMechanical({
+    await this.writeUploadBatchConfirmationIfReady(
       conversationId,
-      content: patientChatCopy(input.locale, 'upload.succeeded'),
-      locale: input.locale,
-      metadata: { eventType: input.eventType, source: 'mechanical_bot', documentId },
-    });
+      completedMessage,
+      input.locale,
+      documentId,
+    );
 
     try {
       await this.sendRecordsUploadConfirmation.execute({
@@ -355,6 +349,56 @@ export class HandlePatientChatEventUseCase {
     } catch (error) {
       console.warn('Failed to send medical records upload confirmation email:', error);
     }
+  }
+
+  private async writeUploadBatchConfirmationIfReady(
+    conversationId: string,
+    completedMessage: Awaited<ReturnType<PatientChatMessageWriter['updateAttachmentStatus']>>,
+    locale: PatientChatLocale,
+    documentId: string,
+  ): Promise<void> {
+    const uploadBatchId = readStringMetadata(completedMessage.metadata, 'uploadBatchId');
+    const uploadBatchSize = readPositiveIntegerMetadata(completedMessage.metadata, 'uploadBatchSize');
+
+    if (!uploadBatchId || !uploadBatchSize) {
+      await this.writer.writeMechanical({
+        conversationId,
+        content: patientChatCopy(locale, 'upload.succeeded'),
+        locale,
+        metadata: { eventType: 'ATTACHMENT_UPLOAD_COMPLETED', source: 'mechanical_bot', documentId },
+      });
+      return;
+    }
+
+    const messages = await this.messageRepo.findByConversationId(conversationId, { page: 1, limit: 100 });
+    const batchMessages = messages.data.filter((message) =>
+      readStringMetadata(message.metadata, 'uploadBatchId') === uploadBatchId,
+    );
+    const allUploaded = batchMessages.length >= uploadBatchSize
+      && batchMessages.every((message) =>
+        message.deliveryStatus === 'sent' && message.metadata.uploadStatus === 'uploaded',
+      );
+    const confirmationExists = messages.data.some((message) =>
+      message.metadata.uploadBatchConfirmation === true
+      && readStringMetadata(message.metadata, 'uploadBatchId') === uploadBatchId,
+    );
+
+    if (!allUploaded || confirmationExists) {
+      return;
+    }
+
+    await this.writer.writeMechanical({
+      conversationId,
+      content: patientChatCopy(locale, 'upload.succeeded'),
+      locale,
+      metadata: {
+        eventType: 'ATTACHMENT_UPLOAD_COMPLETED',
+        source: 'mechanical_bot',
+        uploadBatchConfirmation: true,
+        uploadBatchId,
+        uploadBatchSize,
+      },
+    });
   }
 
   private async handleAttachmentFailed(input: HandlePatientChatEventInput, conversationId: string): Promise<void> {
@@ -374,12 +418,6 @@ export class HandlePatientChatEventUseCase {
         errorCode: input.payload?.['errorCode'] ?? 'UPLOAD_FAILED',
         uploadStatus: 'failed',
       },
-    });
-    await this.writer.writeMechanical({
-      conversationId,
-      content: patientChatCopy(input.locale, 'upload.failed'),
-      locale: input.locale,
-      metadata: { eventType: input.eventType, source: 'mechanical_bot' },
     });
   }
 
@@ -456,6 +494,16 @@ function getActionLabel(locale: PatientChatLocale, actionKey: PatientChatActionK
     case 'OPEN_QUESTIONNAIRE':
       return patientChatCopy(locale, 'action.openQuestionnaire');
   }
+}
+
+function readStringMetadata(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function readPositiveIntegerMetadata(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
 }
 
 function parseCareTeamSessionId(patientId: string, sessionId: string): { caseId: string } {

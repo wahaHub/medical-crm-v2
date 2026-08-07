@@ -590,6 +590,73 @@ describe('patientProtectedRoutes', () => {
     }));
   });
 
+  it('resumes a failed mechanical upload on the existing message', async () => {
+    const updateDeliveryStatus = vi.fn().mockResolvedValue({
+      id: 'message-failed-1',
+      clientMessageId: 'client-failed-1',
+      deliveryStatus: 'uploading',
+    });
+    const createUploadIntentForStorageKey = vi.fn().mockResolvedValue({
+      uploadUrl: 'https://example.r2.cloudflarestorage.com/upload/retry.pdf',
+      storageKey: 'medical-records/retry.pdf',
+      expiresIn: 900,
+    });
+    mockGetServices.mockReturnValue({
+      conversationRepo: {
+        findByPatientId: vi.fn().mockResolvedValue([
+          { id: 'conv-1', caseId: 'case-1', category: 'ADMIN_PATIENT', hospitalId: null, assistantMode: 'AI_ACTIVE' },
+        ]),
+      },
+      messageRepo: {
+        findByConversationClientMessageId: vi.fn().mockResolvedValue({
+          id: 'message-failed-1',
+          clientMessageId: 'client-failed-1',
+          deliveryStatus: 'failed',
+          attachments: [{
+            fileName: 'retry.pdf',
+            fileSize: 24,
+            mimeType: 'application/pdf',
+            storageKey: 'medical-records/retry.pdf',
+          }],
+        }),
+        updateDeliveryStatus,
+      },
+      mediaUpload: { createUploadIntentForStorageKey },
+    });
+
+    const res = await patientProtectedRoutes.request('/sessions/widget-chat:patient-1:case-1/attachments/upload?mode=mechanical', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: 'retry.pdf',
+        fileSize: 24,
+        mimeType: 'application/pdf',
+        clientMessageId: 'client-failed-1',
+        uploadBatchId: 'batch-1',
+        uploadBatchSize: 2,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(updateDeliveryStatus).toHaveBeenCalledWith('message-failed-1', 'uploading', {
+      eventType: 'ATTACHMENT_UPLOAD_STARTED',
+      errorCode: null,
+      uploadStatus: 'uploading',
+    });
+    expect(createUploadIntentForStorageKey).toHaveBeenCalledWith(
+      expect.objectContaining({ fileName: 'retry.pdf' }),
+      'medical-records/retry.pdf',
+    );
+    expect(await res.json()).toEqual(expect.objectContaining({
+      upload: expect.objectContaining({ storageKey: 'medical-records/retry.pdf' }),
+      message: expect.objectContaining({
+        serverMessageId: 'message-failed-1',
+        clientMessageId: 'client-failed-1',
+        deliveryStatus: 'uploading',
+      }),
+    }));
+  });
+
   it('persists process confirmation and creates the follow-up upload prompt message', async () => {
     const sessionId = 'widget-chat:patient-1:case-1';
     const aiChatSession = {

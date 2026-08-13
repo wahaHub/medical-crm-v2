@@ -134,8 +134,9 @@ const columns: Column<CaseSummary>[] = [
   {
     key: 'disease',
     header: 'Disease',
+    className: 'w-[180px] max-w-[180px]',
     render: (row) => (
-      <span className="max-w-[220px] truncate text-sm text-slate-600" title={row.disease ?? undefined}>
+      <span className="block truncate text-sm text-slate-600" title={row.disease ?? undefined}>
         {row.disease ?? '—'}
       </span>
     ),

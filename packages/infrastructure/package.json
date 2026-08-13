@@ -32,6 +32,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "lint": "eslint .",
     "admin:provision": "tsx scripts/provision-admin-user.ts",
+    "cases:backfill-list-labels": "tsx scripts/backfill-case-list-labels.ts",
     "db:pull": "drizzle-kit pull",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx database/migrate.ts"

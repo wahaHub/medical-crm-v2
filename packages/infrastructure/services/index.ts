@@ -11,4 +11,3 @@ export { ResendInboundService } from './resend-inbound.service.js';
 export type { NormalizedInboundEmail } from './resend-inbound.service.js';
 export { TranslationWritebackService } from './translation-writeback.service.js';
 export { DifyApiClientService } from './dify-api-client.service.js';
-export { OpenAICaseDiseaseSummarizerService } from './openai-case-disease-summarizer.service.js';

@@ -1,0 +1,3 @@
+ALTER TABLE cases
+  ADD COLUMN IF NOT EXISTS list_disease_label VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS list_country_label VARCHAR(100);

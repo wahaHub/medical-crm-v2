@@ -163,6 +163,8 @@ export const cases = pgTable("cases", {
 	assignmentStatus: caseAssignmentStatus("assignment_status").default('UNASSIGNED').notNull(),
 	treatmentStage: caseTreatmentStage("treatment_stage"),
 	conditionSummary: text("condition_summary"),
+	listDiseaseLabel: varchar("list_disease_label", { length: 120 }),
+	listCountryLabel: varchar("list_country_label", { length: 100 }),
 	structuredData: jsonb("structured_data"),
 	riskFlags: jsonb("risk_flags"),
 	priority: varchar({ length: 20 }),

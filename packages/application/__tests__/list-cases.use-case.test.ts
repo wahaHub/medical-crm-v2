@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ListCasesUseCase } from '../src/use-cases/cases/list-cases.use-case.js';
-import type { ICaseRepository, CaseListQuery, ICaseDiseaseSummarizer, IPatientRepository } from '@medical-crm/domain';
+import type { ICaseRepository, CaseListQuery } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
 import { Case, CaseNumber } from '@medical-crm/domain';
 
@@ -69,42 +69,10 @@ describe('ListCasesUseCase', () => {
     expect(result.data[0]!.caseNumber).toBe('CASE-2026-0001');
   });
 
-  it('replaces legacy disease and country values with cached GPT list labels', async () => {
-    const patientRepo: IPatientRepository = {
-      findById: vi.fn(), findByEmail: vi.fn(), findAuthByEmail: vi.fn(), createTempPatient: vi.fn(), updatePasswordHash: vi.fn(),
-      findByIds: vi.fn().mockResolvedValue([{ id: 'p-1', email: 'patient@example.com', patientCode: null, preferredLanguage: 'en', phone: '+8613812345678', country: 'Canada' }]),
-    };
-    const summarizer: ICaseDiseaseSummarizer = {
-      summarize: vi.fn().mockResolvedValue({ 'c-1': { disease: 'Knee osteoarthritis', country: 'China' } }),
-    };
-    mockCase.primaryDiagnosis = 'Long historical diagnosis that should not be shown in the list';
-    mockCase.structuredData = { adminCaseList: { disease: 'Old long label', labelVersion: 1 } };
-    mockCaseRepo.updateStructuredData = vi.fn();
-    useCase = new ListCasesUseCase(mockCaseRepo, patientRepo, summarizer);
-
+  it('uses persisted list labels without an AI call', async () => {
+    mockCase.listDiseaseLabel = 'Knee osteoarthritis';
+    mockCase.listCountryLabel = 'China';
     const result = await useCase.execute({ page: 1, limit: 20 }, adminActor);
-
-    expect(summarizer.summarize).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ caseId: 'c-1', phone: '+8613812345678', fallbackCountry: 'Canada' }),
-    ]));
     expect(result.data[0]).toMatchObject({ disease: 'Knee osteoarthritis', country: 'China' });
-    expect(mockCaseRepo.updateStructuredData).toHaveBeenCalledWith('c-1', expect.objectContaining({
-      adminCaseList: expect.objectContaining({ disease: 'Knee osteoarthritis', country: 'China', labelVersion: 3 }),
-    }));
-  });
-
-  it('does not cache an unspecified disease placeholder', async () => {
-    const summarizer: ICaseDiseaseSummarizer = {
-      summarize: vi.fn().mockResolvedValue({ 'c-1': { disease: null, country: 'Canada' } }),
-    };
-    mockCaseRepo.updateStructuredData = vi.fn();
-    useCase = new ListCasesUseCase(mockCaseRepo, undefined, summarizer);
-
-    const result = await useCase.execute({ page: 1, limit: 20 }, adminActor);
-
-    expect(result.data[0]).toMatchObject({ disease: null, country: 'Canada' });
-    expect(mockCaseRepo.updateStructuredData).toHaveBeenCalledWith('c-1', expect.objectContaining({
-      adminCaseList: expect.objectContaining({ disease: null, country: 'Canada', labelVersion: 3 }),
-    }));
   });
 });

@@ -310,7 +310,7 @@ import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { getCrmSupabase } from '@medical-crm/infrastructure/supabase-crm';
 import { getMainSupabase } from '@medical-crm/infrastructure/supabase-main';
 import { getChinaSupabase } from '@medical-crm/infrastructure/supabase-china';
-import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, OpenAICaseDiseaseSummarizerService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, ResendInboundService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
+import { KeycloakAdminService, SupabaseHospitalSyncService, OpenAITranslationService, RoutingMaterialsRepository, StubEmailService, SmtpEmailService, ResendEmailService, ResendInboundService, OpenAIBatchTranslationService, TranslationWritebackService, DifyApiClientService } from '@medical-crm/infrastructure/services';
 import { SupabaseMaterialsRepository } from '@medical-crm/infrastructure/supabase-main/materials';
 import { ChinaMedicalMaterialsRepository } from '@medical-crm/infrastructure/supabase-china/materials';
 import { IdempotencyGuard } from '@medical-crm/infrastructure/database/idempotency';
@@ -1161,8 +1161,7 @@ export function getServices(): AppServices {
     const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase, crmSupabase);
 
-    const caseDiseaseSummarizer = new OpenAICaseDiseaseSummarizerService(process.env['OPENAI_API_KEY'] ?? '');
-    const listCases = new ListCasesUseCase(caseRepo, patientRepo, caseDiseaseSummarizer);
+    const listCases = new ListCasesUseCase(caseRepo, patientRepo);
     const uploadDocument = new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo, adminPatientSiteAccess);
     const getPatientSessionDetail = new GetPatientSessionDetailUseCase(
       conversationRepo,

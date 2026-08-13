@@ -1,4 +1,4 @@
-import { eq, and, ne, sql } from 'drizzle-orm';
+import { eq, and, ne, sql, inArray } from 'drizzle-orm';
 import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo, PatientSite } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
@@ -62,6 +62,8 @@ export class DrizzlePatientRepository implements IPatientRepository {
             patientCode: users.patientCode,
             preferredLanguage: users.preferredLanguage,
             site: users.patientSite,
+            phone: users.phone,
+            country: users.country,
           })
           .from(users)
           .where(
@@ -80,6 +82,8 @@ export class DrizzlePatientRepository implements IPatientRepository {
         patientCode: row.patientCode ?? null,
         preferredLanguage: row.preferredLanguage,
         site: row.site ?? null,
+        phone: row.phone ?? null,
+        country: row.country ?? null,
       };
     } catch (err: unknown) {
       if (!this.isMissingColumnError(err, 'patient_site')) {
@@ -110,6 +114,31 @@ export class DrizzlePatientRepository implements IPatientRepository {
         site: 'china',
       };
     }
+  }
+
+  async findByIds(ids: string[]): Promise<PatientBasicInfo[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.db
+      .select({
+        id: users.id,
+        email: users.email,
+        patientCode: users.patientCode,
+        preferredLanguage: users.preferredLanguage,
+        site: users.patientSite,
+        phone: users.phone,
+        country: users.country,
+      })
+      .from(users)
+      .where(and(eq(users.role, 'PATIENT'), inArray(users.id, ids)));
+    return rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      patientCode: row.patientCode ?? null,
+      preferredLanguage: row.preferredLanguage,
+      site: row.site ?? null,
+      phone: row.phone ?? null,
+      country: row.country ?? null,
+    }));
   }
 
   async findByEmail(email: string, site: PatientSite): Promise<PatientBasicInfo | null> {

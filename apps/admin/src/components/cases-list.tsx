@@ -26,15 +26,6 @@ const ASSIGNMENT_STATUS_OPTIONS = [
   { value: 'ASSIGNED', label: 'Assigned' },
 ];
 
-const TREATMENT_STAGE_OPTIONS = [
-  { value: '', label: 'All Treatment Stages' },
-  { value: 'CONFIRMED', label: 'Confirmed' },
-  { value: 'IN_TREATMENT', label: 'In Treatment' },
-  { value: 'POST_TREATMENT', label: 'Post Treatment' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'FOLLOW_UP', label: 'Follow Up' },
-];
-
 function formatDate(dateStr: string) {
   if (!dateStr) return '';
   return new Date(dateStr).toLocaleDateString('en-US', {
@@ -136,18 +127,16 @@ const columns: Column<CaseSummary>[] = [
     render: (row) => <span className="font-medium text-slate-900">{row.patientName}</span>,
   },
   {
-    key: 'status',
-    header: 'Status',
-    render: (row) => <StatusBadge status={row.status} />,
+    key: 'country',
+    header: 'Country',
+    render: (row) => <span className="text-sm text-slate-600">{row.country ?? '—'}</span>,
   },
   {
-    key: 'treatmentStage',
-    header: 'Treatment Stage',
+    key: 'disease',
+    header: 'Disease',
     render: (row) => (
-      <span className="text-sm text-slate-600">
-        {row.treatmentStage
-          ? row.treatmentStage.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
-          : '—'}
+      <span className="max-w-[220px] truncate text-sm text-slate-600" title={row.disease ?? undefined}>
+        {row.disease ?? '—'}
       </span>
     ),
   },
@@ -169,15 +158,13 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [assignmentStatus, setAssignmentStatus] = useState('');
-  const [treatmentStage, setTreatmentStage] = useState('');
   const [page, setPage] = useState(1);
 
   const filters: Record<string, string> = { page: String(page), limit: '20' };
   if (search) filters.search = search;
   if (assignmentStatus) filters.assignmentStatus = assignmentStatus;
-  if (treatmentStage) filters.treatmentStage = treatmentStage;
 
-  const hasActiveFilters = !!search || !!assignmentStatus || !!treatmentStage || page !== 1;
+  const hasActiveFilters = !!search || !!assignmentStatus || page !== 1;
   const { data, isPending } = useCases(filters);
   const cases = (data ?? (hasActiveFilters ? { data: [], total: 0, page: 1, limit: 20, totalPages: 0, hasMore: false } : initialCases));
 
@@ -211,15 +198,6 @@ export function CasesList({ initialCases, initialStats }: CasesListProps) {
           className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
         >
           {ASSIGNMENT_STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        <select
-          value={treatmentStage}
-          onChange={(e) => { setTreatmentStage(e.target.value); setPage(1); }}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-        >
-          {TREATMENT_STAGE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>

@@ -24,6 +24,7 @@ export interface InitOnboardingInput {
   age?: string;
   gender?: string;
   country?: string;
+  ipCountry?: string;
   whatsapp?: string;
   messenger?: string;
   department?: string;
@@ -82,7 +83,7 @@ function buildEntryProfile(input: InitOnboardingInput): EntryProfile {
     phone: normalizeOptionalText(input.phone),
     age: normalizeOptionalText(input.age),
     gender: normalizeOptionalText(input.gender),
-    country: normalizeOptionalText(input.country),
+    country: normalizeOptionalText(input.country ?? input.ipCountry),
     whatsapp: normalizeOptionalText(input.whatsapp),
     messenger: normalizeOptionalText(input.messenger),
     department: normalizeOptionalText(input.department),

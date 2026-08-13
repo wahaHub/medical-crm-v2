@@ -4,7 +4,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi';
 import type { AiChatCitation, AiChatSession } from '@medical-crm/domain';
 import { AiChatMessage, AiChatSession as AiChatSessionEntity, Conversation, Message } from '@medical-crm/domain';
-import { toActor, toMessageDTO } from '@medical-crm/application';
+import { normalizeCountryCode, toActor, toMessageDTO } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import {
   chatbotChatSchema,
@@ -1357,6 +1357,7 @@ async function ensureCaseForSession(
     name: input.name,
     preferredLanguage: 'en',
     destination: input.country,
+    ipCountry: normalizeCountryCode(c.req.header('cf-ipcountry')) ?? undefined,
     authenticatedPatientId: session.patientId ?? undefined,
   });
 

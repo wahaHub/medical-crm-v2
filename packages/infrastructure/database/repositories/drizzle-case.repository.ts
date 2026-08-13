@@ -212,6 +212,13 @@ export class DrizzleCaseRepository implements ICaseRepository {
     return this.rowToEntity(rows[0]!);
   }
 
+  async updateStructuredData(caseId: string, structuredData: Record<string, unknown>): Promise<void> {
+    await this.db
+      .update(cases)
+      .set({ structuredData })
+      .where(eq(cases.id, caseId));
+  }
+
   async nextCaseNumber(): Promise<CaseNumber> {
     const year = new Date().getFullYear();
     const prefix = `CASE-${year}-%`;

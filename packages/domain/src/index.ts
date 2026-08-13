@@ -101,6 +101,7 @@ export type { IEmailReplyTokenRepository } from './ports/email-reply-token-repos
 export type { IInboundEmailEventRepository, InboundEmailClaimInput } from './ports/inbound-email-event-repository.port.js';
 export type { IMessageTaskQueue, MessageTask } from './ports/message-task-queue.port.js';
 export type { ITranslationService } from './ports/translation-service.port.js';
+export type { CaseDiseaseInput, ICaseDiseaseSummarizer } from './ports/case-disease-summarizer.port.js';
 
 // Phase 2BC Ports — Consultations
 export type {

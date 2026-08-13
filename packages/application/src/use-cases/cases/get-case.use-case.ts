@@ -40,10 +40,10 @@ export class GetCaseUseCase {
     }
 
     // Look up patient contact info
-    let patientContact: {
-      email?: string | null;
-      phone?: string | null;
-      patientSite?: 'beauty' | 'china' | null;
+  let patientContact: {
+    email?: string | null;
+    phone?: string | null;
+    patientSite?: 'beauty' | 'china' | null;
     } | undefined;
     if (this.userRepo) {
       try {

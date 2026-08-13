@@ -596,6 +596,12 @@ async function mirrorChatbotV3TurnIntoAdminConversation(input: {
     aiSummary: null,
     createdAt: userCreatedAt,
   }));
+  await syncChatbotV3MessageAttachmentsToCaseDocuments({
+    services: input.services,
+    caseId: conversation.caseId,
+    patientId: input.session.patientId,
+    attachments,
+  });
   wsManager.broadcast(`conv:${conversation.id}`, {
     type: 'new_message',
     data: toMessageDTO(patientMessage),
@@ -643,6 +649,43 @@ async function mirrorChatbotV3TurnIntoAdminConversation(input: {
     type: 'new_message',
     data: toMessageDTO(assistantMessage),
   });
+}
+
+export async function syncChatbotV3MessageAttachmentsToCaseDocuments(input: {
+  services: AppServices;
+  caseId: string | null;
+  patientId: string;
+  attachments: ChatbotV3ChatRequest['attachments'];
+}): Promise<void> {
+  const { caseId, patientId, attachments } = input;
+  if (!caseId || !attachments?.length) {
+    return;
+  }
+
+  const caze = await input.services.caseRepo.findById(caseId);
+  if (!caze || caze.patientId !== patientId) {
+    return;
+  }
+
+  const actor = {
+    userId: patientId,
+    email: '',
+    role: 'PATIENT' as const,
+    hospitalId: null,
+  };
+
+  await Promise.all(attachments.map((attachment) =>
+    input.services.uploadDocument.execute({
+      caseId,
+      fileName: attachment.fileName,
+      fileSize: attachment.fileSize,
+      mimeType: attachment.mimeType,
+      documentType: 'OTHER',
+      sensitivity: 'PHI_HIGH',
+      language: caze.patientLanguage,
+      storageKey: attachment.storageKey,
+    }, actor),
+  ));
 }
 
 async function resolveAdminConversationForChatbotV3Session(

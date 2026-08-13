@@ -18,6 +18,7 @@ import {
   filterUnchangedStatusPatch,
   resolveSupervisorIntakeSeed,
   serializeStatusSnapshot,
+  syncChatbotV3MessageAttachmentsToCaseDocuments,
 } from '../routes/chatbot-v3.routes.js';
 import {
   buildConversationSummaryPatch,
@@ -56,6 +57,12 @@ const routeMockServices = vi.hoisted(() => ({
   },
   patientAuthService: {
     verifySessionToken: vi.fn(),
+  },
+  caseRepo: {
+    findById: vi.fn(),
+  },
+  uploadDocument: {
+    execute: vi.fn(),
   },
 }));
 
@@ -6616,6 +6623,68 @@ describe('chatbot-v3 runtime', () => {
 });
 
 describe('chatbot-v3 public route validation', () => {
+  it('registers case-linked chatbox attachments as Documents through the idempotent upload path', async () => {
+    routeMockServices.caseRepo.findById.mockClear();
+    routeMockServices.uploadDocument.execute.mockClear();
+    const attachment = {
+      fileName: 'pathology-report.pdf',
+      fileSize: 2048,
+      mimeType: 'application/pdf',
+      storageKey: 'crm/private/chatbot/pathology-report.pdf',
+    };
+    routeMockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-chatbot-document-1',
+      patientId: 'patient-chatbot-document-1',
+      patientLanguage: 'en',
+    });
+    routeMockServices.uploadDocument.execute.mockResolvedValue({ documentId: 'document-chatbot-1' });
+
+    await syncChatbotV3MessageAttachmentsToCaseDocuments({
+      services: routeMockServices as any,
+      caseId: 'case-chatbot-document-1',
+      patientId: 'patient-chatbot-document-1',
+      attachments: [attachment],
+    });
+
+    expect(routeMockServices.uploadDocument.execute).toHaveBeenCalledOnce();
+    expect(routeMockServices.uploadDocument.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseId: 'case-chatbot-document-1',
+        fileName: 'pathology-report.pdf',
+        storageKey: 'crm/private/chatbot/pathology-report.pdf',
+        documentType: 'OTHER',
+        sensitivity: 'PHI_HIGH',
+      }),
+      expect.objectContaining({
+        userId: 'patient-chatbot-document-1',
+        role: 'PATIENT',
+      }),
+    );
+  });
+
+  it('does not register attachments when the chat session patient does not own the case', async () => {
+    routeMockServices.caseRepo.findById.mockResolvedValue({
+      id: 'case-owned-by-someone-else',
+      patientId: 'another-patient',
+      patientLanguage: 'en',
+    });
+    routeMockServices.uploadDocument.execute.mockClear();
+
+    await syncChatbotV3MessageAttachmentsToCaseDocuments({
+      services: routeMockServices as any,
+      caseId: 'case-owned-by-someone-else',
+      patientId: 'patient-chatbot-document-1',
+      attachments: [{
+        fileName: 'report.pdf',
+        fileSize: 2048,
+        mimeType: 'application/pdf',
+        storageKey: 'crm/private/chatbot/report.pdf',
+      }],
+    });
+
+    expect(routeMockServices.uploadDocument.execute).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed TRIAGE_SUBMITTED requests at validation time', async () => {
     const app = new Hono();
     app.route('/', chatbotV3PublicRoutes);

@@ -6,7 +6,7 @@ export interface CaseDiseaseInput {
 }
 
 export interface CaseListLabel {
-  disease: string;
+  disease: string | null;
   country: string | null;
 }
 

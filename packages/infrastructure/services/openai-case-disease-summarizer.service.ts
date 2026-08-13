@@ -24,7 +24,7 @@ export class OpenAICaseDiseaseSummarizerService implements ICaseDiseaseSummarize
       messages: [
         {
           role: 'system',
-          content: 'Create compact medical CRM list labels. Return JSON only as {"caseId":{"disease":"...","country":"..."}} using every provided caseId. disease: 2-5 English words, a broad medical concern (for example "Knee osteoarthritis"), never a sentence, never a treatment request, never an invented diagnosis; use "Unspecified concern" if inadequate. country: infer the country from the international phone number when unambiguous; otherwise use fallbackCountry; return null if uncertain. Use standard English country names only.',
+          content: 'Create compact medical CRM list labels. Return JSON only as {"caseId":{"disease":"...","country":"..."}} using every provided caseId. disease: 2-5 English words, a broad medical concern (for example "Knee osteoarthritis"), never a sentence, never a treatment request, never an invented diagnosis; use null if inadequate. country: infer the country from the international phone number when unambiguous; otherwise use fallbackCountry; return null if uncertain. Use standard English country names only.',
         },
         { role: 'user', content: JSON.stringify(missing) },
       ],
@@ -39,9 +39,10 @@ export class OpenAICaseDiseaseSummarizerService implements ICaseDiseaseSummarize
           .map(([caseId, value]) => {
             if (!value || typeof value !== 'object') return null;
             const label = value as Record<string, unknown>;
-            const disease = typeof label['disease'] === 'string' ? label['disease'].trim().slice(0, 60) : '';
+            const rawDisease = typeof label['disease'] === 'string' ? label['disease'].trim().slice(0, 60) : '';
+            const disease = rawDisease && !/^unspecified(?: medical)? concern$/i.test(rawDisease) ? rawDisease : null;
             const country = typeof label['country'] === 'string' ? label['country'].trim().slice(0, 60) : null;
-            return disease ? [caseId, { disease, country }] as const : null;
+            return disease || country ? [caseId, { disease, country }] as const : null;
           })
           .filter((entry): entry is [string, CaseListLabel] => entry !== null),
       );

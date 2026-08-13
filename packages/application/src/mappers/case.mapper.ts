@@ -27,7 +27,7 @@ export function toCaseDTO(
     country?: string | null;
     patientSite?: 'beauty' | 'china' | null;
   },
-  listLabelOverride?: { disease: string; country: string | null } | null,
+  listLabelOverride?: { disease: string | null; country: string | null } | null,
 ): CaseDTO {
   const entryProfile = getEntryProfile(entity.structuredData ?? null);
   const customHospitalRequest = getCustomHospitalRequest(entity.structuredData ?? null);
@@ -47,7 +47,7 @@ export function toCaseDTO(
     country: listLabelOverride?.country ?? patientContact?.country ?? entryProfile?.country ?? entity.patientCountry,
     destination: entryProfile?.destination ?? null,
     department: entryProfile?.department ?? null,
-    disease: listLabelOverride?.disease ?? getCachedDisease(entity.structuredData ?? null) ?? entryProfile?.disease ?? entity.primaryDiagnosis,
+    disease: listLabelOverride ? listLabelOverride.disease : getCachedDisease(entity.structuredData ?? null) ?? entryProfile?.disease ?? entity.primaryDiagnosis,
     treatmentTime: entryProfile?.treatmentTime ?? null,
     customHospitalRequest,
     assignedHospitalId: entity.assignedHospitalId,

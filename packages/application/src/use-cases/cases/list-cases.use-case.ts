@@ -49,7 +49,7 @@ export class ListCasesUseCase {
         };
       })
       .filter(({ text, phone, fallbackCountry }) => text.length > 0 || Boolean(phone) || Boolean(fallbackCountry));
-    let generated: Record<string, { disease: string; country: string | null }> = {};
+    let generated: Record<string, { disease: string | null; country: string | null }> = {};
     try {
       generated = await this.diseaseSummarizer?.summarize(labelsToGenerate) ?? {};
     } catch (error) {
@@ -66,7 +66,7 @@ export class ListCasesUseCase {
             ...asRecord(entity.structuredData?.['adminCaseList']),
             disease: generatedLabel.disease,
             country: generatedLabel.country,
-            labelVersion: 2,
+            labelVersion: 3,
           },
         };
         await this.caseRepo.updateStructuredData?.(entity.id, entity.structuredData);
@@ -83,14 +83,14 @@ export class ListCasesUseCase {
 
 function needsListLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): boolean {
   const structured = asRecord(entity.structuredData);
-  return asRecord(structured?.['adminCaseList'])?.['labelVersion'] !== 2;
+  return asRecord(structured?.['adminCaseList'])?.['labelVersion'] !== 3;
 }
 
-function getCachedListLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): { disease: string; country: string | null } | null {
+function getCachedListLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): { disease: string | null; country: string | null } | null {
   const label = asRecord(asRecord(entity.structuredData)?.['adminCaseList']);
-  const disease = typeof label?.['disease'] === 'string' ? label['disease'].trim() : '';
+  const disease = typeof label?.['disease'] === 'string' ? label['disease'].trim() : null;
   const country = typeof label?.['country'] === 'string' ? label['country'].trim() : null;
-  return disease ? { disease, country } : null;
+  return disease || country ? { disease, country } : null;
 }
 
 function getEntryProfileCountry(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): string | null {
@@ -99,7 +99,9 @@ function getEntryProfileCountry(entity: Awaited<ReturnType<ICaseRepository['find
 }
 
 function buildDiseaseSourceText(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): string {
+  const entryProfile = asRecord(asRecord(entity.structuredData)?.['entryProfile']);
   return [
+    entryProfile?.['disease'],
     entity.conditionSummary,
     entity.primaryDiagnosis,
     entity.medicalHistory,

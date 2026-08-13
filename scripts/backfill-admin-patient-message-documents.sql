@@ -1,6 +1,6 @@
 -- Backfill missing case Documents from patient-sent files already stored in
 -- ADMIN_PATIENT conversations. Safe to rerun: storage_key is globally unique.
-WITH missing_attachments AS (
+WITH candidate_attachments AS (
   SELECT
     c.id AS case_id,
     m.sender_id AS uploaded_by_id,
@@ -22,6 +22,19 @@ WITH missing_attachments AS (
     AND COALESCE(attachment.value->>'storageKey', '') <> ''
     AND COALESCE(attachment.value->>'fileSize', '') ~ '^[0-9]+$'
     AND attachment.value->>'storageKey' !~* '^(https?:|data:|blob:)'
+),
+missing_attachments AS (
+  SELECT DISTINCT ON (storage_key)
+    case_id,
+    uploaded_by_id,
+    file_name,
+    file_size,
+    mime_type,
+    storage_key,
+    language,
+    created_at
+  FROM candidate_attachments
+  ORDER BY storage_key, created_at ASC
 ),
 inserted_documents AS (
   INSERT INTO documents (

@@ -8,7 +8,6 @@ import type { DocumentWithUrlDTO } from '../dtos/document.dto.js';
 import { splitProgressByType } from './progress.mapper.js';
 import { asRecord } from '../utils/structured-data.js';
 import { deriveHospitalTypeFromPatientSite } from '../utils/hospital-type.js';
-import { deriveCountryFromPhone } from '../utils/country.js';
 
 const STAGE_DISPLAY_MAP: Record<CaseStage, string> = {
   PENDING_ASSIGNMENT: 'transferred',
@@ -28,7 +27,7 @@ export function toCaseDTO(
     country?: string | null;
     patientSite?: 'beauty' | 'china' | null;
   },
-  diseaseOverride?: string | null,
+  listLabelOverride?: { disease: string; country: string | null } | null,
 ): CaseDTO {
   const entryProfile = getEntryProfile(entity.structuredData ?? null);
   const customHospitalRequest = getCustomHospitalRequest(entity.structuredData ?? null);
@@ -45,10 +44,10 @@ export function toCaseDTO(
     patientEmail: patientContact?.email ?? null,
     patientPhone: patientContact?.phone ?? null,
     gender: entryProfile?.gender ?? null,
-    country: deriveCountryFromPhone(patientContact?.phone) ?? patientContact?.country ?? entryProfile?.country ?? entity.patientCountry,
+    country: listLabelOverride?.country ?? patientContact?.country ?? entryProfile?.country ?? entity.patientCountry,
     destination: entryProfile?.destination ?? null,
     department: entryProfile?.department ?? null,
-    disease: diseaseOverride ?? getCachedDisease(entity.structuredData ?? null) ?? entryProfile?.disease ?? entity.primaryDiagnosis,
+    disease: listLabelOverride?.disease ?? getCachedDisease(entity.structuredData ?? null) ?? entryProfile?.disease ?? entity.primaryDiagnosis,
     treatmentTime: entryProfile?.treatmentTime ?? null,
     customHospitalRequest,
     assignedHospitalId: entity.assignedHospitalId,

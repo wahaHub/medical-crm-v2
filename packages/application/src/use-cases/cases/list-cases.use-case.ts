@@ -37,27 +37,36 @@ export class ListCasesUseCase {
       ? await this.patientRepo.findByIds(entities.map((entity) => entity.patientId))
       : [];
     const patientById = new Map(patients.map((patient) => [patient.id, patient]));
-    const missingDisease = entities
-      .map((entity) => ({ entity, disease: getDiseaseLabel(entity) }))
-      .filter(({ disease }) => !disease)
-      .map(({ entity }) => ({ caseId: entity.id, text: buildDiseaseSourceText(entity) }))
-      .filter(({ text }) => text.length > 0);
-    let generated: Record<string, string> = {};
+    const labelsToGenerate = entities
+      .filter((entity) => needsListLabel(entity))
+      .map((entity) => {
+        const patient = patientById.get(entity.patientId);
+        return {
+          caseId: entity.id,
+          text: buildDiseaseSourceText(entity),
+          phone: patient?.phone,
+          fallbackCountry: patient?.country ?? getEntryProfileCountry(entity) ?? entity.patientCountry,
+        };
+      })
+      .filter(({ text, phone, fallbackCountry }) => text.length > 0 || Boolean(phone) || Boolean(fallbackCountry));
+    let generated: Record<string, { disease: string; country: string | null }> = {};
     try {
-      generated = await this.diseaseSummarizer?.summarize(missingDisease) ?? {};
+      generated = await this.diseaseSummarizer?.summarize(labelsToGenerate) ?? {};
     } catch (error) {
       console.warn('[Cases] Failed to summarize disease labels:', error);
     }
 
     return Promise.all(entities.map(async (entity) => {
       const patient = patientById.get(entity.patientId);
-      const generatedDisease = generated[entity.id];
-      if (generatedDisease) {
+      const generatedLabel = generated[entity.id];
+      if (generatedLabel) {
         entity.structuredData = {
           ...(entity.structuredData ?? {}),
           adminCaseList: {
             ...asRecord(entity.structuredData?.['adminCaseList']),
-            disease: generatedDisease,
+            disease: generatedLabel.disease,
+            country: generatedLabel.country,
+            labelVersion: 2,
           },
         };
         await this.caseRepo.updateStructuredData?.(entity.id, entity.structuredData);
@@ -67,20 +76,26 @@ export class ListCasesUseCase {
         phone: patient?.phone,
         country: patient?.country,
         patientSite: patient?.site,
-      }, generatedDisease);
+      }, generatedLabel ?? getCachedListLabel(entity));
     }));
   }
 }
 
-function getDiseaseLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): string | null {
+function needsListLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): boolean {
   const structured = asRecord(entity.structuredData);
-  const cached = asRecord(structured?.['adminCaseList'])?.['disease'];
-  if (typeof cached === 'string' && cached.trim()) return cached.trim();
-  const profile = asRecord(structured?.['entryProfile']);
-  for (const value of [profile?.['disease'], entity.primaryDiagnosis]) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return null;
+  return asRecord(structured?.['adminCaseList'])?.['labelVersion'] !== 2;
+}
+
+function getCachedListLabel(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): { disease: string; country: string | null } | null {
+  const label = asRecord(asRecord(entity.structuredData)?.['adminCaseList']);
+  const disease = typeof label?.['disease'] === 'string' ? label['disease'].trim() : '';
+  const country = typeof label?.['country'] === 'string' ? label['country'].trim() : null;
+  return disease ? { disease, country } : null;
+}
+
+function getEntryProfileCountry(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): string | null {
+  const country = asRecord(asRecord(entity.structuredData)?.['entryProfile'])?.['country'];
+  return typeof country === 'string' && country.trim() ? country.trim() : null;
 }
 
 function buildDiseaseSourceText(entity: Awaited<ReturnType<ICaseRepository['findMany']>>['data'][number]): string {

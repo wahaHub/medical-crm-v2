@@ -245,7 +245,7 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT, {
       ...onboardingInput,
       site,
       country: onboardingInput.country ?? ipCountry ?? undefined,
-      ipCountry,
+      ipCountry: ipCountry ?? undefined,
       authenticatedPatientId,
       verifiedRegisterEmail,
     });

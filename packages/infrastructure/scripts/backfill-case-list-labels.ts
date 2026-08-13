@@ -25,14 +25,17 @@ function clean(value: unknown, maxLength: number): string | null {
 async function generateLabels(client: OpenAI, inputs: CaseInput[]): Promise<Record<string, ListLabel>> {
   const response = await client.chat.completions.create({
     model: MODEL,
-    max_completion_tokens: 1000,
+    reasoning_effort: 'none',
+    max_completion_tokens: 2000,
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: 'Return JSON only as {"caseId":{"disease":"...","country":"..."}} for every provided caseId. disease is a concise 2-6 word English medical concern OR requested procedure (examples: "General check-up", "Knee osteoarthritis", "Rhinoplasty & facial augmentation"). Never return a sentence or "Unspecified concern"; return null if no meaningful label is possible. country: infer the country from an international phone number if unambiguous; otherwise use fallbackCountry; return null if uncertain. Use standard English country names.' },
       { role: 'user', content: JSON.stringify(inputs) },
     ],
   });
-  const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as Record<string, unknown>;
+  const content = response.choices[0]?.message?.content?.trim();
+  if (!content) throw new Error(`Model returned no JSON (finish reason: ${response.choices[0]?.finish_reason ?? 'unknown'})`);
+  const parsed = JSON.parse(content) as Record<string, unknown>;
   return Object.fromEntries(inputs.map(({ id }) => {
     const value = parsed[id] as Record<string, unknown> | undefined;
     const rawDisease = clean(value?.['disease'], 120);

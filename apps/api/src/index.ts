@@ -184,6 +184,10 @@ app.route('/', publicBookingRoutes);
 import publicHospitalRoutes from './routes/public-hospitals.routes.js';
 app.route('/', publicHospitalRoutes);
 
+// Public: published Guides return a pre-rendered, safe HTML contract for the website.
+import { publicGuidesRoutes } from './routes/guides.routes.js';
+app.route('/', publicGuidesRoutes);
+
 // Public: chatbot routes use session-secret / patient-session auth, not Keycloak
 app.route('/', chatbotPublicRoutes);
 app.route('/', chatbotV3PublicRoutes);

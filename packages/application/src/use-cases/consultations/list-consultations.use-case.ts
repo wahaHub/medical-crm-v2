@@ -3,6 +3,7 @@ import type { IConsultationRepository, ConsultationStatus } from '@medical-crm/d
 import type { Actor } from '../../types/actor.js';
 import type { ConsultationDTO } from '../../dtos/consultation.dto.js';
 import { toConsultationDTO } from '../../mappers/consultation.mapper.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class ListConsultationsUseCase {
   constructor(private readonly consultationRepo: IConsultationRepository) {}
@@ -14,12 +15,12 @@ export class ListConsultationsUseCase {
     if (actor.role !== 'HOSPITAL') throw new ForbiddenError('Only hospital users can list consultations');
 
     const parsedCursor = query.cursor ? this.parseCursor(query.cursor) : undefined;
-    const result = await this.consultationRepo.findMany({
+    const result = await this.consultationRepo.findMany(withDefaultPatientEmailExclusions({
       cursor: parsedCursor,
       limit: query.limit ?? 20,
       hospitalId: actor.hospitalId!,
       status: query.status,
-    });
+    }));
 
     return {
       data: result.data.map(toConsultationDTO),

@@ -5,6 +5,8 @@ import type { SupportTicketDTO } from '../../dtos/support-ticket.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toSupportTicketDTO } from '../../mappers/support-ticket.mapper.js';
 import type { TranslationTaskService } from '../../services/translation-task.service.js';
+import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { isStaffActor } from '../../access/admin-patient-site-access.js';
 
 export interface CreateTicketInput {
   caseId?: string;
@@ -19,9 +21,14 @@ export class CreateTicketUseCase {
   constructor(
     private readonly ticketRepo: ISupportTicketRepository,
     private readonly translationTaskService: TranslationTaskService,
+    private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
   async execute(input: CreateTicketInput, actor: Actor): Promise<SupportTicketDTO> {
+    if (isStaffActor(actor) && input.caseId) {
+      await this.adminAccess?.assertActorCanAccessCase(actor, input.caseId);
+    }
+
     const ticketNumberStr = await this.ticketRepo.nextTicketNumber();
     const entity = new SupportTicket({
       id: generateId(),

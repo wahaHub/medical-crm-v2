@@ -10,6 +10,7 @@ import { ListCaseHospitalContactsUseCase } from '../src/use-cases/quotes/list-ca
 import type { IQuoteRepository, ICHCRepository, ICaseRepository } from '@medical-crm/domain';
 import { Quote, QuoteNumber, CaseHospitalContact, Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ——— Actors ———
 const adminActor: Actor = {
@@ -510,6 +511,19 @@ describe('ListQuotesUseCase', () => {
     await expect(
       useCase.execute({ page: 1, limit: 20 }, badActor),
     ).rejects.toThrow('Hospital actor missing hospitalId');
+  });
+
+  it('checks shared case-page exclusion before hospital lists quotes for a case', async () => {
+    const adminAccess = {
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    } as unknown as AdminPatientSiteAccessPolicy;
+    useCase = new ListQuotesUseCase(mockQuoteRepo, mockCaseRepo, adminAccess);
+
+    await expect(
+      useCase.execute({ caseId: 'case-1', page: 1, limit: 20 }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+    expect(mockQuoteRepo.findByHospitalId).not.toHaveBeenCalled();
+    expect(mockQuoteRepo.findByCaseId).not.toHaveBeenCalled();
   });
 
   it('PATIENT can list quotes for own case', async () => {

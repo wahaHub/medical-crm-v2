@@ -3,6 +3,7 @@ import { ListConversationsUseCase } from '../src/use-cases/conversations/list-co
 import type { IConversationRepository, ConversationListQuery } from '@medical-crm/domain';
 import { Conversation } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 describe('ListConversationsUseCase', () => {
   let useCase: ListConversationsUseCase;
@@ -50,6 +51,7 @@ describe('ListConversationsUseCase', () => {
     expect(mockConversationRepo.findMany).toHaveBeenCalledWith({
       ...query,
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     }, undefined);
   });
 
@@ -59,13 +61,29 @@ describe('ListConversationsUseCase', () => {
     expect(mockConversationRepo.findMany).toHaveBeenCalledWith({
       ...query,
       patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     }, undefined);
   });
 
   it('HOSPITAL passes its own hospitalId as filter', async () => {
     const query: ConversationListQuery = { page: 1, limit: 20 };
     await useCase.execute(query, hospitalActor);
-    expect(mockConversationRepo.findMany).toHaveBeenCalledWith(query, 'hosp-1');
+    expect(mockConversationRepo.findMany).toHaveBeenCalledWith({
+      ...query,
+      excludedPatientEmailDomains: ['example.com'],
+    }, 'hosp-1');
+  });
+
+  it('checks shared case-page exclusion before listing staff conversations for a case', async () => {
+    const adminAccess = {
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    } as unknown as AdminPatientSiteAccessPolicy;
+    useCase = new ListConversationsUseCase(mockConversationRepo, adminAccess);
+
+    await expect(
+      useCase.execute({ page: 1, limit: 20, caseId: 'case-1' }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+    expect(mockConversationRepo.findMany).not.toHaveBeenCalled();
   });
 
   it('returns PaginatedResult<ConversationDTO> with mapped data', async () => {

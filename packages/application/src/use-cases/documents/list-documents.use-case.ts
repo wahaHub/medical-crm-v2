@@ -18,6 +18,7 @@ export class ListDocumentsUseCase {
   async execute(caseId: string, actor: Actor): Promise<DocumentDTO[]> {
     const caze = await this.caseRepo.findById(caseId);
     if (!caze) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caze);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else {

@@ -8,6 +8,7 @@ import { DeleteMilestoneUseCase } from '../src/use-cases/journey/delete-mileston
 import { CaseJourney, JourneyMilestone, Case, CaseNumber } from '@medical-crm/domain';
 import type { ICaseRepository, IJourneyRepository } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 // ——— Actors ———
 const adminActor: Actor = {
@@ -184,6 +185,21 @@ describe('GetCaseJourneyUseCase', () => {
     (journeyRepo.findJourneyByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(makeJourney());
     const result = await uc.execute('case-1', patientActor);
     expect(result).not.toBeNull();
+  });
+
+  it('does not apply staff example.com exclusion to patient self-service', async () => {
+    const userRepo = {
+      findById: vi.fn().mockRejectedValue(new Error('patient email should not be loaded')),
+    };
+    const adminAccess = new AdminPatientSiteAccessPolicy({ findById: vi.fn() } as never, userRepo as never);
+    uc = new GetCaseJourneyUseCase(journeyRepo, caseRepo, undefined, adminAccess);
+    (caseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCase());
+    (journeyRepo.findJourneyByCaseId as ReturnType<typeof vi.fn>).mockResolvedValue(makeJourney());
+
+    const result = await uc.execute('case-1', patientActor);
+
+    expect(result).not.toBeNull();
+    expect(userRepo.findById).not.toHaveBeenCalled();
   });
 
   it('rejects patient for other case', async () => {

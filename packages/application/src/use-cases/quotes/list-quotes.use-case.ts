@@ -3,7 +3,8 @@ import { ForbiddenError } from '@medical-crm/utils';
 import type { QuoteDTO } from '../../dtos/quote.dto.js';
 import type { Actor } from '../../types/actor.js';
 import { toQuoteDTO } from '../../mappers/quote.mapper.js';
-import { getAdminPatientSiteScope, type AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { getAdminPatientSiteScope, isStaffActor, type AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class ListQuotesUseCase {
   constructor(
@@ -17,6 +18,9 @@ export class ListQuotesUseCase {
     const patientSiteScope = getAdminPatientSiteScope(actor);
     if (patientSiteScope) {
       effectiveQuery.patientSiteScope = patientSiteScope;
+    }
+    if (isStaffActor(actor)) {
+      Object.assign(effectiveQuery, withDefaultPatientEmailExclusions(effectiveQuery));
     }
     if (actor.role === 'HOSPITAL') {
       if (!actor.hospitalId) throw new ForbiddenError('Hospital actor missing hospitalId');
@@ -34,6 +38,9 @@ export class ListQuotesUseCase {
       }
     }
     if (actor.role === 'ADMIN' && effectiveQuery.caseId) {
+      await this.adminAccess?.assertActorCanAccessCase(actor, effectiveQuery.caseId);
+    }
+    if (actor.role === 'HOSPITAL' && effectiveQuery.caseId) {
       await this.adminAccess?.assertActorCanAccessCase(actor, effectiveQuery.caseId);
     }
 

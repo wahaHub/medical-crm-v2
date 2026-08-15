@@ -4,6 +4,7 @@ import type { CaseHospitalContactDTO } from '../../dtos/case-hospital-contact.dt
 import type { Actor } from '../../types/actor.js';
 import { toCaseHospitalContactDTO } from '../../mappers/case-hospital-contact.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
+import { withDefaultPatientEmailExclusions } from '../../access/patient-email-domain-exclusions.js';
 
 export class ListCaseHospitalContactsUseCase {
   constructor(
@@ -39,6 +40,12 @@ export class ListCaseHospitalContactsUseCase {
       if (!caseEntity) throw new ForbiddenError('Access denied to this case');
       await this.adminAccess.assertActorCanAccessCaseEntity(actor, caseEntity);
     }
+    if (actor.role === 'HOSPITAL' && effectiveQuery.caseId && this.caseRepo && this.adminAccess) {
+      const caseEntity = await this.caseRepo.findById(effectiveQuery.caseId);
+      if (!caseEntity) throw new ForbiddenError('Access denied to this case');
+      await this.adminAccess.assertCaseNotExcludedByPatientEmail(caseEntity);
+      await this.adminAccess.assertActorCanAccessCaseEntity(actor, caseEntity);
+    }
 
     // Use findByCaseId for case-scoped queries, scoped by hospital when applicable
     if (effectiveQuery.caseId) {
@@ -57,7 +64,10 @@ export class ListCaseHospitalContactsUseCase {
 
     // Use findByHospitalId for hospital-scoped queries
     if (effectiveQuery.hospitalId) {
-      const result = await this.chcRepo.findByHospitalId(effectiveQuery.hospitalId, effectiveQuery);
+      const result = await this.chcRepo.findByHospitalId(
+        effectiveQuery.hospitalId,
+        actor.role === 'PATIENT' ? effectiveQuery : withDefaultPatientEmailExclusions(effectiveQuery),
+      );
       return {
         data: result.data.map((e) => toCaseHospitalContactDTO(e)),
         total: result.total,

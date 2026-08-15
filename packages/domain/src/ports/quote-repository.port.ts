@@ -8,6 +8,7 @@ export interface QuoteListQuery {
   page: number;
   limit: number;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface IQuoteRepository {

@@ -26,18 +26,22 @@ export class AdminDashboardUseCase {
 
     // 2. Open tickets count — use findAll with status=OPEN and limit 1 to just get the total
     const openTicketsResult = await this.ticketRepo.findAll({
-      status: 'OPEN',
-      page: 1,
-      limit: 1,
-      patientSiteScope,
+      ...withDefaultPatientEmailExclusions({
+        status: 'OPEN',
+        page: 1,
+        limit: 1,
+        patientSiteScope,
+      }),
     });
 
     // 3. Pending orders — use findAll with status filter
     const pendingOrdersResult = await this.orderRepo.findAll({
-      status: 'PENDING_PAYMENT',
-      page: 1,
-      limit: 1,
-      patientSiteScope,
+      ...withDefaultPatientEmailExclusions({
+        status: 'PENDING_PAYMENT',
+        page: 1,
+        limit: 1,
+        patientSiteScope,
+      }),
     });
 
     // 4. Recent cases — use findMany with limit=5

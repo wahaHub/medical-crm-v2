@@ -19,7 +19,7 @@ import type { Actor } from '../../types/actor.js';
 import type { MessageDTO } from '../../dtos/conversation.dto.js';
 import { toMessageDTO } from '../../mappers/conversation.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 export interface SendMessageInput {
   content: string;
@@ -323,7 +323,7 @@ export class SendMessageUseCase {
 
   private async checkAccess(conversation: Conversation, actor: Actor): Promise<void> {
     if (actor.role === 'ADMIN') {
-      await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
+      await assertStaffCanAccessConversationCase(actor, conversation, this.adminAccess);
       return;
     }
     if (actor.role === 'HOSPITAL') {
@@ -335,6 +335,7 @@ export class SendMessageUseCase {
           'Hospital cannot access admin-patient conversations',
         );
       }
+      await assertStaffCanAccessConversationCase(actor, conversation, this.adminAccess);
       return;
     }
     if (actor.role === 'PATIENT') {

@@ -2,9 +2,12 @@ export type PatientSite = 'beauty' | 'china';
 
 export interface PatientBasicInfo {
   id: string;
+  email?: string | null;
   patientCode: string | null;
   preferredLanguage: string;
   site?: PatientSite | null;
+  phone?: string | null;
+  country?: string | null;
 }
 
 export interface PatientAuthInfo extends PatientBasicInfo {
@@ -13,6 +16,7 @@ export interface PatientAuthInfo extends PatientBasicInfo {
 
 export interface IPatientRepository {
   findById(id: string, site?: PatientSite): Promise<PatientBasicInfo | null>;
+  findByIds?(ids: string[]): Promise<PatientBasicInfo[]>;
   findByEmail(email: string, site: PatientSite): Promise<PatientBasicInfo | null>;
   findAuthByEmail(email: string, site: PatientSite): Promise<PatientAuthInfo | null>;
   createTempPatient(input: {

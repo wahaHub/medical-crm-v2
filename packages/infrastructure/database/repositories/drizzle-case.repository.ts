@@ -168,6 +168,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
       assignmentStatus: entity.assignmentStatus,
       treatmentStage: entity.treatmentStage,
       conditionSummary: entity.conditionSummary,
+      listDiseaseLabel: entity.listDiseaseLabel,
+      listCountryLabel: entity.listCountryLabel,
       structuredData: entity.structuredData,
       riskFlags: entity.riskFlags as unknown as typeof cases.$inferInsert['riskFlags'],
       priority: entity.priority,
@@ -204,6 +206,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
           assignmentStatus: values.assignmentStatus,
           treatmentStage: values.treatmentStage,
           conditionSummary: values.conditionSummary,
+          listDiseaseLabel: values.listDiseaseLabel,
+          listCountryLabel: values.listCountryLabel,
           structuredData: values.structuredData,
           riskFlags: values.riskFlags,
           priority: values.priority,
@@ -215,6 +219,13 @@ export class DrizzleCaseRepository implements ICaseRepository {
       .returning();
 
     return this.rowToEntity(rows[0]!);
+  }
+
+  async updateStructuredData(caseId: string, structuredData: Record<string, unknown>): Promise<void> {
+    await this.db
+      .update(cases)
+      .set({ structuredData })
+      .where(eq(cases.id, caseId));
   }
 
   async nextCaseNumber(): Promise<CaseNumber> {
@@ -311,6 +322,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
       assignmentStatus: (row.assignmentStatus as import('@medical-crm/domain').CaseAssignmentStatus) ?? 'UNASSIGNED',
       treatmentStage: (row.treatmentStage as import('@medical-crm/domain').CaseTreatmentStage | null) ?? null,
       conditionSummary: (row.conditionSummary as string | null) ?? null,
+      listDiseaseLabel: row.listDiseaseLabel ?? null,
+      listCountryLabel: row.listCountryLabel ?? null,
       structuredData: (row.structuredData as Record<string, unknown> | null) ?? null,
       riskFlags: (row.riskFlags as string[] | null) ?? null,
       priority: row.priority ?? null,

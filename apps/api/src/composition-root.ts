@@ -299,6 +299,8 @@ import {
   UploadPolicyRegistry,
   messageAttachmentPolicy,
   packageImagePolicy,
+  guideHeroImagePolicy,
+  guideContentImagePolicy,
   caseDocumentPolicy,
   chatbotRequestDocsPolicy,
   ticketReplyAttachmentPolicy,
@@ -776,6 +778,8 @@ export function getServices(): AppServices {
     const uploadPolicyRegistry = new UploadPolicyRegistry([
       messageAttachmentPolicy,
       packageImagePolicy,
+      guideHeroImagePolicy,
+      guideContentImagePolicy,
       caseDocumentPolicy,
       chatbotRequestDocsPolicy,
       ticketReplyAttachmentPolicy,
@@ -1165,7 +1169,7 @@ export function getServices(): AppServices {
     const batchTranslationService = new OpenAIBatchTranslationService(process.env['OPENAI_API_KEY'] ?? '');
     const translationWritebackService = new TranslationWritebackService(crmDb, mainSupabase, chinaSupabase, crmSupabase);
 
-    const listCases = new ListCasesUseCase(caseRepo);
+    const listCases = new ListCasesUseCase(caseRepo, patientRepo);
     const uploadDocument = new UploadDocumentUseCase(documentRepo, caseRepo, progressRepo, chcRepo, adminPatientSiteAccess);
     const getPatientSessionDetail = new GetPatientSessionDetailUseCase(
       conversationRepo,
@@ -1234,7 +1238,7 @@ export function getServices(): AppServices {
       resetHospitalPassword: new ResetHospitalPasswordUseCase(passwordResetTokenRepo, keycloakAdmin),
 
       createConversation: new CreateConversationUseCase(conversationRepo, caseRepo, hospitalRepo, adminPatientSiteAccess),
-      listConversations: new ListConversationsUseCase(conversationRepo),
+      listConversations: new ListConversationsUseCase(conversationRepo, adminPatientSiteAccess),
       getConversation: new GetConversationUseCase(conversationRepo, adminPatientSiteAccess),
       updateConversation: new UpdateConversationUseCase(conversationRepo, adminPatientSiteAccess),
       resumeConversationAi: new ResumeConversationAiUseCase(conversationRepo, messageRepo, txRunner, adminPatientSiteAccess),
@@ -1269,18 +1273,18 @@ export function getServices(): AppServices {
       sendReminder: new SendReminderUseCase(chcRepo, adminPatientSiteAccess),
       listCaseHospitalContacts: new ListCaseHospitalContactsUseCase(chcRepo, caseRepo, adminPatientSiteAccess),
 
-      createQuote: new CreateQuoteUseCase(quoteRepo),
-      updateQuote: new UpdateQuoteUseCase(quoteRepo),
-      sendQuote: new SendQuoteUseCase(quoteRepo, chcRepo),
+      createQuote: new CreateQuoteUseCase(quoteRepo, caseRepo, adminPatientSiteAccess),
+      updateQuote: new UpdateQuoteUseCase(quoteRepo, caseRepo, adminPatientSiteAccess),
+      sendQuote: new SendQuoteUseCase(quoteRepo, chcRepo, caseRepo, adminPatientSiteAccess),
       listQuotes: new ListQuotesUseCase(quoteRepo, caseRepo, adminPatientSiteAccess),
       getQuote: new GetQuoteUseCase(quoteRepo, caseRepo, adminPatientSiteAccess),
       compareQuotes: new CompareQuotesUseCase(quoteRepo, adminPatientSiteAccess),
-      resendQuote: new ResendQuoteUseCase(quoteRepo, chcRepo),
+      resendQuote: new ResendQuoteUseCase(quoteRepo, chcRepo, caseRepo, adminPatientSiteAccess),
       acceptQuote: new AcceptQuoteUseCase(quoteRepo, chcRepo, caseRepo, txRunner, adminPatientSiteAccess),
       rejectQuote: new RejectQuoteUseCase(quoteRepo, chcRepo, adminPatientSiteAccess),
       adminResetAssignment: new AdminResetAssignmentUseCase(chcRepo, caseRepo, txRunner, adminPatientSiteAccess),
 
-      createTicket: new CreateTicketUseCase(ticketRepo, translationTaskService),
+      createTicket: new CreateTicketUseCase(ticketRepo, translationTaskService, adminPatientSiteAccess),
       listTickets: new ListTicketsUseCase(ticketRepo),
       getTicket: new GetTicketUseCase(ticketRepo, ticketReplyRepo, adminPatientSiteAccess),
       assignTicket: new AssignTicketUseCase(ticketRepo, adminPatientSiteAccess),

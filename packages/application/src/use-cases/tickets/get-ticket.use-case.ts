@@ -19,12 +19,15 @@ export class GetTicketUseCase {
     const ticket = await this.ticketRepo.findById(id);
     if (!ticket) throw new NotFoundError(`Ticket ${id} not found`);
 
-    // Access control: patients can only see their own tickets
-    if (actor.role !== 'ADMIN' && ticket.patientId !== actor.userId) {
-      throw new ForbiddenError('Not authorized to view this ticket');
-    }
     if (actor.role === 'ADMIN') {
       await this.adminAccess?.assertActorCanAccessCaseOrPatient(actor, { caseId: ticket.caseId, patientId: ticket.patientId });
+    } else if (actor.role === 'HOSPITAL') {
+      if (!ticket.caseId) {
+        throw new ForbiddenError('Not authorized to view this ticket');
+      }
+      await this.adminAccess?.assertActorCanAccessCase(actor, ticket.caseId);
+    } else if (ticket.patientId !== actor.userId) {
+      throw new ForbiddenError('Not authorized to view this ticket');
     }
 
     const replies = await this.replyRepo.findByTicketId(id);

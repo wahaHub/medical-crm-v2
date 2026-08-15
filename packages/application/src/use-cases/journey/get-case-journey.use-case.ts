@@ -17,6 +17,7 @@ export class GetCaseJourneyUseCase {
   async execute(caseId: string, actor: Actor): Promise<CaseJourneyDTO | null> {
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
 
     // AuthZ
     if (actor.role === 'HOSPITAL') {

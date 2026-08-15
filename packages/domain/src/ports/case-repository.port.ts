@@ -41,6 +41,7 @@ export interface ICaseRepository {
   findMany(query: CaseListQuery, hospitalId?: string): Promise<PaginatedResult<Case>>;
   findByPatientId(patientId: string): Promise<Case[]>;
   save(entity: Case, tx?: unknown): Promise<Case>;
+  updateStructuredData?(caseId: string, structuredData: Record<string, unknown>): Promise<void>;
   nextCaseNumber(): Promise<CaseNumber>;
   countByFilters(filters: CaseCountFilters): Promise<CaseStats>;
 }

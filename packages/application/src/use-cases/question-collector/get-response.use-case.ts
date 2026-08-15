@@ -27,6 +27,7 @@ export class GetResponseUseCase {
         throw new ForbiddenError('Patient can only access their own case responses');
       }
     } else if (actor.role === 'HOSPITAL') {
+      await this.adminAccess?.assertCaseNotExcludedByPatientEmail(caseEntity);
       await assertHospitalCaseAccess(caseEntity, actor.hospitalId, this.chcRepo, 'Hospital can only access responses for assigned cases');
     } else if (actor.role === 'ADMIN') {
       await this.adminAccess?.assertActorCanAccessCase(actor, caseId);

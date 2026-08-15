@@ -18,6 +18,7 @@ export class AdvanceCaseStageUseCase {
     const entity = await this.caseRepo.findById(caseId);
     if (!entity) throw new NotFoundError(`Case ${caseId} not found`);
     if (actor.role === 'HOSPITAL') {
+      await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, entity);
       assertAssignedHospitalCaseAccess(entity, actor.hospitalId);
     } else {
       await this.adminAccess?.assertActorCanAccessCaseEntity(actor, entity);

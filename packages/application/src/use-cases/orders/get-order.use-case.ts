@@ -17,12 +17,15 @@ export class GetOrderUseCase {
       throw new NotFoundError(`Order ${id} not found`);
     }
 
-    // Patients can only see their own orders
-    if (actor.role === 'PATIENT' && entity.patientId !== actor.userId) {
-      throw new ForbiddenError('Not authorized');
-    }
     if (actor.role === 'ADMIN') {
       await this.adminAccess?.assertActorCanAccessCaseOrPatient(actor, { caseId: entity.caseId, patientId: entity.patientId });
+    } else if (actor.role === 'HOSPITAL') {
+      if (!entity.caseId) {
+        throw new ForbiddenError('Not authorized');
+      }
+      await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
+    } else if (actor.role === 'PATIENT' && entity.patientId !== actor.userId) {
+      throw new ForbiddenError('Not authorized');
     }
 
     return toOrderDTO(entity);

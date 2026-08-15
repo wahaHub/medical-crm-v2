@@ -6,6 +6,7 @@ import { UpdateConsultationStatusUseCase } from '../src/use-cases/consultations/
 import type { IConsultationRepository } from '@medical-crm/domain';
 import { Consultation } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
+import type { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 
 const makeConsultation = (overrides: Partial<ConstructorParameters<typeof Consultation>[0]> = {}) =>
   new Consultation({
@@ -40,6 +41,13 @@ const makeConsultation = (overrides: Partial<ConstructorParameters<typeof Consul
 const adminActor: Actor = { userId: 'admin-1', email: 'admin@test.com', role: 'ADMIN', hospitalId: null };
 const hospitalActor: Actor = { userId: 'h-1', email: 'h@test.com', role: 'HOSPITAL', hospitalId: 'hosp-1' };
 const otherHospitalActor: Actor = { userId: 'h-2', email: 'h2@test.com', role: 'HOSPITAL', hospitalId: 'hosp-2' };
+
+function makeAdminAccess(overrides: Partial<AdminPatientSiteAccessPolicy> = {}): AdminPatientSiteAccessPolicy {
+  return {
+    assertActorCanAccessCase: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as AdminPatientSiteAccessPolicy;
+}
 
 // ─── UpdateConsultationUseCase ────────────────────────────────────────────────
 
@@ -84,6 +92,23 @@ describe('UpdateConsultationUseCase', () => {
     const result = await useCase.execute('consult-1', { notes: 'Hospital notes' }, hospitalActor);
 
     expect(result.id).toBe('consult-1');
+  });
+
+  it('blocks hospital consultation updates for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new UpdateConsultationUseCase(
+      mockConsultationRepo,
+      mockTranslationTaskService as any,
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute('consult-1', { notes: 'Blocked' }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockConsultationRepo.save).not.toHaveBeenCalled();
   });
 
   it('updates scheduledAt when provided', async () => {
@@ -224,6 +249,19 @@ describe('UpdateConsultationStatusUseCase', () => {
     const result = await useCase.execute('consult-1', 'IN_PROGRESS', hospitalActor);
 
     expect(result.status).toBe('IN_PROGRESS');
+  });
+
+  it('blocks hospital consultation status updates for excluded patient email cases', async () => {
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    useCase = new UpdateConsultationStatusUseCase(mockConsultationRepo, adminAccess);
+
+    await expect(
+      useCase.execute('consult-1', 'IN_PROGRESS', hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockConsultationRepo.save).not.toHaveBeenCalled();
   });
 
   it('calls entity.start() when target status is IN_PROGRESS (sets startedAt)', async () => {

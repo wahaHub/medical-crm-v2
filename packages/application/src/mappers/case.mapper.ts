@@ -24,6 +24,7 @@ export function toCaseDTO(
   patientContact?: {
     email?: string | null;
     phone?: string | null;
+    country?: string | null;
     patientSite?: 'beauty' | 'china' | null;
   },
 ): CaseDTO {
@@ -42,10 +43,14 @@ export function toCaseDTO(
     patientEmail: patientContact?.email ?? null,
     patientPhone: patientContact?.phone ?? null,
     gender: entryProfile?.gender ?? null,
-    country: entryProfile?.country ?? entity.patientCountry,
+    country: entity.listCountryLabel == null
+      ? patientContact?.country ?? entryProfile?.country ?? entity.patientCountry
+      : normalizeListLabel(entity.listCountryLabel),
     destination: entryProfile?.destination ?? null,
     department: entryProfile?.department ?? null,
-    disease: entryProfile?.disease ?? null,
+    disease: entity.listDiseaseLabel == null
+      ? getCachedDisease(entity.structuredData ?? null) ?? entryProfile?.disease ?? entity.primaryDiagnosis
+      : normalizeListLabel(entity.listDiseaseLabel),
     treatmentTime: entryProfile?.treatmentTime ?? null,
     customHospitalRequest,
     assignedHospitalId: entity.assignedHospitalId,
@@ -100,6 +105,15 @@ function getEntryProfile(value: Record<string, unknown> | null): {
 function getCustomHospitalRequest(value: Record<string, unknown> | null): string | null {
   const patientHospitalSelection = asRecord(value?.['patientHospitalSelection']);
   return asString(patientHospitalSelection?.['customHospitalRequest']) ?? null;
+}
+
+function getCachedDisease(value: Record<string, unknown> | null): string | null {
+  const adminCaseList = asRecord(value?.['adminCaseList']);
+  return asString(adminCaseList?.['disease']) ?? null;
+}
+
+function normalizeListLabel(value: string): string | null {
+  return value.trim() || null;
 }
 
 function deriveDisplayStatus(entity: Case): string {

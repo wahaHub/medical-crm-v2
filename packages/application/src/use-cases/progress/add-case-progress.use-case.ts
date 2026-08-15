@@ -29,6 +29,7 @@ export class AddCaseProgressUseCase {
   async execute(input: AddProgressInput, actor: Actor): Promise<CaseProgressDTO> {
     const caze = await this.caseRepo.findById(input.caseId);
     if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caze);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else {

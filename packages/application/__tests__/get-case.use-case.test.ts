@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetCaseUseCase } from '../src/use-cases/cases/get-case.use-case.js';
+import { AdminPatientSiteAccessPolicy } from '../src/access/admin-patient-site-access.js';
 import type { ICaseRepository, IUserRepository, IHospitalRepository, ICHCRepository } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { Actor } from '../src/types/actor.js';
@@ -13,7 +14,7 @@ describe('GetCaseUseCase', () => {
 
   const adminActor: Actor = {
     userId: 'admin-1',
-    email: 'admin@test.com',
+    email: 'contact@medorabeauty.com',
     role: 'ADMIN',
     hospitalId: null,
   };
@@ -79,7 +80,7 @@ describe('GetCaseUseCase', () => {
     mockUserRepo = {
       findById: vi.fn().mockResolvedValue({
         id: 'patient-1',
-        email: 'jane@example.com',
+        email: 'jane@patient.test',
         phone: '+8613800000000',
         patientSite: 'beauty',
       }),
@@ -101,7 +102,13 @@ describe('GetCaseUseCase', () => {
       save: vi.fn(),
       rejectOthersByCaseExcept: vi.fn(),
     };
-    useCase = new GetCaseUseCase(mockCaseRepo, mockUserRepo, mockHospitalRepo, mockChcRepo);
+    useCase = new GetCaseUseCase(
+      mockCaseRepo,
+      mockUserRepo,
+      mockHospitalRepo,
+      mockChcRepo,
+      new AdminPatientSiteAccessPolicy(mockCaseRepo, mockUserRepo),
+    );
   });
 
   it('returns CaseDTO for ADMIN actor', async () => {
@@ -167,6 +174,19 @@ describe('GetCaseUseCase', () => {
     await expect(
       useCase.execute('nonexistent-id', adminActor),
     ).rejects.toThrow('Case nonexistent-id not found');
+  });
+
+  it('treats example.com patient cases as not found for direct detail access', async () => {
+    (mockUserRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'patient-1',
+      email: 'jane@example.com',
+      phone: '+8613800000000',
+      patientSite: 'beauty',
+    });
+
+    await expect(
+      useCase.execute('case-id-1', adminActor),
+    ).rejects.toThrow('Case case-id-1 not found');
   });
 
   it('throws NotFoundError with correct message for HOSPITAL actor on missing case', async () => {

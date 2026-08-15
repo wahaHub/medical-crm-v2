@@ -204,6 +204,29 @@ describe('ListMessagesUseCase', () => {
     expect(result.data).toHaveLength(1);
   });
 
+  it('HOSPITAL: blocks listing messages for excluded patient email cases', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation({
+      category: 'HOSPITAL_PATIENT',
+      caseId: 'case-1',
+    }));
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    const useCase = new ListMessagesUseCase(
+      mockConversationRepo,
+      mockMessageRepo,
+      makeStorage(),
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute('conv-1', { page: 1, limit: 20 }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(adminAccess.assertActorCanAccessCase).toHaveBeenCalledWith(hospitalActor, 'case-1');
+    expect(mockMessageRepo.findByConversationId).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundError if conversation does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockConversationRepo.findById = vi.fn().mockResolvedValue(null);
@@ -325,6 +348,28 @@ describe('GetMessageUseCase', () => {
     expect(result.id).toBe('msg-1');
   });
 
+  it('HOSPITAL: blocks getting a message for excluded patient email cases', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation({
+      category: 'HOSPITAL_PATIENT',
+      caseId: 'case-1',
+    }));
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    const useCase = new GetMessageUseCase(
+      mockConversationRepo,
+      mockMessageRepo,
+      makeStorage(),
+      adminAccess,
+    );
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockMessageRepo.findById).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundError if conversation does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockConversationRepo.findById = vi.fn().mockResolvedValue(null);
@@ -421,6 +466,23 @@ describe('UpdateMessageUseCase', () => {
     expect(result.content).toBe('Hospital edit');
   });
 
+  it('HOSPITAL: blocks updating a message for excluded patient email cases', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation({
+      category: 'HOSPITAL_PATIENT',
+      caseId: 'case-1',
+    }));
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    const useCase = new UpdateMessageUseCase(mockConversationRepo, mockMessageRepo, adminAccess);
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', { content: 'Hospital edit' }, hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockMessageRepo.save).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundError if conversation does not exist', async () => {
     const { mockConversationRepo, mockMessageRepo } = makeRepos();
     mockConversationRepo.findById = vi.fn().mockResolvedValue(null);
@@ -502,6 +564,23 @@ describe('DeleteMessageUseCase', () => {
     await useCase.execute('conv-1', 'msg-1', hospitalActor);
 
     expect(mockMessageRepo.delete).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('HOSPITAL: blocks deleting a message for excluded patient email cases', async () => {
+    const { mockConversationRepo, mockMessageRepo } = makeRepos(makeConversation({
+      category: 'HOSPITAL_PATIENT',
+      caseId: 'case-1',
+    }));
+    const adminAccess = makeAdminAccess({
+      assertActorCanAccessCase: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    });
+    const useCase = new DeleteMessageUseCase(mockConversationRepo, mockMessageRepo, adminAccess);
+
+    await expect(
+      useCase.execute('conv-1', 'msg-1', hospitalActor),
+    ).rejects.toThrow('Case case-1 not found');
+
+    expect(mockMessageRepo.delete).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundError if conversation does not exist', async () => {

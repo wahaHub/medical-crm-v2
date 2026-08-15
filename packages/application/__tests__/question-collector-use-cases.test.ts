@@ -502,6 +502,17 @@ describe('GetResponseUseCase', () => {
     expect(result).not.toBeNull();
   });
 
+  it('checks shared case-page exclusion before hospital gets questionnaire response', async () => {
+    const adminAccess = {
+      assertCaseNotExcludedByPatientEmail: vi.fn().mockRejectedValue(new Error('Case case-1 not found')),
+    };
+    uc = new GetResponseUseCase(qcRepo, caseRepo, undefined, adminAccess as never);
+    (caseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCase());
+
+    await expect(uc.execute('case-1', hospitalActor)).rejects.toThrow('Case case-1 not found');
+    expect(qcRepo.findResponseByCaseId).not.toHaveBeenCalled();
+  });
+
   it('hospital cannot get unassigned case response', async () => {
     (caseRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue(makeCase());
     await expect(uc.execute('case-1', otherHospitalActor))
@@ -541,6 +552,7 @@ describe('ListResponsesUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
   });
 
@@ -551,6 +563,7 @@ describe('ListResponsesUseCase', () => {
       page: 1,
       limit: 20,
       patientSiteScope: { mode: 'ONLY', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
   });
 
@@ -572,6 +585,7 @@ describe('ListResponsesUseCase', () => {
       limit: 20,
       hasRiskFlags: true,
       patientSiteScope: { mode: 'EXCLUDE', site: 'beauty' },
+      excludedPatientEmailDomains: ['example.com'],
     });
   });
 });

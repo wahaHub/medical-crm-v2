@@ -11,6 +11,7 @@ export interface TicketListQuery {
   page: number;
   limit: number;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface ISupportTicketRepository {

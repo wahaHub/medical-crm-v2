@@ -318,6 +318,20 @@ describe('GetHospitalCaseDetailUseCase', () => {
     expect(result.patient.language).toBe('zh');
   });
 
+  it('treats example.com patient cases as not found for direct hospital detail access', async () => {
+    (mockPatientRepo.findById as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'patient-1',
+      email: 'jane@example.com',
+      patientCode: 'PAT-0042',
+      preferredLanguage: 'zh',
+      site: 'beauty',
+    });
+
+    await expect(
+      useCase.execute('case-id-1', hospitalActor),
+    ).rejects.toThrow('Case case-id-1 not found');
+  });
+
   it('returns medical condition fields', async () => {
     const result = await useCase.execute('case-id-1', adminActor);
 

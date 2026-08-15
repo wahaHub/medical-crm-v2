@@ -34,14 +34,19 @@ export class UploadDocumentUseCase {
     private readonly adminAccess?: AdminPatientSiteAccessPolicy,
   ) {}
 
-  async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
-    const caze = await this.caseRepo.findById(input.caseId);
-    if (!caze) throw new NotFoundError(`Case ${input.caseId} not found`);
+  async assertCanUpload(caseId: string, actor: Actor): Promise<void> {
+    const caze = await this.caseRepo.findById(caseId);
+    if (!caze) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caze);
     if (actor.role === 'HOSPITAL') {
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else {
       await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);
     }
+  }
+
+  async execute(input: UploadDocumentInput, actor: Actor): Promise<{ documentId: string }> {
+    await this.assertCanUpload(input.caseId, actor);
 
     const docId = generateId();
     const storageKey = input.storageKey;

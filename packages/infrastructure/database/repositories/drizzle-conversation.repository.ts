@@ -90,10 +90,13 @@ export class DrizzleConversationRepository implements IConversationRepository {
     if (hospitalId) conditions.push(eq(conversations.hospitalId, hospitalId));
     const siteCondition = patientSiteScopeSql(sql`${users.patientSite}`, patientSiteScope);
     if (siteCondition) conditions.push(siteCondition);
+    const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
+    if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const needsPatientJoin = Boolean(patientSiteScope);
 
-    const [rows, countResult] = patientSiteScope
+    const [rows, countResult] = needsPatientJoin
       ? await withTransientDatabaseRetry(
           'list conversations',
           () => Promise.all([
@@ -144,6 +147,29 @@ export class DrizzleConversationRepository implements IConversationRepository {
       totalPages,
       hasMore: page < totalPages,
     };
+  }
+
+  private buildExcludedPatientEmailDomainsCondition(domains?: readonly string[]) {
+    const patterns = (domains ?? [])
+      .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+      .filter((domain) => domain.length > 0)
+      .map((domain) => `%@${domain}`);
+
+    if (patterns.length === 0) return undefined;
+
+    return sql`(
+      ${conversations.caseId} is null
+      or not exists (
+        select 1
+        from ${cases}
+        inner join ${users} on ${cases.patientId} = ${users.id}
+        where ${cases.id} = ${conversations.caseId}
+          and (${sql.join(
+            patterns.map((pattern) => sql`lower(trim(${users.email})) like ${pattern}`),
+            sql` or `,
+          )})
+      )
+    )`;
   }
 
   async findByPatientId(patientId: string, tx?: Transaction): Promise<Conversation[]> {

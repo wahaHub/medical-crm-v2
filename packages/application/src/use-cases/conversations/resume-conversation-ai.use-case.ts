@@ -4,7 +4,7 @@ import type { Actor } from '../../types/actor.js';
 import type { ConversationDTO, MessageDTO } from '../../dtos/conversation.dto.js';
 import { toConversationDTO, toMessageDTO } from '../../mappers/conversation.mapper.js';
 import type { AdminPatientSiteAccessPolicy } from '../../access/admin-patient-site-access.js';
-import { assertAdminCanAccessConversationCase } from '../../access/admin-conversation-access.js';
+import { assertStaffCanAccessConversationCase } from '../../access/admin-conversation-access.js';
 
 type TxConversationRepository = IConversationRepository & {
   findById(id: string, tx?: Transaction): Promise<Conversation | null>;
@@ -52,7 +52,7 @@ export class ResumeConversationAiUseCase {
       if (conversation.category !== 'ADMIN_PATIENT') {
         throw new ForbiddenError('Only admin-patient conversations support assistant resume');
       }
-      await assertAdminCanAccessConversationCase(actor, conversation, this.adminAccess);
+      await assertStaffCanAccessConversationCase(actor, conversation, this.adminAccess);
       if (conversation.assistantMode === 'AI_ACTIVE') {
         return {
           conversation: toConversationDTO(conversation),

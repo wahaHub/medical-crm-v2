@@ -29,6 +29,7 @@ export type {
 } from './services/email-reply-token.service.js';
 export { parseEmailReplyBody } from './services/email-reply-body-parser.js';
 export type { EmailReplyBodyInput } from './services/email-reply-body-parser.js';
+export { deriveCountryFromPhone, normalizeCountryCode } from './utils/country.js';
 export {
   AiSyncTaskService,
   buildFaqEntityKey,

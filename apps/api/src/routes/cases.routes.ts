@@ -322,6 +322,7 @@ app.openapi(sendMarketingEmailRoute, async (c) => {
     return c.json({ error: 'Case not found' }, 404);
   }
 
+  await svc.adminPatientSiteAccess.assertCaseNotExcludedByPatientEmail(caseEntity);
   await assertHospitalCaseAccess(caseEntity, actor.hospitalId, svc.chcRepo);
 
   const patient = await svc.patientRepo.findById(caseEntity.patientId);

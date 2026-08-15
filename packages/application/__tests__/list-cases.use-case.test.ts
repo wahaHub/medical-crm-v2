@@ -68,4 +68,11 @@ describe('ListCasesUseCase', () => {
     expect(result.data).toHaveLength(1);
     expect(result.data[0]!.caseNumber).toBe('CASE-2026-0001');
   });
+
+  it('uses persisted list labels without an AI call', async () => {
+    mockCase.listDiseaseLabel = 'Knee osteoarthritis';
+    mockCase.listCountryLabel = 'China';
+    const result = await useCase.execute({ page: 1, limit: 20 }, adminActor);
+    expect(result.data[0]).toMatchObject({ disease: 'Knee osteoarthritis', country: 'China' });
+  });
 });

@@ -4,6 +4,7 @@ export interface CHCListQuery {
   caseId?: string;
   hospitalId?: string;
   subStatus?: string;
+  excludedPatientEmailDomains?: readonly string[];
   page: number;
   limit: number;
 }

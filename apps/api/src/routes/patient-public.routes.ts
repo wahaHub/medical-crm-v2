@@ -12,6 +12,7 @@ import { isDebugBypassAuthorized } from '../middleware/debug-bypass.js';
 import { initOnboardingSchema, matchHospitalsSchema } from '@medical-crm/validation';
 import { seedWidgetStarterMessage } from './patient-widget-starter.js';
 import { PatientSiteContextError, resolvePatientSiteContext } from '../patient-site-context.js';
+import { normalizeCountryCode } from '@medical-crm/application';
 
 const app = new Hono();
 const PATIENT_SESSION_COOKIE = 'patient_session';
@@ -237,11 +238,14 @@ app.post('/onboarding/init', rateLimitByIp(ONBOARDING_RATE_LIMIT, {
   }
 
   const { registerToken: _registerToken, ...onboardingInput } = body;
+  const ipCountry = normalizeCountryCode(c.req.header('cf-ipcountry'));
   let result;
   try {
     result = await initOnboarding.execute({
       ...onboardingInput,
       site,
+      country: onboardingInput.country ?? ipCountry ?? undefined,
+      ipCountry: ipCountry ?? undefined,
       authenticatedPatientId,
       verifiedRegisterEmail,
     });

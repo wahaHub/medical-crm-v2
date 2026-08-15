@@ -35,7 +35,7 @@ export class UpdateConsultationUseCase {
     if (actor.role === 'HOSPITAL' && entity.hospitalId !== actor.hospitalId) {
       throw new ForbiddenError('Access denied to this consultation');
     }
-    if (actor.role === 'ADMIN') {
+    if (actor.role === 'ADMIN' || actor.role === 'HOSPITAL') {
       await this.adminAccess?.assertActorCanAccessCase(actor, entity.caseId);
     }
 

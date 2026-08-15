@@ -21,6 +21,7 @@
     "@medical-crm/infrastructure": "workspace:*",
     "@medical-crm/utils": "workspace:*",
     "@medical-crm/validation": "workspace:*",
+    "drizzle-orm": "^0.45.1",
     "hono": "^4.7.0",
     "hono-rate-limiter": "^0.4.0",
     "stripe": "^22.3.1"

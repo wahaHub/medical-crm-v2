@@ -31,7 +31,7 @@ export class CreateConversationUseCase {
     if (input.category === 'HOSPITAL_PATIENT' && (!input.caseId || !hospitalId)) {
       throw new ValidationError('HOSPITAL_PATIENT conversations require both caseId and hospitalId');
     }
-    if (actor.role === 'ADMIN' && input.caseId) {
+    if ((actor.role === 'ADMIN' || actor.role === 'HOSPITAL') && input.caseId) {
       await this.adminAccess?.assertActorCanAccessCase(actor, input.caseId);
     }
 

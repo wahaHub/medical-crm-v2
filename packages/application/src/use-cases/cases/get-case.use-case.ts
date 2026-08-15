@@ -25,6 +25,7 @@ export class GetCaseUseCase {
     } else {
       await this.adminAccess?.assertActorCanAccessCaseEntity(actor, entity);
     }
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, entity);
 
     // Look up hospital name
     let hospitalName: string | undefined;
@@ -32,14 +33,17 @@ export class GetCaseUseCase {
       try {
         const hospital = await this.hospitalRepo.findById(entity.assignedHospitalId);
         hospitalName = hospital?.name;
-      } catch { /* ignore */ }
+      } catch (error) {
+        if (error instanceof NotFoundError) throw error;
+        /* ignore */
+      }
     }
 
     // Look up patient contact info
-    let patientContact: {
-      email?: string | null;
-      phone?: string | null;
-      patientSite?: 'beauty' | 'china' | null;
+  let patientContact: {
+    email?: string | null;
+    phone?: string | null;
+    patientSite?: 'beauty' | 'china' | null;
     } | undefined;
     if (this.userRepo) {
       try {

@@ -29,6 +29,7 @@ export class CreateMilestoneUseCase {
 
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
 
     if (actor.role === 'HOSPITAL') {
       assertAssignedHospitalCaseAccess(caseEntity, actor.hospitalId, 'Hospital can only create milestones for assigned cases');

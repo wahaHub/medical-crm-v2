@@ -10,6 +10,7 @@ export interface ConversationListQuery {
   category?: ConversationCategory;
   caseId?: string;
   patientSiteScope?: PatientSiteAccessScope;
+  excludedPatientEmailDomains?: string[];
 }
 
 export interface IConversationRepository {

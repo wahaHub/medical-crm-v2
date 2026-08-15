@@ -30,6 +30,8 @@ export interface CaseProps {
   assignmentStatus: CaseAssignmentStatus;
   treatmentStage: CaseTreatmentStage | null;
   conditionSummary: string | null;
+  listDiseaseLabel?: string | null;
+  listCountryLabel?: string | null;
   structuredData: Record<string, unknown> | null;
   riskFlags: string[] | null;
   priority: string | null;
@@ -67,6 +69,8 @@ export class Case {
   assignmentStatus: CaseAssignmentStatus;
   treatmentStage: CaseTreatmentStage | null;
   conditionSummary: string | null;
+  listDiseaseLabel: string | null;
+  listCountryLabel: string | null;
   structuredData: Record<string, unknown> | null;
   riskFlags: string[] | null;
   priority: string | null;
@@ -99,6 +103,8 @@ export class Case {
     this.assignmentStatus = props.assignmentStatus;
     this.treatmentStage = props.treatmentStage;
     this.conditionSummary = props.conditionSummary;
+    this.listDiseaseLabel = props.listDiseaseLabel ?? null;
+    this.listCountryLabel = props.listCountryLabel ?? null;
     this.structuredData = props.structuredData;
     this.riskFlags = props.riskFlags;
     this.priority = props.priority;

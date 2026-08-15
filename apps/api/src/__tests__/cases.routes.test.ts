@@ -22,6 +22,7 @@ const mockServices = {
   getCaseProgress: { execute: vi.fn() },
   addCaseProgress: { execute: vi.fn() },
   caseRepo: { findById: vi.fn() },
+  adminPatientSiteAccess: { assertCaseNotExcludedByPatientEmail: vi.fn() },
   patientRepo: { findById: vi.fn() },
   createConversation: { execute: vi.fn() },
   notifyPatientOfCaseUpdate: { execute: vi.fn() },
@@ -94,6 +95,7 @@ describe('Cases routes', () => {
       patientId: 'patient-1',
       assignedHospitalId: 'hospital-1',
     });
+    mockServices.adminPatientSiteAccess.assertCaseNotExcludedByPatientEmail.mockResolvedValue(undefined);
     mockServices.patientRepo.findById.mockResolvedValue({
       id: 'patient-1',
       site: 'beauty',

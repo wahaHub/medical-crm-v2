@@ -38,6 +38,7 @@ export class SaveCaseDiagnosisUseCase {
       throw new NotFoundError(`Case ${caseId} not found`);
     }
     if (actor.role === 'HOSPITAL') {
+      await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caze);
       await assertHospitalCaseAccess(caze, actor.hospitalId, this.chcRepo);
     } else {
       await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caze);

@@ -29,6 +29,7 @@ export class UpdateCaseJourneyUseCase {
 
     const caseEntity = await this.caseRepo.findById(caseId);
     if (!caseEntity) throw new NotFoundError(`Case ${caseId} not found`);
+    await this.adminAccess?.assertStaffCaseNotExcludedByPatientEmail(actor, caseEntity);
     await this.adminAccess?.assertActorCanAccessCaseEntity(actor, caseEntity);
 
     let journey = await this.journeyRepo.findJourneyByCaseId(caseId);

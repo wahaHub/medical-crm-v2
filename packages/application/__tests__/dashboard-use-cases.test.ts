@@ -359,8 +359,20 @@ describe('AdminDashboardUseCase', () => {
       patientSiteScope: expectedScope,
       excludedPatientEmailDomains: ['example.com'],
     });
-    expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
-    expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({
+      status: 'OPEN',
+      page: 1,
+      limit: 1,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(orderRepo.findAll).toHaveBeenCalledWith({
+      status: 'PENDING_PAYMENT',
+      page: 1,
+      limit: 1,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 
   it('scopes all admin dashboard case-derived counts for beauty admins', async () => {
@@ -390,8 +402,20 @@ describe('AdminDashboardUseCase', () => {
       patientSiteScope: expectedScope,
       excludedPatientEmailDomains: ['example.com'],
     });
-    expect(ticketRepo.findAll).toHaveBeenCalledWith({ status: 'OPEN', page: 1, limit: 1, patientSiteScope: expectedScope });
-    expect(orderRepo.findAll).toHaveBeenCalledWith({ status: 'PENDING_PAYMENT', page: 1, limit: 1, patientSiteScope: expectedScope });
+    expect(ticketRepo.findAll).toHaveBeenCalledWith({
+      status: 'OPEN',
+      page: 1,
+      limit: 1,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(orderRepo.findAll).toHaveBeenCalledWith({
+      status: 'PENDING_PAYMENT',
+      page: 1,
+      limit: 1,
+      patientSiteScope: expectedScope,
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 
   it('throws ForbiddenError when non-admin accesses admin dashboard', async () => {
@@ -471,6 +495,16 @@ describe('HospitalDashboardUseCase', () => {
       hospitalId: 'hospital-1',
       excludedPatientEmailDomains: ['example.com'],
     }, 'hospital-1');
+    expect(quoteRepo.findByHospitalId).toHaveBeenCalledWith('hospital-1', {
+      status: 'PENDING',
+      page: 1,
+      limit: 1,
+      excludedPatientEmailDomains: ['example.com'],
+    });
+    expect(consultationRepo.countByFilters).toHaveBeenCalledWith({
+      hospitalId: 'hospital-1',
+      excludedPatientEmailDomains: ['example.com'],
+    });
   });
 
   it('throws ForbiddenError when non-hospital accesses hospital dashboard', async () => {

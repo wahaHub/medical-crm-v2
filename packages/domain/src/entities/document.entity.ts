@@ -13,6 +13,8 @@ export interface DocumentProps {
   language: string;
   isTranslated: boolean;
   status: DocumentStatus;
+  /** Case Lifecycle Phase 1: optional treatment-stage tag for archiving materials by stage */
+  stageTag?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,6 +32,7 @@ export class Document {
   language: string;
   isTranslated: boolean;
   status: DocumentStatus;
+  stageTag: string | null;
   createdAt: Date;
   updatedAt: Date;
 
@@ -46,6 +49,7 @@ export class Document {
     this.language = props.language;
     this.isTranslated = props.isTranslated;
     this.status = props.status;
+    this.stageTag = props.stageTag ?? null;
     this.createdAt = props.createdAt;
     this.updatedAt = props.updatedAt;
   }

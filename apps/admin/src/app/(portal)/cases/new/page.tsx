@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader, Button } from '@medical-crm/ui';
-import { createCase } from '@/actions/case-actions';
+import { createManualCase } from '@/actions/case-actions';
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -20,42 +20,62 @@ const LANGUAGE_OPTIONS = [
   { value: 'vi', label: 'Vietnamese (Tiếng Việt)' },
 ];
 
+const SOURCE_CHANNEL_OPTIONS = [
+  { value: 'MANUAL', label: 'Manual (in-person / other)' },
+  { value: 'EMAIL', label: 'Email' },
+  { value: 'WHATSAPP', label: 'WhatsApp' },
+  { value: 'PHONE_CALL', label: 'Phone Call' },
+  { value: 'REFERRAL', label: 'Referral' },
+];
+
+const PATIENT_SITE_OPTIONS = [
+  { value: 'china', label: 'China (medical)' },
+  { value: 'beauty', label: 'Beauty' },
+];
+
+const inputClassName =
+  'w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100';
+
 export default function NewCasePage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   // Form state
-  const [patientId, setPatientId] = useState('');
   const [patientName, setPatientName] = useState('');
+  const [sourceChannel, setSourceChannel] = useState('MANUAL');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [patientSite, setPatientSite] = useState('china');
   const [patientCountry, setPatientCountry] = useState('');
   const [patientLanguage, setPatientLanguage] = useState('en');
-  const [primaryDiagnosis, setPrimaryDiagnosis] = useState('');
-  const [symptomsRaw, setSymptomsRaw] = useState('');
-  const [medicalHistory, setMedicalHistory] = useState('');
+  const [conditionSummary, setConditionSummary] = useState('');
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    const symptoms = symptomsRaw
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    if (!email.trim() && !phone.trim() && !whatsapp.trim()) {
+      setError('Provide at least one contact method: email, phone, or WhatsApp.');
+      return;
+    }
 
     const payload: Record<string, unknown> = {
-      patientId: patientId.trim(),
       patientName: patientName.trim(),
+      sourceChannel,
+      patientSite,
       patientLanguage: patientLanguage || 'en',
     };
+    if (email.trim()) payload.email = email.trim();
+    if (phone.trim()) payload.phone = phone.trim();
+    if (whatsapp.trim()) payload.whatsapp = whatsapp.trim();
     if (patientCountry.trim()) payload.patientCountry = patientCountry.trim();
-    if (primaryDiagnosis.trim()) payload.primaryDiagnosis = primaryDiagnosis.trim();
-    if (symptoms.length > 0) payload.symptoms = symptoms;
-    if (medicalHistory.trim()) payload.medicalHistory = medicalHistory.trim();
+    if (conditionSummary.trim()) payload.conditionSummary = conditionSummary.trim();
 
     startTransition(async () => {
       try {
-        const result = await createCase(payload);
+        const result = await createManualCase(payload);
         router.push(`/cases/${result.id}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to create case');
@@ -76,28 +96,16 @@ export default function NewCasePage() {
 
       <div className="mx-auto max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
+          <p className="text-sm text-slate-500">
+            Register a patient who reached out outside the website. If the email matches an existing
+            patient, the case is attached to that profile; otherwise a new patient record is created.
+          </p>
+
           {error && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           )}
-
-          {/* Patient ID */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="patientId">
-              Patient ID <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="patientId"
-              type="text"
-              required
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              placeholder="UUID of the patient record"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
-            <p className="text-xs text-slate-500">Must be a valid UUID from the patient database.</p>
-          </div>
 
           {/* Patient Name */}
           <div className="space-y-1.5">
@@ -112,8 +120,87 @@ export default function NewCasePage() {
               value={patientName}
               onChange={(e) => setPatientName(e.target.value)}
               placeholder="Full name of the patient"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className={inputClassName}
             />
+          </div>
+
+          {/* Source Channel */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700" htmlFor="sourceChannel">
+              Source Channel <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="sourceChannel"
+              value={sourceChannel}
+              onChange={(e) => setSourceChannel(e.target.value)}
+              className={inputClassName}
+            >
+              {SOURCE_CHANNEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-slate-500">How the patient first contacted you.</p>
+          </div>
+
+          {/* Contact methods — at least one required */}
+          <fieldset className="space-y-4 rounded-2xl border border-slate-200 p-4">
+            <legend className="px-1 text-sm font-medium text-slate-700">
+              Contact Methods <span className="text-red-500">*</span>
+            </legend>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-slate-500" htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                maxLength={255}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="patient@example.com"
+                className={inputClassName}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-slate-500" htmlFor="phone">Phone</label>
+              <input
+                id="phone"
+                type="tel"
+                maxLength={20}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+86 ..."
+                className={inputClassName}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-medium text-slate-500" htmlFor="whatsapp">WhatsApp</label>
+              <input
+                id="whatsapp"
+                type="text"
+                maxLength={50}
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="WhatsApp number, e.g. +62 ..."
+                className={inputClassName}
+              />
+            </div>
+            <p className="text-xs text-slate-500">At least one of email, phone, or WhatsApp is required.</p>
+          </fieldset>
+
+          {/* Patient Site */}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-slate-700" htmlFor="patientSite">
+              Patient Site
+            </label>
+            <select
+              id="patientSite"
+              value={patientSite}
+              onChange={(e) => setPatientSite(e.target.value)}
+              className={inputClassName}
+            >
+              {PATIENT_SITE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
 
           {/* Patient Country */}
@@ -127,8 +214,8 @@ export default function NewCasePage() {
               maxLength={100}
               value={patientCountry}
               onChange={(e) => setPatientCountry(e.target.value)}
-              placeholder="e.g. United States, China, UAE"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              placeholder="e.g. United States, Indonesia, UAE"
+              className={inputClassName}
             />
           </div>
 
@@ -141,7 +228,7 @@ export default function NewCasePage() {
               id="patientLanguage"
               value={patientLanguage}
               onChange={(e) => setPatientLanguage(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className={inputClassName}
             >
               {LANGUAGE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -149,49 +236,19 @@ export default function NewCasePage() {
             </select>
           </div>
 
-          {/* Primary Diagnosis */}
+          {/* Condition Summary */}
           <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="primaryDiagnosis">
-              Primary Diagnosis
-            </label>
-            <input
-              id="primaryDiagnosis"
-              type="text"
-              value={primaryDiagnosis}
-              onChange={(e) => setPrimaryDiagnosis(e.target.value)}
-              placeholder="e.g. Rhinoplasty, Cardiac surgery"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
-          </div>
-
-          {/* Symptoms */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="symptoms">
-              Symptoms
-            </label>
-            <input
-              id="symptoms"
-              type="text"
-              value={symptomsRaw}
-              onChange={(e) => setSymptomsRaw(e.target.value)}
-              placeholder="Comma-separated: chest pain, shortness of breath"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
-            <p className="text-xs text-slate-500">Separate multiple symptoms with commas.</p>
-          </div>
-
-          {/* Medical History */}
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="medicalHistory">
-              Medical History
+            <label className="block text-sm font-medium text-slate-700" htmlFor="conditionSummary">
+              Initial Condition Summary
             </label>
             <textarea
-              id="medicalHistory"
+              id="conditionSummary"
               rows={4}
-              value={medicalHistory}
-              onChange={(e) => setMedicalHistory(e.target.value)}
-              placeholder="Relevant past medical history, allergies, current medications..."
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+              maxLength={5000}
+              value={conditionSummary}
+              onChange={(e) => setConditionSummary(e.target.value)}
+              placeholder="Brief description of the patient's condition or request..."
+              className={`${inputClassName} resize-none`}
             />
           </div>
 

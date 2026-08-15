@@ -171,6 +171,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
     email: string;
     name: string;
     phone?: string;
+    whatsapp?: string;
     preferredLanguage: string;
     site: PatientSite;
   }): Promise<PatientBasicInfo> {
@@ -188,8 +189,12 @@ export class DrizzlePatientRepository implements IPatientRepository {
       ? { ...baseValues, phone: input.phone.trim() }
       : baseValues;
 
+    const withContact = input.whatsapp?.trim()
+      ? { ...withPhone, whatsapp: input.whatsapp.trim() }
+      : withPhone;
+
     try {
-      const [row] = await this.db.insert(users).values(withPhone).returning({
+      const [row] = await this.db.insert(users).values(withContact).returning({
         id: users.id,
         patientCode: users.patientCode,
         preferredLanguage: users.preferredLanguage,
@@ -252,6 +257,31 @@ export class DrizzlePatientRepository implements IPatientRepository {
       }
       return created;
     }
+  }
+
+  async createOfflinePatient(input: {
+    name: string;
+    phone?: string;
+    whatsapp?: string;
+    preferredLanguage: string;
+    site: PatientSite;
+  }): Promise<PatientBasicInfo> {
+    const [row] = await this.db.insert(users).values({
+      email: null,
+      name: input.name,
+      role: 'PATIENT' as const,
+      patientSite: input.site,
+      preferredLanguage: input.preferredLanguage,
+      status: 'active' as const,
+      phone: input.phone?.trim() || null,
+      whatsapp: input.whatsapp?.trim() || null,
+      updatedAt: new Date().toISOString(),
+    }).returning({
+      id: users.id,
+      patientCode: users.patientCode,
+      preferredLanguage: users.preferredLanguage,
+    });
+    return row!;
   }
 
   async updatePasswordHash(userId: string, hash: string): Promise<void> {

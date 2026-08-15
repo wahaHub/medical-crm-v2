@@ -4,6 +4,8 @@ import { assertHospitalCaseAccess, toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import {
   createCaseSchema,
+  createManualCaseSchema,
+  addCaseNoteSchema,
   updateCaseSchema,
   saveCaseDiagnosisSchema,
   assignCaseSchema,
@@ -55,6 +57,30 @@ app.openapi(createCaseRoute, async (c) => {
   const actor = toActor(c.get('session') as Session);
   const svc = getServices();
   const result = await svc.createCase.execute(body, actor);
+  return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 1a. POST /api/v2/cases/manual — CreateManualCase (ADMIN only)
+//     NOTE: must be registered before /{id} routes to avoid matching "manual" as id
+// ---------------------------------------------------------------------------
+const createManualCaseRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/manual',
+  request: {
+    body: {
+      content: { 'application/json': { schema: createManualCaseSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Manually created case' } },
+});
+
+app.openapi(createManualCaseRoute, async (c) => {
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.createManualCase.execute(body, actor);
   return c.json(result, 201);
 });
 
@@ -215,6 +241,31 @@ app.openapi(advanceCaseStageRoute, async (c) => {
   const svc = getServices();
   const result = await svc.advanceCaseStage.execute(id, treatmentStage, actor);
   return c.json(result, 200);
+});
+
+// ---------------------------------------------------------------------------
+// 7a. POST /api/v2/cases/:id/notes — AddCaseNote (ADMIN only, ADMIN_NOTE event)
+// ---------------------------------------------------------------------------
+const addCaseNoteRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/{id}/notes',
+  request: {
+    params: caseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: addCaseNoteSchema } },
+      required: true,
+    },
+  },
+  responses: { 201: { description: 'Case note recorded on the timeline' } },
+});
+
+app.openapi(addCaseNoteRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const { note } = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.addCaseNoteEvent.execute(id, note, actor);
+  return c.json(result, 201);
 });
 
 // ---------------------------------------------------------------------------

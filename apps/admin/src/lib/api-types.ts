@@ -38,6 +38,7 @@ export interface CaseSummary {
   assignedHospitalId?: string | null;
   hospitalName?: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CaseProgressItem {

@@ -208,6 +208,7 @@ export class GetHospitalCaseDetailUseCase {
           sensitivity: 'PHI_HIGH',
           language: message.originalLanguage ?? fallbackLanguage,
           isTranslated: false,
+          stageTag: null,
           downloadUrl,
           createdAt: message.createdAt.toISOString(),
         });

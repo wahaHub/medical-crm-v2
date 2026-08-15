@@ -69,6 +69,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
     if (effectiveHospitalId) conditions.push(this.buildHospitalAccessCondition(effectiveHospitalId));
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
+    if (query.patientSite) conditions.push(eq(users.patientSite, query.patientSite));
     const excludedEmailCondition = this.buildExcludedPatientEmailDomainsCondition(query.excludedPatientEmailDomains);
     if (excludedEmailCondition) conditions.push(excludedEmailCondition);
 
@@ -173,6 +174,10 @@ export class DrizzleCaseRepository implements ICaseRepository {
       lastEventAt: entity.lastEventAt?.toISOString() ?? null,
       aiSummaryStatus: entity.aiSummaryStatus,
       questionCollectorTemplateId: entity.questionCollectorTemplateId,
+      // undefined → column omitted on insert so the DB default (WEB_ONBOARDING) applies;
+      // both fields are immutable after creation and intentionally excluded from the upsert set below.
+      sourceChannel: entity.sourceChannel ?? undefined,
+      createdByAdminId: entity.createdByAdminId ?? undefined,
     };
 
     const rows = await this.conn(tx)
@@ -312,6 +317,8 @@ export class DrizzleCaseRepository implements ICaseRepository {
       lastEventAt: row.lastEventAt ? new Date(row.lastEventAt) : null,
       aiSummaryStatus: (row.aiSummaryStatus as import('@medical-crm/domain').AISummaryStatusType) ?? 'PENDING',
       questionCollectorTemplateId: row.questionCollectorTemplateId ?? null,
+      sourceChannel: (row.sourceChannel as import('@medical-crm/domain').CaseSourceChannel | null) ?? null,
+      createdByAdminId: row.createdByAdminId ?? null,
     });
   }
 }

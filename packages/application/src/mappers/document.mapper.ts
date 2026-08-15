@@ -11,6 +11,7 @@ export function toDocumentDTO(entity: Document, signedUrl: string): DocumentDTO 
     sensitivity: entity.sensitivity,
     language: entity.language,
     isTranslated: entity.isTranslated,
+    stageTag: entity.stageTag,
     downloadUrl: signedUrl,
     createdAt: entity.createdAt.toISOString(),
   };

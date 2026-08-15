@@ -10,7 +10,9 @@ import { users } from '../schema/index.js';
 function mapRecipient(
   row: {
     id: string;
-    email: string;
+    // users.email became nullable in Case Lifecycle Phase 1 (offline patients);
+    // notification recipients are admins/hospitals, which always have an email.
+    email: string | null;
     name: string;
     role: 'ADMIN' | 'HOSPITAL' | 'PATIENT';
     preferredLanguage: string;
@@ -21,7 +23,7 @@ function mapRecipient(
 ): NotificationRecipient {
   return {
     id: row.id,
-    email: row.email,
+    email: row.email ?? '',
     name: row.name,
     role: row.role,
     preferredLanguage: row.preferredLanguage,

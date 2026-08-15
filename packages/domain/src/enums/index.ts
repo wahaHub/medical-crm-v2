@@ -38,6 +38,9 @@ export type MessageTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED
 // Phase 2: Case Model Realignment
 export type CaseAssignmentStatus = 'UNASSIGNED' | 'ASSIGNED';
 export type CaseTreatmentStage = 'CONFIRMED' | 'IN_TREATMENT' | 'POST_TREATMENT' | 'COMPLETED' | 'FOLLOW_UP';
+
+// Case Lifecycle Phase 1: how the case entered the system
+export type CaseSourceChannel = 'WEB_ONBOARDING' | 'MANUAL' | 'EMAIL' | 'WHATSAPP' | 'PHONE_CALL' | 'REFERRAL';
 export type AISummaryStatusType = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 // Phase 2 M1: CHC + Quotes
@@ -56,9 +59,17 @@ export type CaseEventType =
   | 'ORDER_PLACED' | 'ORDER_STATUS_CHANGED'
   | 'MILESTONE_ADDED' | 'MILESTONE_UPDATED' | 'JOURNEY_UPDATED'
   | 'TICKET_CREATED' | 'TICKET_RESOLVED'
-  | 'AI_SUMMARY_GENERATED';
+  | 'AI_SUMMARY_GENERATED'
+  | 'ADMIN_NOTE';
 
 export type ActorType = 'PATIENT' | 'HOSPITAL' | 'ADMIN' | 'SYSTEM';
+
+// Audit log events (mirrors the AuditEvent pgEnum)
+export type AuditEvent =
+  | 'DOC_UPLOAD' | 'DOC_VIEW' | 'DOC_DOWNLOAD' | 'DOC_DELETE'
+  | 'DOC_SHARE_LINK_CREATED' | 'DOC_SHARE_LINK_USED'
+  | 'CASE_CREATED' | 'CASE_ASSIGNED' | 'CASE_REVOKED' | 'CASE_STATUS_CHANGED'
+  | 'USER_LOGIN' | 'USER_LOGOUT';
 
 // Phase 2 M3: Support Tickets
 export type TicketType = 'ACCOUNT_ISSUES' | 'PAYMENT_PROBLEMS' | 'HOSPITAL_COMMUNICATION' | 'DOCUMENT_HELP' | 'VISA_TRAVEL' | 'GENERAL_QUESTIONS' | 'FEEDBACK' | 'AI_ESCALATION';

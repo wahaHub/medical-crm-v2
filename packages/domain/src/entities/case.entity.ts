@@ -1,5 +1,5 @@
 import type { CaseStatus, CaseStage, RiskLevel } from '../enums/index.js';
-import type { CaseAssignmentStatus, CaseTreatmentStage, AISummaryStatusType } from '../enums/index.js';
+import type { CaseAssignmentStatus, CaseTreatmentStage, AISummaryStatusType, CaseSourceChannel } from '../enums/index.js';
 import type { CaseNumber } from '../value-objects/case-number.js';
 import { ValidationError } from '@medical-crm/utils';
 import { STATUS_TRANSITIONS } from '../state-machine/case-status-transitions.js';
@@ -36,6 +36,10 @@ export interface CaseProps {
   lastEventAt: Date | null;
   aiSummaryStatus: AISummaryStatusType;
   questionCollectorTemplateId: string | null;
+  /** Case Lifecycle Phase 1: how the case entered the system (DB default WEB_ONBOARDING) */
+  sourceChannel?: CaseSourceChannel | null;
+  /** Case Lifecycle Phase 1: admin who manually created the case (NULL for website flow) */
+  createdByAdminId?: string | null;
 }
 
 export class Case {
@@ -69,6 +73,8 @@ export class Case {
   lastEventAt: Date | null;
   aiSummaryStatus: AISummaryStatusType;
   questionCollectorTemplateId: string | null;
+  sourceChannel: CaseSourceChannel | null;
+  createdByAdminId: string | null;
 
   constructor(props: CaseProps) {
     this.id = props.id;
@@ -99,6 +105,8 @@ export class Case {
     this.lastEventAt = props.lastEventAt;
     this.aiSummaryStatus = props.aiSummaryStatus;
     this.questionCollectorTemplateId = props.questionCollectorTemplateId;
+    this.sourceChannel = props.sourceChannel ?? null;
+    this.createdByAdminId = props.createdByAdminId ?? null;
   }
 
   setAiAnalysis(summary: string, language: string, risk: RiskLevel): void {

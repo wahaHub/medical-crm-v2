@@ -17,6 +17,9 @@ export type {
   CaseAssignmentStatus, CaseTreatmentStage, AISummaryStatusType,
 } from './enums/index.js';
 
+// Case Lifecycle Phase 1 Enums
+export type { CaseSourceChannel, AuditEvent } from './enums/index.js';
+
 // Phase 1 State machines
 export { STATUS_TRANSITIONS } from './state-machine/case-status-transitions.js';
 export { STAGE_ORDER } from './state-machine/case-stage-order.js';
@@ -80,6 +83,7 @@ export type { IDocumentRepository } from './ports/document-repository.port.js';
 export type { ICaseProgressRepository } from './ports/case-progress-repository.port.js';
 export type { IHospitalRepository, HospitalInfo, MatchedHospital, FindMatchingHospitalsInput } from './ports/hospital-repository.port.js';
 export type { IPatientRepository, PatientBasicInfo, PatientAuthInfo, PatientSite } from './ports/patient-repository.port.js';
+export type { IAuditLogRepository, AuditLogEntry } from './ports/audit-log-repository.port.js';
 export type { IStorageService, PresignedUploadResult, StorageBackend, IStorageAdapterRegistry } from './ports/storage-service.port.js';
 
 // Phase 2BC Ports — Hospital

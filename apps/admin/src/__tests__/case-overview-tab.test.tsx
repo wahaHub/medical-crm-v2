@@ -80,6 +80,10 @@ vi.mock('@/queries/use-hospitals', () => ({
   useHospitals: mockUseHospitals,
 }));
 
+vi.mock('@/components/case-stage-stepper', () => ({
+  CaseStageStepper: () => null,
+}));
+
 vi.mock('@/actions/case-actions', () => ({
   addCaseNote: vi.fn(),
   initCaseDocumentUpload: vi.fn(),

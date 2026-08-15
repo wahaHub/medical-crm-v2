@@ -97,7 +97,8 @@ export class DrizzleUserRepository implements IUserRepository {
     const row = rows[0]!;
     return {
       id: row.id,
-      email: row.email,
+      // users.email is nullable since Case Lifecycle Phase 1; admin/hospital profiles always have one
+      email: row.email ?? '',
       name: row.name,
       role: row.role,
       phone: row.phone ?? null,
@@ -131,7 +132,8 @@ export class DrizzleUserRepository implements IUserRepository {
     const row = rows[0]!;
     return {
       id: row.id,
-      email: row.email,
+      // findByEmail matched on a non-null email, so it is always present here
+      email: row.email ?? '',
       name: row.name,
       role: row.role,
       phone: row.phone ?? null,
@@ -164,7 +166,9 @@ export class DrizzleUserRepository implements IUserRepository {
       .where(eq(users.role, 'ADMIN'))
       .orderBy(asc(users.email));
 
-    return rows.map((row) => row.email);
+    return rows
+      .map((row) => row.email)
+      .filter((email): email is string => email !== null);
   }
 
   async listHospitalEmails(hospitalId: string): Promise<string[]> {
@@ -174,6 +178,8 @@ export class DrizzleUserRepository implements IUserRepository {
       .where(and(eq(users.role, 'HOSPITAL'), eq(users.hospitalId, hospitalId)))
       .orderBy(asc(users.email));
 
-    return rows.map((row) => row.email);
+    return rows
+      .map((row) => row.email)
+      .filter((email): email is string => email !== null);
   }
 }

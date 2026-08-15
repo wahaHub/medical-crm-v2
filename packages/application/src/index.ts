@@ -258,6 +258,9 @@ export { AssignCaseUseCase } from './use-cases/cases/assign-case.use-case.js';
 export { UpdateCaseStatusUseCase } from './use-cases/cases/update-case-status.use-case.js';
 export { AdvanceCaseStageUseCase } from './use-cases/cases/advance-case-stage.use-case.js';
 export { GetCaseStatsUseCase } from './use-cases/cases/get-case-stats.use-case.js';
+export { CreateManualCaseUseCase } from './use-cases/cases/create-manual-case.use-case.js';
+export type { CreateManualCaseInput } from './use-cases/cases/create-manual-case.use-case.js';
+export { AddCaseNoteUseCase } from './use-cases/cases/add-case-note.use-case.js';
 
 // Use Cases — Documents
 export { UploadDocumentUseCase } from './use-cases/documents/upload-document.use-case.js';

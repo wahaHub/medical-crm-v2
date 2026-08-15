@@ -3,6 +3,7 @@ export { DrizzleDocumentRepository } from './drizzle-document.repository.js';
 export { DrizzleCaseProgressRepository } from './drizzle-case-progress.repository.js';
 export { DrizzleHospitalRepository } from './drizzle-hospital.repository.js';
 export { DrizzlePatientRepository } from './drizzle-patient.repository.js';
+export { DrizzleAuditLogRepository } from './drizzle-audit-log.repository.js';
 export { DrizzleHospitalManagementRepository } from './drizzle-hospital-management.repository.js';
 export { DrizzleRegistrationTokenRepository } from './drizzle-registration-token.repository.js';
 export { DrizzleHospitalPasswordResetTokenRepository } from './drizzle-hospital-password-reset-token.repository.js';

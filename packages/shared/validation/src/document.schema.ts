@@ -13,6 +13,8 @@ export const uploadDocumentSchema = z.object({
   documentType: documentTypeSchema,
   sensitivity: sensitivitySchema.default('PHI_HIGH'),
   language: z.string().max(10).default('en'),
+  // Case Lifecycle Phase 1: optional treatment-stage tag; omitting it keeps current behavior
+  stageTag: z.string().trim().min(1).max(50).optional(),
 });
 
 export type UploadDocumentInput = z.infer<typeof uploadDocumentSchema>;

@@ -21,6 +21,7 @@ export const sensitivity = pgEnum("Sensitivity", ['PHI_HIGH', 'PHI_MED', 'PHI_LO
 export const userRole = pgEnum("UserRole", ['ADMIN', 'HOSPITAL', 'PATIENT'])
 export const caseAssignmentStatus = pgEnum("CaseAssignmentStatus", ['UNASSIGNED', 'ASSIGNED'])
 export const caseTreatmentStage = pgEnum("CaseTreatmentStage", ['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP'])
+export const caseSourceChannel = pgEnum("CaseSourceChannel", ['WEB_ONBOARDING', 'MANUAL', 'EMAIL', 'WHATSAPP', 'PHONE_CALL', 'REFERRAL'])
 export const chcSubStatus = pgEnum("CHCSubStatus", ['DISTRIBUTED', 'NEED_INFO', 'QUOTED', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'REMOVED'])
 export const quoteStatus = pgEnum("QuoteStatus", ['PENDING', 'ACCEPTED', 'REJECTED', 'EXPIRED'])
 export const caseEventType = pgEnum("CaseEventType", [
@@ -34,6 +35,7 @@ export const caseEventType = pgEnum("CaseEventType", [
   'MILESTONE_ADDED', 'MILESTONE_UPDATED', 'JOURNEY_UPDATED',
   'TICKET_CREATED', 'TICKET_RESOLVED',
   'AI_SUMMARY_GENERATED',
+  'ADMIN_NOTE',
 ])
 export const actorType = pgEnum("ActorType", ['PATIENT', 'HOSPITAL', 'ADMIN', 'SYSTEM'])
 
@@ -73,7 +75,8 @@ export const hospitals = pgTable("hospitals", {
 
 export const users = pgTable("users", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
-	email: varchar({ length: 255 }).notNull(),
+	// Nullable since Case Lifecycle Phase 1: offline-channel patients may have no email
+	email: varchar({ length: 255 }),
 	name: varchar({ length: 100 }).notNull(),
 	role: userRole().default('PATIENT').notNull(),
 	patientSite: patientSite("patient_site"),
@@ -88,12 +91,13 @@ export const users = pgTable("users", {
 	country: varchar({ length: 100 }),
 	preferredLanguage: varchar("preferred_language", { length: 10 }).default('zh').notNull(),
 	phone: varchar({ length: 20 }),
+	whatsapp: text(),
 	passwordHash: varchar("password_hash", { length: 255 }),
 	notificationSettings: jsonb("notification_settings"),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
-	uniqueIndex("users_patient_email_site_key").using("btree", table.email.asc().nullsLast().op("text_ops"), table.patientSite.asc().nullsLast().op("enum_ops")).where(sql`${table.role} = 'PATIENT'`),
-	uniqueIndex("users_non_patient_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")).where(sql`${table.role} <> 'PATIENT'`),
+	uniqueIndex("users_patient_email_site_key").using("btree", table.email.asc().nullsLast().op("text_ops"), table.patientSite.asc().nullsLast().op("enum_ops")).where(sql`${table.role} = 'PATIENT' AND ${table.email} IS NOT NULL`),
+	uniqueIndex("users_non_patient_email_key").using("btree", table.email.asc().nullsLast().op("text_ops")).where(sql`${table.role} <> 'PATIENT' AND ${table.email} IS NOT NULL`),
 	index("users_patient_site_idx").using("btree", table.patientSite.asc().nullsLast().op("enum_ops")),
 	index("users_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("users_patient_code_key").using("btree", table.patientCode.asc().nullsLast().op("text_ops")),
@@ -169,6 +173,8 @@ export const cases = pgTable("cases", {
 	lastEventAt: timestamp("last_event_at", { withTimezone: true, mode: 'string' }),
 	aiSummaryStatus: aiSummaryStatus("ai_summary_status").default('PENDING').notNull(),
 	questionCollectorTemplateId: uuid("question_collector_template_id"),
+	sourceChannel: caseSourceChannel("source_channel").default('WEB_ONBOARDING'),
+	createdByAdminId: uuid("created_by_admin_id"),
 }, (table) => [
 	index("cases_assigned_hospital_id_idx").using("btree", table.assignedHospitalId.asc().nullsLast().op("uuid_ops")),
 	index("cases_case_number_idx").using("btree", table.caseNumber.asc().nullsLast().op("text_ops")),
@@ -186,6 +192,11 @@ export const cases = pgTable("cases", {
 			foreignColumns: [users.id],
 			name: "cases_patient_id_fkey"
 		}).onUpdate("cascade").onDelete("restrict"),
+	foreignKey({
+			columns: [table.createdByAdminId],
+			foreignColumns: [users.id],
+			name: "cases_created_by_admin_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
 ]);
 
 export const documents = pgTable("documents", {
@@ -204,6 +215,7 @@ export const documents = pgTable("documents", {
 	sourceDocId: uuid("source_doc_id"),
 	version: integer().default(1).notNull(),
 	status: documentStatus().default('ACTIVE').notNull(),
+	stageTag: text("stage_tag"),
 	createdAt: timestamp("created_at", { precision: 6, mode: 'string' }).default(sql`CURRENT_TIMESTAMP`).notNull(),
 	updatedAt: timestamp("updated_at", { precision: 6, mode: 'string' }).notNull(),
 }, (table) => [

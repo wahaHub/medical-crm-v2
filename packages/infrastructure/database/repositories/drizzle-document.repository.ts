@@ -65,6 +65,7 @@ export class DrizzleDocumentRepository implements IDocumentRepository {
         language: doc.language,
         isTranslated: doc.isTranslated,
         status: doc.status,
+        stageTag: doc.stageTag,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString(),
       })
@@ -94,6 +95,7 @@ export class DrizzleDocumentRepository implements IDocumentRepository {
       language: row.language,
       isTranslated: row.isTranslated,
       status: row.status as import('@medical-crm/domain').DocumentStatus,
+      stageTag: row.stageTag ?? null,
       createdAt: new Date(row.createdAt),
       updatedAt: new Date(row.updatedAt),
     });

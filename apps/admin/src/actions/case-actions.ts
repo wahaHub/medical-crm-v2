@@ -18,6 +18,23 @@ export async function createCase(data: Record<string, unknown>) {
   return res.json() as Promise<{ id: string }>;
 }
 
+// Case Lifecycle Phase 1: manual case creation (offline channels)
+export async function createManualCase(data: Record<string, unknown>) {
+  const res = await apiFetch('/api/v2/cases/manual', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to create case');
+  }
+
+  revalidatePath('/cases');
+  revalidatePath('/lifecycle');
+  return res.json() as Promise<{ id: string }>;
+}
+
 export async function updateCaseStatus(caseId: string, status: string) {
   const res = await apiFetch(`/api/v2/cases/${caseId}/status`, {
     method: 'PATCH',
@@ -40,8 +57,25 @@ export async function updateCaseStage(caseId: string, stage: string) {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { message?: string };
-    throw new Error(err.message ?? 'Failed to update case stage');
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to update case stage');
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath('/lifecycle');
+  return res.json();
+}
+
+// Case Lifecycle Phase 1: admin note recorded as an ADMIN_NOTE case event
+export async function addCaseTimelineNote(caseId: string, note: string) {
+  const res = await apiFetch(`/api/v2/cases/${caseId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify({ note }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to add case note');
   }
 
   revalidatePath(`/cases/${caseId}`);
@@ -72,19 +106,21 @@ export async function addCaseNote(
 
 export async function initCaseDocumentUpload(
   caseId: string,
-  params: { fileName: string; fileSize: number; mimeType: string },
+  params: { fileName: string; fileSize: number; mimeType: string; stageTag?: string },
 ): Promise<{
   upload: { uploadUrl: string; storageKey: string; expiresIn: number };
   asset: { storageKey: string; fileName: string; mimeType: string; fileSize: number };
   documentId: string;
 }> {
+  const { stageTag, ...fileParams } = params;
   const res = await apiFetch(`/api/v2/cases/${caseId}/documents`, {
     method: 'POST',
     body: JSON.stringify({
-      ...params,
+      ...fileParams,
       documentType: 'OTHER',
       sensitivity: 'PHI_HIGH',
       language: 'en',
+      ...(stageTag ? { stageTag } : {}),
     }),
   });
 

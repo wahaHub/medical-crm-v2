@@ -19,6 +19,18 @@ export interface IPatientRepository {
     email: string;
     name: string;
     phone?: string;
+    whatsapp?: string;
+    preferredLanguage: string;
+    site: PatientSite;
+  }): Promise<PatientBasicInfo>;
+  /**
+   * Case Lifecycle Phase 1: create a patient record without an email address
+   * (offline channels: phone / WhatsApp / referral). No password, no Keycloak account.
+   */
+  createOfflinePatient(input: {
+    name: string;
+    phone?: string;
+    whatsapp?: string;
     preferredLanguage: string;
     site: PatientSite;
   }): Promise<PatientBasicInfo>;

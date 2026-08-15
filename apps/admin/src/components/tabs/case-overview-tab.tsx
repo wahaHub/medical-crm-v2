@@ -9,6 +9,7 @@ import { addCaseNote, initCaseDocumentUpload, deleteDocument } from '@/actions/c
 import { addHospitalToCase, removeHospitalContact, requestQuotesForHospitalContacts, resetCaseAssignment } from '@/actions/quote-actions';
 import { useHospitals } from '@/queries/use-hospitals';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
+import { CaseStageStepper } from '@/components/case-stage-stepper';
 import { deriveSelectedHospitals, type HospitalContactLike } from '@/lib/case-selected-hospitals';
 import { formatDateTime } from '@/lib/date-format';
 import {
@@ -31,6 +32,21 @@ interface DocumentItem {
   language?: string;
   createdAt?: string;
   downloadUrl?: string;
+  stageTag?: string | null;
+}
+
+const DOCUMENT_STAGE_TAGS = [
+  { value: 'CONFIRMED', label: 'Confirmed' },
+  { value: 'IN_TREATMENT', label: 'In Treatment' },
+  { value: 'POST_TREATMENT', label: 'Post Treatment' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'FOLLOW_UP', label: 'Follow Up' },
+] as const;
+
+function formatStageTag(tag?: string | null): string {
+  if (!tag) return '—';
+  const known = DOCUMENT_STAGE_TAGS.find((stage) => stage.value === tag);
+  return known ? known.label : tag.replace(/_/g, ' ');
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -727,6 +743,8 @@ function DocumentsCard({ caseId }: { caseId: string }) {
   const docs = (rawDocs as DocumentItem[] | undefined) ?? [];
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [uploadStageTag, setUploadStageTag] = useState('');
+  const [stageFilter, setStageFilter] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     upload,
@@ -755,7 +773,10 @@ function DocumentsCard({ caseId }: { caseId: string }) {
 
     startTransition(async () => {
       try {
-        const assets = await upload([file], (params) => initCaseDocumentUpload(caseId, params));
+        const assets = await upload(
+          [file],
+          (params) => initCaseDocumentUpload(caseId, { ...params, ...(uploadStageTag ? { stageTag: uploadStageTag } : {}) }),
+        );
         if (assets.length !== 1) {
           return;
         }
@@ -800,6 +821,13 @@ function DocumentsCard({ caseId }: { caseId: string }) {
         <span className="text-xs text-slate-500">
           {(row.documentType ?? row.type ?? 'OTHER').replace(/_/g, ' ')}
         </span>
+      ),
+    },
+    {
+      key: 'stage',
+      header: 'Stage',
+      render: (row) => (
+        <span className="text-xs text-slate-500">{formatStageTag(row.stageTag)}</span>
       ),
     },
     {
@@ -856,6 +884,20 @@ function DocumentsCard({ caseId }: { caseId: string }) {
     },
   ];
 
+  const filteredDocs = stageFilter
+    ? docs.filter((doc) => (stageFilter === '__UNTAGGED__' ? !doc.stageTag : doc.stageTag === stageFilter))
+    : docs;
+
+  const stageFilterOptions = [
+    { value: '', label: 'All' },
+    { value: '__UNTAGGED__', label: 'Untagged' },
+    ...DOCUMENT_STAGE_TAGS.map((stage) => ({ value: stage.value as string, label: stage.label })),
+  ];
+  const uploadTagOptions = [
+    { value: '', label: 'No tag' },
+    ...DOCUMENT_STAGE_TAGS.map((stage) => ({ value: stage.value as string, label: stage.label })),
+  ];
+
   return (
     <Card>
       <CardHeader>
@@ -879,6 +921,47 @@ function DocumentsCard({ caseId }: { caseId: string }) {
         </div>
       </CardHeader>
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-400">Filter:</span>
+        {stageFilterOptions.map((option) => {
+          const isActive = stageFilter === option.value;
+          return (
+            <button
+              key={`filter-${option.value || 'all'}`}
+              type="button"
+              onClick={() => setStageFilter(option.value)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                isActive
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-slate-400">Tag next upload:</span>
+        {uploadTagOptions.map((option) => {
+          const isActive = uploadStageTag === option.value;
+          return (
+            <button
+              key={`tag-${option.value || 'none'}`}
+              type="button"
+              onClick={() => setUploadStageTag(option.value)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                isActive
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
       {displayError && (
         <div className="mb-4 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {displayError}
@@ -892,7 +975,7 @@ function DocumentsCard({ caseId }: { caseId: string }) {
       ) : (
         <DataTable
           columns={columns}
-          data={docs}
+          data={filteredDocs}
           keyExtractor={(row) => row.id}
           emptyState={
             <EmptyState
@@ -916,6 +999,7 @@ interface CaseOverviewTabProps {
 export function CaseOverviewTab({ caseData }: CaseOverviewTabProps) {
   return (
     <div className="space-y-6">
+      <CaseStageStepper caseData={caseData} />
       <PatientInfoCard caseData={caseData} />
       <SelectedHospitalsCard caseData={caseData} />
       <AssignedHospitalCard caseData={caseData} />

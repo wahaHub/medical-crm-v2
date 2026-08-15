@@ -1,7 +1,11 @@
 'use client';
 
-import { Card, CardHeader, CardTitle } from '@medical-crm/ui';
+import { useState, useTransition } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Button, Card, CardHeader, CardTitle } from '@medical-crm/ui';
+import { StickyNote } from 'lucide-react';
 import { useCaseTimeline } from '@/queries/use-cases';
+import { addCaseTimelineNote } from '@/actions/case-actions';
 import { TimelineView, type TimelineEvent } from '@/components/timeline-view';
 
 interface CaseTimelineTabProps {
@@ -87,14 +91,57 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function CaseTimelineTab({ caseId }: CaseTimelineTabProps) {
+  const queryClient = useQueryClient();
   const { data: raw, isLoading, error } = useCaseTimeline(caseId);
   const events = normalizeTimeline(raw);
+  const [isPending, startTransition] = useTransition();
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteError, setNoteError] = useState<string | null>(null);
+
+  function handleAddNote() {
+    const note = noteDraft.trim();
+    if (!note) return;
+    setNoteError(null);
+    startTransition(async () => {
+      try {
+        await addCaseTimelineNote(caseId, note);
+        setNoteDraft('');
+        await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'timeline'] });
+      } catch (err) {
+        setNoteError(err instanceof Error ? err.message : 'Failed to add note');
+      }
+    });
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Case Timeline</CardTitle>
       </CardHeader>
+
+      <div className="mx-6 mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <textarea
+          value={noteDraft}
+          onChange={(e) => setNoteDraft(e.target.value)}
+          placeholder="Add an admin note or offline communication summary (phone call, WeChat, etc.). It will appear on this timeline."
+          className="min-h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          disabled={isPending}
+        />
+        {noteError && (
+          <p className="mt-2 text-sm text-rose-600">{noteError}</p>
+        )}
+        <div className="mt-3 flex justify-end">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleAddNote}
+            disabled={isPending || !noteDraft.trim()}
+          >
+            <StickyNote size={14} className="mr-1.5" />
+            {isPending ? 'Saving…' : 'Add Note'}
+          </Button>
+        </div>
+      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">

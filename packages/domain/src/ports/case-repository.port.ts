@@ -1,6 +1,7 @@
 import type { Case } from '../entities/case.entity.js';
 import type { CaseNumber } from '../value-objects/case-number.js';
 import type { CaseStatus, CaseStage, CaseAssignmentStatus, CaseTreatmentStage } from '../enums/index.js';
+import type { PatientSite } from './patient-repository.port.js';
 import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
 import type { PaginatedResult } from '@medical-crm/utils';
 
@@ -13,6 +14,8 @@ export interface CaseListQuery {
   treatmentStage?: CaseTreatmentStage;
   hospitalId?: string;
   search?: string;
+  /** Case Lifecycle Phase 1: optional explicit patient-site filter for admin boards */
+  patientSite?: PatientSite;
   patientSiteScope?: PatientSiteAccessScope;
   excludedPatientEmailDomains?: string[];
 }

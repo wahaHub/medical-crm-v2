@@ -17,6 +17,7 @@ import type {
   IAiUserProfileRepository,
   IAiSyncOutboxRepository,
   IDifyDocumentMappingRepository,
+  IAuditLogRepository,
 } from '@medical-crm/domain';
 import { CaseAssignmentService, PatientAuthService } from '@medical-crm/domain';
 import {
@@ -30,6 +31,8 @@ import {
   UpdateCaseStatusUseCase,
   AdvanceCaseStageUseCase,
   GetCaseStatsUseCase,
+  CreateManualCaseUseCase,
+  AddCaseNoteUseCase,
   UploadDocumentUseCase,
   ListDocumentsUseCase,
   GetDocumentPreviewUseCase,
@@ -262,6 +265,7 @@ import {
   DrizzleCHCRepository,
   DrizzleQuoteRepository,
   DrizzleCaseEventRepository,
+  DrizzleAuditLogRepository,
   DrizzleSupportTicketRepository,
   DrizzleSupportTicketReplyRepository,
   DrizzlePackageRepository,
@@ -328,6 +332,7 @@ interface AppServices {
   progressRepo: ICaseProgressRepository;
   hospitalRepo: IHospitalRepository;
   patientRepo: IPatientRepository;
+  auditLogRepo: IAuditLogRepository;
   chcRepo: ICHCRepository;
   userEmailLookupRepo: IUserEmailLookupRepository;
   conversationRepo: IConversationRepository;
@@ -358,6 +363,8 @@ interface AppServices {
   updateCaseStatus: UpdateCaseStatusUseCase;
   advanceCaseStage: AdvanceCaseStageUseCase;
   getCaseStats: GetCaseStatsUseCase;
+  createManualCase: CreateManualCaseUseCase;
+  addCaseNoteEvent: AddCaseNoteUseCase;
   uploadDocument: UploadDocumentUseCase;
   listDocuments: ListDocumentsUseCase;
   getDocumentPreview: GetDocumentPreviewUseCase;
@@ -1093,6 +1100,7 @@ export function getServices(): AppServices {
     const chcRepo = new DrizzleCHCRepository(crmDb);
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
+    const auditLogRepo = new DrizzleAuditLogRepository(crmDb);
     const ticketRepo = new DrizzleSupportTicketRepository(crmDb);
     const ticketReplyRepo = new DrizzleSupportTicketReplyRepository(crmDb);
     const packageRepo = new DrizzlePackageRepository(crmDb);
@@ -1180,7 +1188,7 @@ export function getServices(): AppServices {
     _services = {
       crmDb, crmSupabase, mainSupabase, chinaSupabase,
       idempotencyExecutor: idempotencyGuard,
-      caseRepo, adminPatientSiteAccess, documentRepo, progressRepo, hospitalRepo, patientRepo, chcRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
+      caseRepo, adminPatientSiteAccess, documentRepo, progressRepo, hospitalRepo, patientRepo, auditLogRepo, chcRepo, userEmailLookupRepo, conversationRepo, messageRepo, aiChatSessionRepo, aiChatMessageRepo, aiSyncOutboxRepo, difyDocumentMappingRepo,
       storage: routedStorageService,
       localFileStorage,
       txRunner,
@@ -1201,6 +1209,8 @@ export function getServices(): AppServices {
       updateCaseStatus: new UpdateCaseStatusUseCase(caseRepo, progressRepo, adminPatientSiteAccess),
       advanceCaseStage: new AdvanceCaseStageUseCase(caseRepo, progressRepo, adminPatientSiteAccess),
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
+      createManualCase: new CreateManualCaseUseCase(caseRepo, patientRepo, eventRepo, auditLogRepo, adminPatientSiteAccess),
+      addCaseNoteEvent: new AddCaseNoteUseCase(caseRepo, eventRepo, adminPatientSiteAccess),
       uploadDocument,
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo, adminPatientSiteAccess),
       getDocumentPreview: new GetDocumentPreviewUseCase(documentRepo, caseRepo, routedStorageService, chcRepo, undefined, adminPatientSiteAccess),

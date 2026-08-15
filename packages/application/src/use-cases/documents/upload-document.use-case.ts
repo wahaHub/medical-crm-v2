@@ -21,6 +21,8 @@ export interface UploadDocumentInput {
   sensitivity: string;
   language: string;
   storageKey: string;
+  /** Case Lifecycle Phase 1: optional treatment-stage tag; omitted keeps current behavior */
+  stageTag?: string;
 }
 
 export class UploadDocumentUseCase {
@@ -62,6 +64,7 @@ export class UploadDocumentUseCase {
       language: input.language,
       isTranslated: false,
       status: 'PENDING',
+      stageTag: input.stageTag ?? null,
       createdAt: now,
       updatedAt: now,
     });

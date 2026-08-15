@@ -7,6 +7,7 @@ export interface DocumentDTO {
   sensitivity: string;
   language: string;
   isTranslated: boolean;
+  stageTag: string | null;
   downloadUrl: string;
   createdAt: string;
 }

@@ -28,6 +28,8 @@ export const caseListQuerySchema = z.object({
   hospitalId: z.string().uuid().optional(),
   search: z.string().optional(),
   patientSite: patientSiteSchema.optional(),
+  /** Case Lifecycle Phase 2: merged cases are excluded unless includeMerged=true */
+  includeMerged: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
 });
 
 export type CaseListQuery = z.infer<typeof caseListQuerySchema>;

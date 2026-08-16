@@ -1,5 +1,7 @@
 export type PatientSite = 'beauty' | 'china';
 
+import type { PatientSiteAccessScope } from './patient-site-scope.port.js';
+
 export interface PatientBasicInfo {
   id: string;
   email?: string | null;
@@ -8,6 +10,19 @@ export interface PatientBasicInfo {
   site?: PatientSite | null;
   phone?: string | null;
   country?: string | null;
+  /** Case Lifecycle Phase 2: set when this patient profile was merged into another one */
+  mergedIntoUserId?: string | null;
+}
+
+/** Case Lifecycle Phase 2: patient directory search result (merge target picker) */
+export interface PatientSearchResult {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  patientCode: string | null;
+  site: PatientSite | null;
 }
 
 export interface PatientAuthInfo extends PatientBasicInfo {
@@ -39,4 +54,9 @@ export interface IPatientRepository {
     site: PatientSite;
   }): Promise<PatientBasicInfo>;
   updatePasswordHash(userId: string, hash: string): Promise<void>;
+  /**
+   * Case Lifecycle Phase 2: search patient profiles by name / email / phone /
+   * whatsapp (merge target picker). Excludes already-merged profiles.
+   */
+  searchPatients?(query: string, limit?: number, siteScope?: PatientSiteAccessScope): Promise<PatientSearchResult[]>;
 }

@@ -1,4 +1,4 @@
-import { eq, ilike, or, and, sql, count } from 'drizzle-orm';
+import { eq, ilike, or, and, sql, count, isNull, ne } from 'drizzle-orm';
 import { HOSPITAL_CASE_READ_CHC_STATUSES, type ICaseRepository, type CaseListQuery, type CaseCountFilters, type CaseStats } from '@medical-crm/domain';
 import { Case, CaseNumber } from '@medical-crm/domain';
 import type { PaginatedResult } from '@medical-crm/utils';
@@ -67,6 +67,11 @@ export class DrizzleCaseRepository implements ICaseRepository {
 
     const conditions = [];
     if (effectiveHospitalId) conditions.push(this.buildHospitalAccessCondition(effectiveHospitalId));
+    // Case Lifecycle Phase 2: merged cases are hidden from default list/board results
+    if (!query.includeMerged) {
+      conditions.push(isNull(cases.mergedIntoCaseId));
+      conditions.push(ne(cases.status, 'MERGED'));
+    }
     const patientSiteCondition = patientSiteScopeSql(sql`${users.patientSite}`, query.patientSiteScope);
     if (patientSiteCondition) conditions.push(patientSiteCondition);
     if (query.patientSite) conditions.push(eq(users.patientSite, query.patientSite));
@@ -332,6 +337,7 @@ export class DrizzleCaseRepository implements ICaseRepository {
       questionCollectorTemplateId: row.questionCollectorTemplateId ?? null,
       sourceChannel: (row.sourceChannel as import('@medical-crm/domain').CaseSourceChannel | null) ?? null,
       createdByAdminId: row.createdByAdminId ?? null,
+      mergedIntoCaseId: row.mergedIntoCaseId ?? null,
     });
   }
 }

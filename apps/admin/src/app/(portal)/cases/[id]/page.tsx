@@ -23,6 +23,7 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
   }
 
   const caseData = (await res.json()) as CaseSummary;
+  const isMerged = caseData.status === 'MERGED' || Boolean(caseData.mergedIntoCaseId);
 
   return (
     <>
@@ -37,6 +38,23 @@ export default async function CaseDetailPage({ params }: CaseDetailPageProps) {
           </Link>
         }
       />
+      {isMerged ? (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This case has been merged
+          {caseData.mergedIntoCaseId ? (
+            <>
+              {' into '}
+              <Link
+                href={`/cases/${caseData.mergedIntoCaseId}`}
+                className="font-semibold underline hover:text-amber-700"
+              >
+                #{caseData.mergedIntoCaseNumber ?? caseData.mergedIntoCaseId}
+              </Link>
+            </>
+          ) : null}
+          . It is read-only history and no longer appears in case lists or the lifecycle board.
+        </div>
+      ) : null}
       <CaseDetailTabs caseData={caseData} />
     </>
   );

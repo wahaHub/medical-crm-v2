@@ -35,6 +35,7 @@ export function toCaseDTO(
   return {
     id: entity.id,
     caseNumber: entity.caseNumber.value,
+    patientId: entity.patientId,
     patientName: entity.patientName,
     patientCountry: entity.patientCountry,
     patientLanguage: entity.patientLanguage,
@@ -65,6 +66,8 @@ export function toCaseDTO(
     assignedAt: entity.assignedAt?.toISOString() ?? null,
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),
+    mergedIntoCaseId: entity.mergedIntoCaseId,
+    mergedIntoCaseNumber: null,
   };
 }
 

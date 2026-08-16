@@ -12,6 +12,7 @@ import {
   updateCaseStatusSchema,
   advanceCaseStageSchema,
   caseListQuerySchema,
+  mergeCasesSchema,
 } from '@medical-crm/validation';
 import { getServices } from '../composition-root.js';
 
@@ -266,6 +267,38 @@ app.openapi(addCaseNoteRoute, async (c) => {
   const svc = getServices();
   const result = await svc.addCaseNoteEvent.execute(id, note, actor);
   return c.json(result, 201);
+});
+
+// ---------------------------------------------------------------------------
+// 7b. POST /api/v2/cases/:id/merge — MergeCases (ADMIN only; Case Lifecycle Phase 2)
+//     Path id is the secondary case (merged away); body.primaryCaseId survives.
+//     dryRun: true returns the transfer preview without writing anything.
+// ---------------------------------------------------------------------------
+const mergeCasesRoute = createRoute({
+  method: 'post',
+  path: '/api/v2/cases/{id}/merge',
+  request: {
+    params: caseIdParamSchema,
+    body: {
+      content: { 'application/json': { schema: mergeCasesSchema } },
+      required: true,
+    },
+  },
+  responses: { 200: { description: 'Merge preview (dryRun) or merge result' } },
+});
+
+app.openapi(mergeCasesRoute, async (c) => {
+  const { id } = c.req.valid('param');
+  const body = c.req.valid('json');
+  const actor = toActor(c.get('session') as Session);
+  const svc = getServices();
+  const result = await svc.mergeCases.execute({
+    secondaryCaseId: id,
+    primaryCaseId: body.primaryCaseId,
+    confirmDifferentPatients: body.confirmDifferentPatients,
+    dryRun: body.dryRun,
+  }, actor);
+  return c.json(result, 200);
 });
 
 // ---------------------------------------------------------------------------

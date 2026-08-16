@@ -2,9 +2,9 @@ import { pgTable, varchar, timestamp, text, integer, index, uniqueIndex, foreign
 import { sql } from "drizzle-orm"
 
 export const aiSummaryStatus = pgEnum("AISummaryStatus", ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'])
-export const auditEvent = pgEnum("AuditEvent", ['DOC_UPLOAD', 'DOC_VIEW', 'DOC_DOWNLOAD', 'DOC_DELETE', 'DOC_SHARE_LINK_CREATED', 'DOC_SHARE_LINK_USED', 'CASE_CREATED', 'CASE_ASSIGNED', 'CASE_REVOKED', 'CASE_STATUS_CHANGED', 'USER_LOGIN', 'USER_LOGOUT'])
+export const auditEvent = pgEnum("AuditEvent", ['DOC_UPLOAD', 'DOC_VIEW', 'DOC_DOWNLOAD', 'DOC_DELETE', 'DOC_SHARE_LINK_CREATED', 'DOC_SHARE_LINK_USED', 'CASE_CREATED', 'CASE_ASSIGNED', 'CASE_REVOKED', 'CASE_STATUS_CHANGED', 'USER_LOGIN', 'USER_LOGOUT', 'PATIENT_MERGED', 'CASE_MERGED'])
 export const caseStage = pgEnum("CaseStage", ['PENDING_ASSIGNMENT', 'TRANSFERRED_TO_HOSPITAL', 'HOSPITAL_CONTACTED', 'CONSULTATION_SCHEDULED', 'IN_TREATMENT', 'TREATMENT_COMPLETED'])
-export const caseStatus = pgEnum("CaseStatus", ['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED'])
+export const caseStatus = pgEnum("CaseStatus", ['DRAFT', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'ARCHIVED', 'MERGED'])
 export const consultationStatus = pgEnum("ConsultationStatus", ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW'])
 export const conversationCategory = pgEnum("ConversationCategory", ['HOSPITAL', 'PATIENT', 'ADMIN_HOSPITAL', 'ADMIN_PATIENT', 'HOSPITAL_PATIENT'])
 export const conversationAssistantMode = pgEnum("ConversationAssistantMode", ['AI_ACTIVE', 'HUMAN_TAKEOVER'])
@@ -36,6 +36,7 @@ export const caseEventType = pgEnum("CaseEventType", [
   'TICKET_CREATED', 'TICKET_RESOLVED',
   'AI_SUMMARY_GENERATED',
   'ADMIN_NOTE',
+  'PATIENT_MERGED', 'CASE_MERGED',
 ])
 export const actorType = pgEnum("ActorType", ['PATIENT', 'HOSPITAL', 'ADMIN', 'SYSTEM'])
 
@@ -94,6 +95,8 @@ export const users = pgTable("users", {
 	whatsapp: text(),
 	passwordHash: varchar("password_hash", { length: 255 }),
 	notificationSettings: jsonb("notification_settings"),
+	// Case Lifecycle Phase 2: soft-merge marker — merged (secondary) patient points at the surviving primary profile
+	mergedIntoUserId: uuid("merged_into_user_id"),
 }, (table) => [
 	index("users_email_idx").using("btree", table.email.asc().nullsLast().op("text_ops")),
 	uniqueIndex("users_patient_email_site_key").using("btree", table.email.asc().nullsLast().op("text_ops"), table.patientSite.asc().nullsLast().op("enum_ops")).where(sql`${table.role} = 'PATIENT' AND ${table.email} IS NOT NULL`),
@@ -102,10 +105,16 @@ export const users = pgTable("users", {
 	index("users_hospital_id_idx").using("btree", table.hospitalId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("users_patient_code_key").using("btree", table.patientCode.asc().nullsLast().op("text_ops")),
 	index("users_role_idx").using("btree", table.role.asc().nullsLast().op("enum_ops")),
+	index("users_merged_into_user_id_idx").using("btree", table.mergedIntoUserId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.hospitalId],
 			foreignColumns: [hospitals.id],
 			name: "users_hospital_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.mergedIntoUserId],
+			foreignColumns: [table.id],
+			name: "users_merged_into_user_id_fkey"
 		}).onUpdate("cascade").onDelete("set null"),
 ]);
 
@@ -177,6 +186,8 @@ export const cases = pgTable("cases", {
 	questionCollectorTemplateId: uuid("question_collector_template_id"),
 	sourceChannel: caseSourceChannel("source_channel").default('WEB_ONBOARDING'),
 	createdByAdminId: uuid("created_by_admin_id"),
+	// Case Lifecycle Phase 2: soft-merge marker — merged (secondary) case points at the surviving primary case
+	mergedIntoCaseId: uuid("merged_into_case_id"),
 }, (table) => [
 	index("cases_assigned_hospital_id_idx").using("btree", table.assignedHospitalId.asc().nullsLast().op("uuid_ops")),
 	index("cases_case_number_idx").using("btree", table.caseNumber.asc().nullsLast().op("text_ops")),
@@ -184,6 +195,7 @@ export const cases = pgTable("cases", {
 	index("cases_patient_id_idx").using("btree", table.patientId.asc().nullsLast().op("uuid_ops")),
 	index("cases_stage_idx").using("btree", table.stage.asc().nullsLast().op("enum_ops")),
 	index("cases_status_idx").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	index("cases_merged_into_case_id_idx").using("btree", table.mergedIntoCaseId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
 			columns: [table.assignedHospitalId],
 			foreignColumns: [hospitals.id],
@@ -198,6 +210,11 @@ export const cases = pgTable("cases", {
 			columns: [table.createdByAdminId],
 			foreignColumns: [users.id],
 			name: "cases_created_by_admin_id_fkey"
+		}).onUpdate("cascade").onDelete("set null"),
+	foreignKey({
+			columns: [table.mergedIntoCaseId],
+			foreignColumns: [table.id],
+			name: "cases_merged_into_case_id_fkey"
 		}).onUpdate("cascade").onDelete("set null"),
 ]);
 

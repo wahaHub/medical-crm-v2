@@ -262,6 +262,13 @@ export { GetCaseStatsUseCase } from './use-cases/cases/get-case-stats.use-case.j
 export { CreateManualCaseUseCase } from './use-cases/cases/create-manual-case.use-case.js';
 export type { CreateManualCaseInput } from './use-cases/cases/create-manual-case.use-case.js';
 export { AddCaseNoteUseCase } from './use-cases/cases/add-case-note.use-case.js';
+export { MergeCasesUseCase } from './use-cases/cases/merge-cases.use-case.js';
+export type { MergeCasesInput, MergeCasesResult } from './use-cases/cases/merge-cases.use-case.js';
+
+// Use Cases — Patients (Case Lifecycle Phase 2)
+export { MergePatientsUseCase } from './use-cases/patients/merge-patients.use-case.js';
+export type { MergePatientsInput, MergePatientsResult } from './use-cases/patients/merge-patients.use-case.js';
+export { SearchPatientsUseCase, PATIENT_SEARCH_MAX_LIMIT } from './use-cases/patients/search-patients.use-case.js';
 
 // Use Cases — Documents
 export { UploadDocumentUseCase } from './use-cases/documents/upload-document.use-case.js';
@@ -574,7 +581,7 @@ export { SendPatientOnboardingEmailUseCase } from './use-cases/patient-auth/send
 export type { IPatientOnboardingEmailService } from './use-cases/patient-auth/send-patient-onboarding-email.use-case.js';
 export { SendPatientLoginLinkUseCase } from './use-cases/patient-auth/send-patient-login-link.use-case.js';
 export { getPatientAppOrigin } from './use-cases/patient-auth/patient-app-origin.js';
-export { EmailRoleConflictError, PatientAlreadyExistsError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
+export { EmailRoleConflictError, PatientAlreadyExistsError, PatientMergedError } from './use-cases/patient-auth/patient-entry-auth.errors.js';
 export {
   VerifyPatientEntryTokenUseCase,
   VerifyPatientEntryTokenAuthError,

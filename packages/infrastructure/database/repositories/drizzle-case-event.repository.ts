@@ -20,8 +20,8 @@ export class DrizzleCaseEventRepository implements ICaseEventRepository {
     });
   }
 
-  async save(event: CaseEvent): Promise<CaseEvent> {
-    const [row] = await this.db.insert(caseEvents).values({
+  async save(event: CaseEvent, tx?: unknown): Promise<CaseEvent> {
+    const [row] = await (tx ? (tx as CrmDb) : this.db).insert(caseEvents).values({
       id: event.id,
       caseId: event.caseId,
       eventType: event.eventType,

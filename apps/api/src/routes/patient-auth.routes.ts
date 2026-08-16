@@ -5,6 +5,7 @@ import { getServices } from '../composition-root.js';
 import { rateLimitByIp, rateLimitByKey } from '../middleware/rate-limit.middleware.js';
 import {
   EmailRoleConflictError,
+  PatientMergedError,
   RestoreGuestSessionAuthError,
   VerifyMagicLinkAuthError,
   VerifyPatientEntryTokenAuthError,
@@ -104,6 +105,9 @@ app.post('/verify-token', async (c) => {
   try {
     result = await verifyMagicLink.execute({ token, site });
   } catch (error) {
+    if (error instanceof PatientMergedError) {
+      return c.json({ error: error.message, code: error.code }, 403);
+    }
     if (error instanceof VerifyMagicLinkAuthError) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
@@ -163,6 +167,9 @@ app.post('/login', async (c) => {
     setPatientSessionCookies(c, result.sessionToken, result.restoreCookie);
   return c.json(await buildPatientSessionResponse(result.patientId, result.restoreToken, site));
   } catch (error) {
+    if (error instanceof PatientMergedError) {
+      return c.json({ error: error.message, code: error.code }, 403);
+    }
     const message = error instanceof Error ? error.message : 'Invalid credentials';
     if (message === 'Invalid credentials') {
       return c.json({ error: 'Invalid credentials' }, 401);
@@ -200,6 +207,9 @@ app.post('/session/restore', rateLimitByIp(RESTORE_RATE_LIMIT), async (c) => {
     setPatientSessionCookies(c, result.sessionToken, result.restoreCookie);
     return c.json(await buildPatientSessionResponse(result.patientId, result.restoreToken, site));
   } catch (error) {
+    if (error instanceof PatientMergedError) {
+      return c.json({ error: error.message, code: error.code }, 403);
+    }
     if (error instanceof RestoreGuestSessionAuthError) {
       return c.json({ error: 'Unauthorized' }, 401);
     }

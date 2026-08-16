@@ -1,4 +1,5 @@
 import type { IPatientRepository, PatientAuthService, PatientSite } from '@medical-crm/domain';
+import { PatientMergedError } from './patient-entry-auth.errors.js';
 
 export class RestoreGuestSessionAuthError extends Error {
   constructor(message = 'Unauthorized') {
@@ -28,6 +29,9 @@ export class RestoreGuestSessionUseCase {
 
     const patient = await this.patientRepo.findById(payload.userId, input.site);
     if (!patient) throw new Error('Patient not found');
+    if (patient.mergedIntoUserId) {
+      throw new PatientMergedError();
+    }
 
     const sessionToken = await this.authService.createSessionToken(patient.id, input.site);
     const { restoreToken, restoreCookie } = await this.authService.createGuestRestoreArtifacts(patient.id, input.site);

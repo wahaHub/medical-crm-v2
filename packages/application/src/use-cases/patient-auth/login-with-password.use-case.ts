@@ -1,4 +1,5 @@
 import type { IPatientRepository, PatientAuthService, PatientSite } from '@medical-crm/domain';
+import { PatientMergedError } from './patient-entry-auth.errors.js';
 
 export class LoginWithPasswordUseCase {
   constructor(
@@ -16,6 +17,10 @@ export class LoginWithPasswordUseCase {
 
     if (!patient?.passwordHash) {
       throw new Error('Invalid credentials');
+    }
+
+    if (patient.mergedIntoUserId) {
+      throw new PatientMergedError();
     }
 
     const bcrypt = await import('bcryptjs');

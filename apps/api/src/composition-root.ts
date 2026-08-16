@@ -33,6 +33,9 @@ import {
   GetCaseStatsUseCase,
   CreateManualCaseUseCase,
   AddCaseNoteUseCase,
+  MergeCasesUseCase,
+  MergePatientsUseCase,
+  SearchPatientsUseCase,
   UploadDocumentUseCase,
   ListDocumentsUseCase,
   GetDocumentPreviewUseCase,
@@ -266,6 +269,7 @@ import {
   DrizzleQuoteRepository,
   DrizzleCaseEventRepository,
   DrizzleAuditLogRepository,
+  DrizzleMergeRepository,
   DrizzleSupportTicketRepository,
   DrizzleSupportTicketReplyRepository,
   DrizzlePackageRepository,
@@ -367,6 +371,9 @@ interface AppServices {
   getCaseStats: GetCaseStatsUseCase;
   createManualCase: CreateManualCaseUseCase;
   addCaseNoteEvent: AddCaseNoteUseCase;
+  mergeCases: MergeCasesUseCase;
+  mergePatients: MergePatientsUseCase;
+  searchPatients: SearchPatientsUseCase;
   uploadDocument: UploadDocumentUseCase;
   listDocuments: ListDocumentsUseCase;
   getDocumentPreview: GetDocumentPreviewUseCase;
@@ -1105,6 +1112,7 @@ export function getServices(): AppServices {
     const quoteRepo = new DrizzleQuoteRepository(crmDb);
     const eventRepo = new DrizzleCaseEventRepository(crmDb);
     const auditLogRepo = new DrizzleAuditLogRepository(crmDb);
+    const mergeRepo = new DrizzleMergeRepository(crmDb);
     const ticketRepo = new DrizzleSupportTicketRepository(crmDb);
     const ticketReplyRepo = new DrizzleSupportTicketReplyRepository(crmDb);
     const packageRepo = new DrizzlePackageRepository(crmDb);
@@ -1215,6 +1223,9 @@ export function getServices(): AppServices {
       getCaseStats: new GetCaseStatsUseCase(caseRepo),
       createManualCase: new CreateManualCaseUseCase(caseRepo, patientRepo, eventRepo, auditLogRepo, adminPatientSiteAccess),
       addCaseNoteEvent: new AddCaseNoteUseCase(caseRepo, eventRepo, adminPatientSiteAccess),
+      mergeCases: new MergeCasesUseCase(mergeRepo, caseRepo, eventRepo, auditLogRepo, txRunner, adminPatientSiteAccess),
+      mergePatients: new MergePatientsUseCase(mergeRepo, caseRepo, eventRepo, auditLogRepo, txRunner, adminPatientSiteAccess),
+      searchPatients: new SearchPatientsUseCase(patientRepo),
       uploadDocument,
       listDocuments: new ListDocumentsUseCase(documentRepo, caseRepo, routedStorageService, chcRepo, adminPatientSiteAccess),
       getDocumentPreview: new GetDocumentPreviewUseCase(documentRepo, caseRepo, routedStorageService, chcRepo, undefined, adminPatientSiteAccess),

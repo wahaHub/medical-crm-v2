@@ -15,6 +15,7 @@ export class SendMagicLinkUseCase {
   async execute(input: { email: string; site: PatientSite }): Promise<void> {
     const patient = await this.patientRepo.findByEmail(input.email, input.site);
     if (!patient) return; // Silent — no email leak
+    if (patient.mergedIntoUserId) return; // Silent — merged profiles cannot log in (Case Lifecycle Phase 2)
     const token = await this.authService.createMagicLinkToken(input.email, input.site);
     const link = `${getPatientAppOrigin(input.site)}/dashboard?token=${token}`;
     await this.emailService.sendMagicLink(input.email, link, patient.preferredLanguage);

@@ -42,6 +42,8 @@ export interface CaseProps {
   sourceChannel?: CaseSourceChannel | null;
   /** Case Lifecycle Phase 1: admin who manually created the case (NULL for website flow) */
   createdByAdminId?: string | null;
+  /** Case Lifecycle Phase 2: set when this case was merged into another case (status = MERGED) */
+  mergedIntoCaseId?: string | null;
 }
 
 export class Case {
@@ -79,6 +81,7 @@ export class Case {
   questionCollectorTemplateId: string | null;
   sourceChannel: CaseSourceChannel | null;
   createdByAdminId: string | null;
+  mergedIntoCaseId: string | null;
 
   constructor(props: CaseProps) {
     this.id = props.id;
@@ -113,6 +116,7 @@ export class Case {
     this.questionCollectorTemplateId = props.questionCollectorTemplateId;
     this.sourceChannel = props.sourceChannel ?? null;
     this.createdByAdminId = props.createdByAdminId ?? null;
+    this.mergedIntoCaseId = props.mergedIntoCaseId ?? null;
   }
 
   setAiAnalysis(summary: string, language: string, risk: RiskLevel): void {

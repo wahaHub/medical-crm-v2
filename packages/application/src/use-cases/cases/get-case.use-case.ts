@@ -58,6 +58,13 @@ export class GetCaseUseCase {
       } catch { /* ignore */ }
     }
 
-    return toCaseDTO(entity, hospitalName, patientContact);
+    // Resolve the surviving case number for merged cases (detail-page banner)
+    let mergedIntoCaseNumber: string | null = null;
+    if (entity.mergedIntoCaseId) {
+      const mergeTarget = await this.caseRepo.findById(entity.mergedIntoCaseId);
+      mergedIntoCaseNumber = mergeTarget?.caseNumber.value ?? null;
+    }
+
+    return { ...toCaseDTO(entity, hospitalName, patientContact), mergedIntoCaseNumber };
   }
 }

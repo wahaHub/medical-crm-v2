@@ -10,6 +10,8 @@ import { addHospitalToCase, removeHospitalContact, requestQuotesForHospitalConta
 import { useHospitals } from '@/queries/use-hospitals';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
 import { CaseStageStepper } from '@/components/case-stage-stepper';
+import { CaseMergeModal } from '@/components/case-merge-modal';
+import { PatientMergeModal } from '@/components/patient-merge-modal';
 import { deriveSelectedHospitals, type HospitalContactLike } from '@/lib/case-selected-hospitals';
 import { formatDateTime } from '@/lib/date-format';
 import {
@@ -88,12 +90,21 @@ function resolveCaseHospitalType(caseData: CaseSummary): 'COSMETIC' | 'REGULAR' 
 
 function PatientInfoCard({ caseData }: { caseData: CaseSummary }) {
   const caseHospitalType = resolveCaseHospitalType(caseData);
+  const isMerged = caseData.status === 'MERGED' || Boolean(caseData.mergedIntoCaseId);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Patient Information</CardTitle>
-        <StatusBadge status={caseData.status} />
+        <div className="flex items-center gap-2">
+          {!isMerged ? (
+            <>
+              <PatientMergeModal patientId={caseData.patientId} patientName={caseData.patientName} />
+              <CaseMergeModal caseData={caseData} />
+            </>
+          ) : null}
+          <StatusBadge status={caseData.status} />
+        </div>
       </CardHeader>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
         <InfoRow label="Patient Name" value={caseData.patientName} />

@@ -18,6 +18,8 @@ export interface CaseListQuery {
   patientSite?: PatientSite;
   patientSiteScope?: PatientSiteAccessScope;
   excludedPatientEmailDomains?: string[];
+  /** Case Lifecycle Phase 2: merged cases are excluded by default; set to true to include them */
+  includeMerged?: boolean;
 }
 
 export interface CaseCountFilters {

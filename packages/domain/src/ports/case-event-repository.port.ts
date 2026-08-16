@@ -7,7 +7,7 @@ export interface CaseEventListOptions {
 }
 
 export interface ICaseEventRepository {
-  save(event: CaseEvent): Promise<CaseEvent>;
+  save(event: CaseEvent, tx?: unknown): Promise<CaseEvent>;
   findByCaseId(caseId: string, opts?: CaseEventListOptions): Promise<CaseEvent[]>;
   findVisibleByCaseId(caseId: string): Promise<CaseEvent[]>;
 }

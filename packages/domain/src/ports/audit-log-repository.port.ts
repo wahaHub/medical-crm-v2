@@ -10,5 +10,5 @@ export interface AuditLogEntry {
 }
 
 export interface IAuditLogRepository {
-  record(entry: AuditLogEntry): Promise<void>;
+  record(entry: AuditLogEntry, tx?: unknown): Promise<void>;
 }

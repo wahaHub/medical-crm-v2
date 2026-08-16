@@ -5,6 +5,7 @@ import type { MessageDTO } from './conversation.dto.js';
 export interface CaseDTO {
   id: string;
   caseNumber: string;
+  patientId: string;
   patientName: string;
   patientCountry: string | null;
   patientLanguage: string;
@@ -33,6 +34,10 @@ export interface CaseDTO {
   assignedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Case Lifecycle Phase 2: set when this case was merged into another case (status MERGED) */
+  mergedIntoCaseId: string | null;
+  /** Case Number of the surviving primary case (resolved by the use case when merged) */
+  mergedIntoCaseNumber: string | null;
 }
 
 export interface HospitalCaseDetailDTO {

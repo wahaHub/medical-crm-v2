@@ -1,5 +1,6 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
 import caseRoutes from './cases.routes.js';
+import patientRoutes from './patients.routes.js';
 import documentRoutes from './documents.routes.js';
 import progressRoutes from './progress.routes.js';
 import hospitalRoutes from './hospitals.routes.js';
@@ -26,6 +27,7 @@ import { chatbotProtectedRoutes } from './chatbot.routes.js';
 
 const router = new OpenAPIHono();
 router.route('/', caseRoutes);
+router.route('/', patientRoutes);
 router.route('/', documentRoutes);
 router.route('/', progressRoutes);
 router.route('/', hospitalRoutes);

@@ -6,4 +6,6 @@ export const STATUS_TRANSITIONS: Record<CaseStatus, CaseStatus[]> = {
   COMPLETED: ['ARCHIVED'],
   CANCELLED: ['ARCHIVED'],
   ARCHIVED: [],
+  // Terminal: produced only by case merge; no further transitions allowed
+  MERGED: [],
 };

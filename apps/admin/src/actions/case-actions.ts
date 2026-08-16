@@ -2,6 +2,7 @@
 
 import { apiFetch } from '@/lib/api-fetch';
 import { revalidatePath } from 'next/cache';
+import type { CaseMergeResult } from '@/lib/api-types';
 
 export async function createCase(data: Record<string, unknown>) {
   const res = await apiFetch('/api/v2/cases', {
@@ -143,4 +144,43 @@ export async function deleteDocument(caseId: string, docId: string) {
   }
 
   revalidatePath(`/cases/${caseId}`);
+}
+
+// Case Lifecycle Phase 2: case merge (dry-run preview + irreversible execute)
+export async function previewCaseMerge(
+  secondaryCaseId: string,
+  input: { primaryCaseId: string },
+): Promise<CaseMergeResult> {
+  const res = await apiFetch(`/api/v2/cases/${secondaryCaseId}/merge`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, dryRun: true, confirmDifferentPatients: true }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to preview case merge');
+  }
+
+  return res.json() as Promise<CaseMergeResult>;
+}
+
+export async function mergeCase(
+  secondaryCaseId: string,
+  input: { primaryCaseId: string; confirmDifferentPatients?: boolean },
+): Promise<CaseMergeResult> {
+  const res = await apiFetch(`/api/v2/cases/${secondaryCaseId}/merge`, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, dryRun: false }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as { message?: string; error?: string };
+    throw new Error(err.message ?? err.error ?? 'Failed to merge cases');
+  }
+
+  revalidatePath(`/cases/${secondaryCaseId}`);
+  revalidatePath(`/cases/${input.primaryCaseId}`);
+  revalidatePath('/cases');
+  revalidatePath('/lifecycle');
+  return res.json() as Promise<CaseMergeResult>;
 }

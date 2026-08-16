@@ -1,8 +1,9 @@
-import { eq, and, ne, sql, inArray } from 'drizzle-orm';
-import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo, PatientSite } from '@medical-crm/domain';
+import { eq, and, ne, sql, inArray, or, ilike, isNull } from 'drizzle-orm';
+import type { IPatientRepository, PatientAuthInfo, PatientBasicInfo, PatientSite, PatientSearchResult, PatientSiteAccessScope } from '@medical-crm/domain';
 import type { CrmDb } from '../crm-client.js';
 import { users } from '../schema/index.js';
 import { withTransientDatabaseRetry } from '../transient-db-retry.js';
+import { patientSiteScopeSql } from './patient-site-scope-sql.js';
 
 export class DrizzlePatientRepository implements IPatientRepository {
   constructor(private readonly db: CrmDb) {}
@@ -64,6 +65,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
             site: users.patientSite,
             phone: users.phone,
             country: users.country,
+            mergedIntoUserId: users.mergedIntoUserId,
           })
           .from(users)
           .where(
@@ -84,9 +86,10 @@ export class DrizzlePatientRepository implements IPatientRepository {
         site: row.site ?? null,
         phone: row.phone ?? null,
         country: row.country ?? null,
+        mergedIntoUserId: row.mergedIntoUserId ?? null,
       };
     } catch (err: unknown) {
-      if (!this.isMissingColumnError(err, 'patient_site')) {
+      if (!this.isMissingColumnError(err, 'patient_site') && !this.isMissingColumnError(err, 'merged_into_user_id')) {
         throw err;
       }
       if (site && site !== 'china') return null;
@@ -127,6 +130,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
         site: users.patientSite,
         phone: users.phone,
         country: users.country,
+        mergedIntoUserId: users.mergedIntoUserId,
       })
       .from(users)
       .where(and(eq(users.role, 'PATIENT'), inArray(users.id, ids)));
@@ -138,6 +142,7 @@ export class DrizzlePatientRepository implements IPatientRepository {
       site: row.site ?? null,
       phone: row.phone ?? null,
       country: row.country ?? null,
+      mergedIntoUserId: row.mergedIntoUserId ?? null,
     }));
   }
 
@@ -149,13 +154,14 @@ export class DrizzlePatientRepository implements IPatientRepository {
           patientCode: users.patientCode,
           preferredLanguage: users.preferredLanguage,
           site: users.patientSite,
+          mergedIntoUserId: users.mergedIntoUserId,
         })
         .from(users)
         .where(and(eq(users.email, email), eq(users.role, 'PATIENT'), eq(users.patientSite, site)))
         .limit(1);
-      return row ?? null;
+      return row ? { ...row, mergedIntoUserId: row.mergedIntoUserId ?? null } : null;
     } catch (err: unknown) {
-      if (!this.isMissingColumnError(err, 'patient_site')) {
+      if (!this.isMissingColumnError(err, 'patient_site') && !this.isMissingColumnError(err, 'merged_into_user_id')) {
         throw err;
       }
       if (site !== 'china') return null;
@@ -177,16 +183,18 @@ export class DrizzlePatientRepository implements IPatientRepository {
           preferredLanguage: users.preferredLanguage,
           site: users.patientSite,
           passwordHash: users.passwordHash,
+          mergedIntoUserId: users.mergedIntoUserId,
         })
         .from(users)
         .where(and(eq(users.email, email), eq(users.role, 'PATIENT'), eq(users.patientSite, site)))
         .limit(1);
 
-      return row ?? null;
+      return row ? { ...row, mergedIntoUserId: row.mergedIntoUserId ?? null } : null;
     } catch (err: unknown) {
       const missingPasswordHash = this.isMissingColumnError(err, 'password_hash');
       const missingPatientSite = this.isMissingColumnError(err, 'patient_site');
-      if (!missingPasswordHash && !missingPatientSite) {
+      const missingMergedInto = this.isMissingColumnError(err, 'merged_into_user_id');
+      if (!missingPasswordHash && !missingPatientSite && !missingMergedInto) {
         throw err;
       }
 
@@ -315,6 +323,48 @@ export class DrizzlePatientRepository implements IPatientRepository {
       preferredLanguage: users.preferredLanguage,
     });
     return row!;
+  }
+
+  async searchPatients(query: string, limit = 10, siteScope?: PatientSiteAccessScope): Promise<PatientSearchResult[]> {
+    const pattern = `%${query}%`;
+    const conditions = [
+      eq(users.role, 'PATIENT'),
+      isNull(users.mergedIntoUserId),
+      or(
+        ilike(users.name, pattern),
+        ilike(users.email, pattern),
+        ilike(users.phone, pattern),
+        ilike(users.whatsapp, pattern),
+        ilike(users.patientCode, pattern),
+      ),
+    ];
+    const siteCondition = patientSiteScopeSql(sql`${users.patientSite}`, siteScope);
+    if (siteCondition) conditions.push(siteCondition);
+
+    const rows = await this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        whatsapp: users.whatsapp,
+        patientCode: users.patientCode,
+        site: users.patientSite,
+      })
+      .from(users)
+      .where(and(...conditions))
+      .orderBy(sql`${users.createdAt} DESC`)
+      .limit(limit);
+
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      email: row.email ?? null,
+      phone: row.phone ?? null,
+      whatsapp: row.whatsapp ?? null,
+      patientCode: row.patientCode ?? null,
+      site: row.site ?? null,
+    }));
   }
 
   async updatePasswordHash(userId: string, hash: string): Promise<void> {

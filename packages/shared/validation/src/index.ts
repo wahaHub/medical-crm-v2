@@ -1,5 +1,6 @@
 export * from './hospital.schema';
 export * from './case.schema';
+export * from './merge.schema.js';
 export * from './message.schema';
 export * from './document.schema';
 export * from './progress.schema';

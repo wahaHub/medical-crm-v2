@@ -37,7 +37,7 @@ export type MessageTaskStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED
 
 // Phase 2: Case Model Realignment
 export type CaseAssignmentStatus = 'UNASSIGNED' | 'ASSIGNED';
-export type CaseTreatmentStage = 'CONFIRMED' | 'IN_TREATMENT' | 'POST_TREATMENT' | 'COMPLETED' | 'FOLLOW_UP';
+export type CaseTreatmentStage = 'INTAKE' | 'CONFIRMED' | 'IN_TREATMENT' | 'POST_TREATMENT' | 'COMPLETED' | 'FOLLOW_UP';
 
 // Case Lifecycle Phase 1: how the case entered the system
 export type CaseSourceChannel = 'WEB_ONBOARDING' | 'MANUAL' | 'EMAIL' | 'WHATSAPP' | 'PHONE_CALL' | 'REFERRAL';

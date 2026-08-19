@@ -10,6 +10,7 @@ import { formatDateTime } from '@/lib/date-format';
 import type { CaseSummary, PaginatedResponse } from '@/lib/api-types';
 
 const STAGE_COLUMNS = [
+  { key: 'INTAKE', label: 'Intake' },
   { key: 'CONFIRMED', label: 'Confirmed' },
   { key: 'IN_TREATMENT', label: 'In Treatment' },
   { key: 'POST_TREATMENT', label: 'Post Treatment' },

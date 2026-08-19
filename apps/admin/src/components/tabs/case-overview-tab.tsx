@@ -38,6 +38,7 @@ interface DocumentItem {
 }
 
 const DOCUMENT_STAGE_TAGS = [
+  { value: 'INTAKE', label: 'Intake' },
   { value: 'CONFIRMED', label: 'Confirmed' },
   { value: 'IN_TREATMENT', label: 'In Treatment' },
   { value: 'POST_TREATMENT', label: 'Post Treatment' },

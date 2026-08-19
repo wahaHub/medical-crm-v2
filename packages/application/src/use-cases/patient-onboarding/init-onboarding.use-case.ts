@@ -177,7 +177,7 @@ export class InitOnboardingUseCase {
         createdAt: now,
         updatedAt: now,
         assignmentStatus: 'UNASSIGNED',
-        treatmentStage: null,
+        treatmentStage: 'INTAKE',
         conditionSummary: null,
         structuredData: {
           entryProfile,

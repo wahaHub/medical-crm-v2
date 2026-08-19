@@ -1,6 +1,7 @@
 import type { CaseTreatmentStage } from '../enums/index.js';
 
 export const TREATMENT_STAGE_TRANSITIONS: Record<CaseTreatmentStage, CaseTreatmentStage[]> = {
+  INTAKE: ['CONFIRMED'],
   CONFIRMED: ['IN_TREATMENT'],
   IN_TREATMENT: ['POST_TREATMENT'],
   POST_TREATMENT: ['COMPLETED'],

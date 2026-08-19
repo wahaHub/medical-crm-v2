@@ -12,7 +12,7 @@ export const caseStageSchema = z.enum([
 export const riskLevelSchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 
 export const caseAssignmentStatusSchema = z.enum(['UNASSIGNED', 'ASSIGNED']);
-export const caseTreatmentStageSchema = z.enum(['CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP']);
+export const caseTreatmentStageSchema = z.enum(['INTAKE', 'CONFIRMED', 'IN_TREATMENT', 'POST_TREATMENT', 'COMPLETED', 'FOLLOW_UP']);
 export const caseSourceChannelSchema = z.enum(['WEB_ONBOARDING', 'MANUAL', 'EMAIL', 'WHATSAPP', 'PHONE_CALL', 'REFERRAL']);
 export const patientSiteSchema = z.enum(['beauty', 'china']);
 

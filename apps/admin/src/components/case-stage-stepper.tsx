@@ -10,6 +10,7 @@ import { updateCaseStage } from '@/actions/case-actions';
 import type { CaseProgressItem, CaseSummary } from '@/lib/api-types';
 
 const TREATMENT_STAGES = [
+  { key: 'INTAKE', label: 'Intake' },
   { key: 'CONFIRMED', label: 'Confirmed' },
   { key: 'IN_TREATMENT', label: 'In Treatment' },
   { key: 'POST_TREATMENT', label: 'Post Treatment' },

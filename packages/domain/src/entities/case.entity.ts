@@ -179,8 +179,8 @@ export class Case {
 
   advanceTreatmentStage(to: CaseTreatmentStage): void {
     if (!this.treatmentStage) {
-      if (to !== 'CONFIRMED') {
-        throw new ValidationError('Treatment stage must start at CONFIRMED');
+      if (to !== 'INTAKE') {
+        throw new ValidationError('Treatment stage must start at INTAKE');
       }
       this.treatmentStage = to;
       this.updatedAt = new Date();

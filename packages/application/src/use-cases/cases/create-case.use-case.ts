@@ -55,7 +55,7 @@ export class CreateCaseUseCase {
         createdAt: now,
         updatedAt: now,
         assignmentStatus: 'UNASSIGNED',
-        treatmentStage: null,
+        treatmentStage: 'INTAKE',
         conditionSummary: null,
         structuredData: null,
         riskFlags: null,

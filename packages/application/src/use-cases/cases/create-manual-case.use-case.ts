@@ -107,7 +107,7 @@ export class CreateManualCaseUseCase {
         createdAt: now,
         updatedAt: now,
         assignmentStatus: 'UNASSIGNED',
-        treatmentStage: null,
+        treatmentStage: 'INTAKE',
         conditionSummary: input.conditionSummary ?? null,
         structuredData: null,
         riskFlags: null,

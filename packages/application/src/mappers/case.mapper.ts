@@ -123,6 +123,7 @@ function deriveDisplayStatus(entity: Case): string {
   // Prefer new treatment stage if set
   if (entity.treatmentStage) {
     const NEW_STAGE_MAP: Record<string, string> = {
+      INTAKE: 'intake',
       CONFIRMED: 'contacted',
       IN_TREATMENT: 'in_treatment',
       POST_TREATMENT: 'post_treatment',

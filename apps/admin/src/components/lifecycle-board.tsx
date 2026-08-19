@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { LoadingSpinner } from '@medical-crm/ui';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { useCases } from '@/queries/use-cases';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
+import { updateCaseStage } from '@/actions/case-actions';
 import { formatDateTime } from '@/lib/date-format';
 import type { CaseSummary, PaginatedResponse } from '@/lib/api-types';
 
@@ -20,6 +22,38 @@ const STAGE_COLUMNS = [
 
 type StageKey = (typeof STAGE_COLUMNS)[number]['key'];
 
+const STAGE_LABELS = Object.fromEntries(STAGE_COLUMNS.map((s) => [s.key, s.label])) as Record<StageKey, string>;
+
+// Mirrors packages/domain/src/state-machine/treatment-stage-transitions.ts
+const STAGE_TRANSITIONS: Record<StageKey, StageKey[]> = {
+  INTAKE: ['CONFIRMED'],
+  CONFIRMED: ['IN_TREATMENT'],
+  IN_TREATMENT: ['POST_TREATMENT'],
+  POST_TREATMENT: ['COMPLETED'],
+  COMPLETED: ['FOLLOW_UP'],
+  FOLLOW_UP: ['IN_TREATMENT'],
+};
+
+// BFS through the state machine; returns the intermediate target stages
+// (excluding `from`, including `to`), or null when no allowed path exists.
+function findStagePath(from: StageKey, to: StageKey): StageKey[] | null {
+  if (from === to) return [];
+  const visited = new Set<StageKey>([from]);
+  const queue: StageKey[][] = [[from]];
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    const last = path[path.length - 1]!;
+    for (const next of STAGE_TRANSITIONS[last]) {
+      if (visited.has(next)) continue;
+      const extended = [...path, next];
+      if (next === to) return extended.slice(1);
+      visited.add(next);
+      queue.push(extended);
+    }
+  }
+  return null;
+}
+
 function daysInStage(caseItem: CaseSummary): number | null {
   const reference = caseItem.updatedAt ?? caseItem.createdAt;
   if (!reference) return null;
@@ -31,9 +65,25 @@ function daysInStage(caseItem: CaseSummary): number | null {
 function LifecycleColumn({
   stage,
   filters,
+  isDropTarget,
+  canDrop,
+  movingId,
+  onCardDragStart,
+  onCardDragEnd,
+  onDragOverStage,
+  onDragLeaveStage,
+  onDropOnStage,
 }: {
   stage: { key: StageKey; label: string };
   filters: Record<string, string>;
+  isDropTarget: boolean;
+  canDrop: boolean;
+  movingId: string | null;
+  onCardDragStart: (caseId: string, fromStage: StageKey) => void;
+  onCardDragEnd: () => void;
+  onDragOverStage: (stage: StageKey, e: React.DragEvent) => void;
+  onDragLeaveStage: (stage: StageKey) => void;
+  onDropOnStage: (stage: StageKey, e: React.DragEvent) => void;
 }) {
   const { data, isLoading, error } = useCases({ ...filters, treatmentStage: stage.key });
   const cases = (data as PaginatedResponse<CaseSummary> | undefined)?.data ?? [];
@@ -42,7 +92,22 @@ function LifecycleColumn({
   const { nameMap: hospitalNameMap } = useHospitalNameMap(hospitalIds);
 
   return (
-    <div className="flex min-w-[240px] flex-1 flex-col rounded-2xl border border-slate-200 bg-slate-50/60">
+    <div
+      onDragOver={(e) => onDragOverStage(stage.key, e)}
+      onDragLeave={(e) => {
+        // Ignore leaves into child elements (cards) inside the same column
+        if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+        onDragLeaveStage(stage.key);
+      }}
+      onDrop={(e) => onDropOnStage(stage.key, e)}
+      className={`flex min-w-[240px] flex-1 flex-col rounded-2xl border transition ${
+        isDropTarget
+          ? canDrop
+            ? 'border-indigo-300 bg-indigo-50/60 ring-2 ring-indigo-200'
+            : 'border-slate-200 bg-slate-100/60 opacity-60'
+          : 'border-slate-200 bg-slate-50/60'
+      }`}
+    >
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-700">{stage.label}</h2>
         <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-xs font-medium text-slate-600">
@@ -65,6 +130,10 @@ function LifecycleColumn({
             <LifecycleCard
               key={caseItem.id}
               caseItem={caseItem}
+              stageKey={stage.key}
+              isMoving={movingId === caseItem.id}
+              onDragStart={onCardDragStart}
+              onDragEnd={onCardDragEnd}
               hospitalName={
                 caseItem.hospitalName
                 ?? (caseItem.assignedHospitalId ? hospitalNameMap[caseItem.assignedHospitalId] : undefined)
@@ -78,13 +147,36 @@ function LifecycleColumn({
   );
 }
 
-function LifecycleCard({ caseItem, hospitalName }: { caseItem: CaseSummary; hospitalName: string | null }) {
+function LifecycleCard({
+  caseItem,
+  hospitalName,
+  stageKey,
+  isMoving,
+  onDragStart,
+  onDragEnd,
+}: {
+  caseItem: CaseSummary;
+  hospitalName: string | null;
+  stageKey: StageKey;
+  isMoving: boolean;
+  onDragStart: (caseId: string, fromStage: StageKey) => void;
+  onDragEnd: () => void;
+}) {
   const days = daysInStage(caseItem);
 
   return (
     <Link
       href={`/cases/${caseItem.id}`}
-      className="block rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-indigo-200 hover:shadow"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', caseItem.id);
+        onDragStart(caseItem.id, stageKey);
+      }}
+      onDragEnd={onDragEnd}
+      className={`block cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-indigo-200 hover:shadow active:cursor-grabbing ${
+        isMoving ? 'pointer-events-none opacity-40' : ''
+      }`}
     >
       <div className="flex items-start justify-between gap-2">
         <p className="truncate text-sm font-semibold text-slate-800">{caseItem.patientName}</p>
@@ -113,6 +205,11 @@ export function LifecycleBoard() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [patientSite, setPatientSite] = useState('');
+  const queryClient = useQueryClient();
+  const dragCaseRef = useRef<{ caseId: string; fromStage: StageKey } | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<StageKey | null>(null);
+  const [movingId, setMovingId] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -125,6 +222,67 @@ export function LifecycleBoard() {
     if (patientSite) result.patientSite = patientSite;
     return result;
   }, [search, patientSite]);
+
+  const handleCardDragStart = (caseId: string, fromStage: StageKey) => {
+    dragCaseRef.current = { caseId, fromStage };
+    setMoveError(null);
+  };
+
+  const handleCardDragEnd = () => {
+    dragCaseRef.current = null;
+    setDragOverStage(null);
+  };
+
+  const dropPathFor = (stage: StageKey): StageKey[] | null => {
+    const drag = dragCaseRef.current;
+    if (!drag || drag.fromStage === stage) return null;
+    return findStagePath(drag.fromStage, stage);
+  };
+
+  const handleDragOverStage = (stage: StageKey, e: React.DragEvent) => {
+    if (!dragCaseRef.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = dropPathFor(stage) ? 'move' : 'none';
+    setDragOverStage(stage);
+  };
+
+  const handleDragLeaveStage = (stage: StageKey) => {
+    setDragOverStage((current) => (current === stage ? null : current));
+  };
+
+  const handleDropOnStage = async (stage: StageKey, e: React.DragEvent) => {
+    e.preventDefault();
+    const drag = dragCaseRef.current;
+    dragCaseRef.current = null;
+    setDragOverStage(null);
+    if (!drag || drag.fromStage === stage) return;
+
+    const path = findStagePath(drag.fromStage, stage);
+    if (!path) {
+      setMoveError(
+        `Cannot move a case from ${STAGE_LABELS[drag.fromStage]} back to ${STAGE_LABELS[stage]}. Stages only move forward.`,
+      );
+      return;
+    }
+    if (path.length > 1) {
+      const chain = [STAGE_LABELS[drag.fromStage], ...path.map((s) => STAGE_LABELS[s])].join(' → ');
+      if (!window.confirm(`This will advance the case through: ${chain}. Continue?`)) return;
+    }
+
+    setMovingId(drag.caseId);
+    setMoveError(null);
+    try {
+      // The state machine only accepts single-step transitions, so walk the path.
+      for (const step of path) {
+        await updateCaseStage(drag.caseId, step);
+      }
+    } catch (err) {
+      setMoveError(err instanceof Error ? err.message : 'Failed to update case stage');
+    } finally {
+      setMovingId(null);
+      await queryClient.invalidateQueries({ queryKey: ['cases'] });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -150,9 +308,35 @@ export function LifecycleBoard() {
         </select>
       </div>
 
+      {moveError && (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <p>{moveError}</p>
+          <button
+            type="button"
+            onClick={() => setMoveError(null)}
+            className="shrink-0 text-rose-400 hover:text-rose-600"
+            aria-label="Dismiss"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-4 overflow-x-auto pb-2">
         {STAGE_COLUMNS.map((stage) => (
-          <LifecycleColumn key={stage.key} stage={stage} filters={filters} />
+          <LifecycleColumn
+            key={stage.key}
+            stage={stage}
+            filters={filters}
+            isDropTarget={dragOverStage === stage.key}
+            canDrop={dragOverStage === stage.key ? dropPathFor(stage.key) !== null : false}
+            movingId={movingId}
+            onCardDragStart={handleCardDragStart}
+            onCardDragEnd={handleCardDragEnd}
+            onDragOverStage={handleDragOverStage}
+            onDragLeaveStage={handleDragLeaveStage}
+            onDropOnStage={handleDropOnStage}
+          />
         ))}
       </div>
     </div>

@@ -1,11 +1,6 @@
-import { PageHeader } from '@medical-crm/ui';
-import { LifecycleBoard } from '@/components/lifecycle-board';
+import { redirect } from 'next/navigation';
 
+// The standalone Lifecycle section was merged into Cases as the board view.
 export default function LifecyclePage() {
-  return (
-    <>
-      <PageHeader title="Lifecycle" />
-      <LifecycleBoard />
-    </>
-  );
+  redirect('/cases?view=board');
 }

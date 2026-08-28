@@ -9,7 +9,7 @@ import { useCases } from '@/queries/use-cases';
 import { useHospitalNameMap } from '@/queries/use-hospital-names';
 import { updateCaseStage } from '@/actions/case-actions';
 import { formatDateTime } from '@/lib/date-format';
-import type { CaseSummary, PaginatedResponse } from '@/lib/api-types';
+import type { CaseSummary } from '@/lib/api-types';
 
 const STAGE_COLUMNS = [
   { key: 'INTAKE', label: 'Intake' },
@@ -85,8 +85,32 @@ function LifecycleColumn({
   onDragLeaveStage: (stage: StageKey) => void;
   onDropOnStage: (stage: StageKey, e: React.DragEvent) => void;
 }) {
-  const { data, isLoading, error } = useCases({ ...filters, treatmentStage: stage.key });
-  const cases = (data as PaginatedResponse<CaseSummary> | undefined)?.data ?? [];
+  const [page, setPage] = useState(1);
+  const [accumulated, setAccumulated] = useState<CaseSummary[]>([]);
+  const { data, isLoading, error, isFetching } = useCases({
+    ...filters,
+    treatmentStage: stage.key,
+    page: String(page),
+  });
+
+  // Filters changed (search / site): start over from page 1
+  useEffect(() => {
+    setPage(1);
+    setAccumulated([]);
+  }, [filters]);
+
+  useEffect(() => {
+    if (!data?.data) return;
+    setAccumulated((prev) => {
+      if (page === 1) return data.data;
+      const seen = new Set(prev.map((c) => c.id));
+      return [...prev, ...data.data.filter((c) => !seen.has(c.id))];
+    });
+  }, [data, page]);
+
+  const cases = accumulated;
+  const total = data?.total ?? cases.length;
+  const hasMore = data?.hasMore ?? false;
   // The list DTO only carries assignedHospitalId; resolve display names per column
   const hospitalIds = cases.map((caseItem) => caseItem.assignedHospitalId);
   const { nameMap: hospitalNameMap } = useHospitalNameMap(hospitalIds);
@@ -111,7 +135,7 @@ function LifecycleColumn({
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-700">{stage.label}</h2>
         <span className="rounded-full bg-slate-200/70 px-2 py-0.5 text-xs font-medium text-slate-600">
-          {cases.length}
+          {total}
         </span>
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
@@ -141,6 +165,16 @@ function LifecycleColumn({
               }
             />
           ))
+        )}
+        {!isLoading && !error && hasMore && (
+          <button
+            type="button"
+            disabled={isFetching}
+            onClick={() => setPage((p) => p + 1)}
+            className="w-full rounded-lg border border-dashed border-slate-300 py-2 text-xs font-medium text-slate-500 transition hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50"
+          >
+            {isFetching ? 'Loading…' : `Load more (${cases.length} of ${total})`}
+          </button>
         )}
       </div>
     </div>
@@ -210,6 +244,8 @@ export function LifecycleBoard() {
   const [dragOverStage, setDragOverStage] = useState<StageKey | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  // Bumped after every stage move so columns remount and drop stale accumulated pages
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
@@ -281,6 +317,7 @@ export function LifecycleBoard() {
     } finally {
       setMovingId(null);
       await queryClient.invalidateQueries({ queryKey: ['cases'] });
+      setRefreshKey((k) => k + 1);
     }
   };
 
@@ -325,7 +362,7 @@ export function LifecycleBoard() {
       <div className="flex gap-4 overflow-x-auto pb-2">
         {STAGE_COLUMNS.map((stage) => (
           <LifecycleColumn
-            key={stage.key}
+            key={`${stage.key}-${refreshKey}`}
             stage={stage}
             filters={filters}
             isDropTarget={dragOverStage === stage.key}

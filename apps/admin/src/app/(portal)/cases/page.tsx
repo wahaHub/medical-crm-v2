@@ -1,7 +1,8 @@
-import { PageHeader } from '@medical-crm/ui';
+import { Suspense } from 'react';
+import { PageHeader, LoadingSpinner } from '@medical-crm/ui';
 import { apiFetch } from '@/lib/api-fetch';
 import type { PaginatedResponse, CaseSummary, CaseStats } from '@/lib/api-types';
-import { CasesList } from '@/components/cases-list';
+import { CasesViewSwitcher } from '@/components/cases-view-switcher';
 
 const EMPTY_CASES: PaginatedResponse<CaseSummary> = {
   data: [],
@@ -45,7 +46,9 @@ export default async function CasesPage() {
   return (
     <>
       <PageHeader title="Cases" />
-      <CasesList initialCases={cases} initialStats={stats} />
+      <Suspense fallback={<div className="flex justify-center py-10"><LoadingSpinner /></div>}>
+        <CasesViewSwitcher initialCases={cases} initialStats={stats} />
+      </Suspense>
     </>
   );
 }

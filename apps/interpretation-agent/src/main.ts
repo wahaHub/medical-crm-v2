@@ -3,20 +3,20 @@ import {
   AutoSubscribe,
   cli,
   defineAgent,
-  inference,
   ServerOptions,
   type JobContext,
   type JobProcess,
   type JobRequest,
+  type VAD,
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
 import { AuthorizationWatchdog } from './authorization-watchdog.js';
 import { ControlPlaneClient } from './control-plane-client.js';
+import { LiveKitMediaAdapter } from './livekit-media-adapter.js';
 import type { DispatchMetadata } from './runtime-types.js';
 
 interface ProcessData {
-  vad?: unknown;
-  turnDetector?: inference.TurnDetector;
+  vad?: VAD;
 }
 
 function parseDispatchMetadata(raw: string): DispatchMetadata {
@@ -39,15 +39,17 @@ const agent = defineAgent<ProcessData>({
       minSilenceDuration: 550,
       maxBufferedSpeech: 30_000,
     });
-    proc.userData.turnDetector = new inference.TurnDetector({
-      unlikelyThreshold: { zh: 0.5, en: 0.5 },
-    });
   },
   entry: async (ctx: JobContext<ProcessData>) => {
     const execution = parseDispatchMetadata(ctx.job.metadata);
     if (ctx.job.dispatchId.length === 0) throw new Error('explicit dispatch id is required');
     const client = new ControlPlaneClient();
     const bootstrap = await client.bootstrap(execution, ctx.job.dispatchId);
+    if (bootstrap.job.providerProfile !== 'INTEGRATED_REALTIME') {
+      throw new Error('approved integrated provider profile is required');
+    }
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
+    if (!ctx.proc.userData.vad) throw new Error('Silero VAD was not prewarmed');
     const watchdog = new AuthorizationWatchdog(
       execution,
       bootstrap.watchdog.maxRttMs,
@@ -57,11 +59,27 @@ const agent = defineAgent<ProcessData>({
     // Never subscribe broadly. Track subscriptions are added only after a fresh,
     // exact watchdog snapshot; the provider adapter remains separately gated.
     await ctx.connect(undefined, AutoSubscribe.SUBSCRIBE_NONE);
+    const media = new LiveKitMediaAdapter({
+      room: ctx.room,
+      execution,
+      vad: ctx.proc.userData.vad,
+      watchdog,
+      client,
+      applicationDeadlineAt: bootstrap.job.applicationDeadlineAt,
+    });
 
     let stopped = false;
-    let resolveStopped: (() => void) | null = null;
-    const stoppedPromise = new Promise<void>((resolve) => { resolveStopped = resolve; });
-    const interval = setInterval(async () => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let inFlightRefresh: Promise<void> | null = null;
+    ctx.addShutdownCallback(async () => {
+      stopped = true;
+      if (interval) clearInterval(interval);
+      watchdog.expire();
+      media.reconcile([]);
+      await inFlightRefresh?.catch(() => undefined);
+      await media.close();
+    });
+    const refreshAuthorization = async () => {
       if (stopped) return;
       const request = watchdog.begin(performance.now());
       if (!request) return;
@@ -71,23 +89,34 @@ const agent = defineAgent<ProcessData>({
           request,
           bootstrap.watchdog.maxRttMs,
         );
-        watchdog.accept(request, response, performance.now());
+        if (stopped) {
+          watchdog.reject(request);
+          return;
+        }
+        if (watchdog.accept(request, response, performance.now())) {
+          media.reconcile(watchdog.authorizedTracks);
+        }
       } catch {
         watchdog.reject(request);
       }
       if (performance.now() > watchdog.authorizationDeadlineMonotonicMs) {
         watchdog.expire();
+        media.reconcile([]);
         ctx.shutdown('interpretation authorization expired');
       }
-    }, bootstrap.watchdog.intervalMs);
-
-    ctx.addShutdownCallback(async () => {
-      stopped = true;
-      clearInterval(interval);
-      watchdog.expire();
-      resolveStopped?.();
-    });
-    await stoppedPromise;
+    };
+    const scheduleRefresh = (): Promise<void> => {
+      if (inFlightRefresh) return inFlightRefresh;
+      const refresh = refreshAuthorization().finally(() => {
+        if (inFlightRefresh === refresh) inFlightRefresh = null;
+      });
+      inFlightRefresh = refresh;
+      return refresh;
+    };
+    interval = setInterval(() => { void scheduleRefresh(); }, bootstrap.watchdog.intervalMs);
+    await scheduleRefresh();
+    // The SDK runner owns the job lifetime after entry returns. It waits for
+    // room/job closure and only then invokes the registered shutdown callback.
   },
 });
 

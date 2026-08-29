@@ -14,12 +14,18 @@ interface BootstrapResponse {
     authorizationRevision: number;
     providerProfile: 'DISABLED' | 'INTEGRATED_REALTIME';
     agentIdentity: string;
+    applicationDeadlineAt: string;
   };
   watchdog: {
     intervalMs: number;
     maxRttMs: number;
     authorizationTtlMs: number;
   };
+}
+
+interface ProviderSessionResponse {
+  success: true;
+  providerSession: { id: string; state: string };
 }
 
 function requireEnv(name: string): string {
@@ -79,6 +85,74 @@ export class ControlPlaneClient {
       if (!response.ok || !result.success || !result.authorized) {
         throw new Error(result.error ?? `authorization_failed:${response.status}`);
       }
+      return result;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async openProviderSession(
+    jobId: string,
+    sourceTrackId: string,
+    applicationDeadlineAt: string,
+  ): Promise<{ id: string; state: string }> {
+    const result = await this.#authorizedJson<ProviderSessionResponse>(
+      `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions`,
+      {
+        sourceTrackId,
+        provider: 'openai',
+        providerProfile: 'INTEGRATED_REALTIME',
+        applicationDeadlineAt,
+      },
+    );
+    return result.providerSession;
+  }
+
+  async activateProviderSession(
+    jobId: string,
+    sessionId: string,
+    providerSessionReference: string,
+  ): Promise<void> {
+    await this.#authorizedJson(
+      `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions/${sessionId}/activate`,
+      { providerSessionReference },
+    );
+  }
+
+  async closeProviderSession(
+    jobId: string,
+    sessionId: string,
+    providerCloseReference: string | null,
+    closeResult?: string,
+  ): Promise<void> {
+    await this.#authorizedJson(
+      `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions/${sessionId}/close`,
+      { state: 'CLOSING', closeResult },
+    );
+    await this.#authorizedJson(
+      `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions/${sessionId}/close`,
+      providerCloseReference
+        ? { state: 'CLOSED', providerCloseReference }
+        : { state: 'ORPHAN_WAIT', closeResult: closeResult ?? 'provider_close_unconfirmed' },
+    );
+  }
+
+  async #authorizedJson<T extends { success: true }>(path: string, body: unknown): Promise<T> {
+    if (!this.#capability) throw new Error('job capability is unavailable');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
+    try {
+      const response = await fetch(`${this.#baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.#capability}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const result = await response.json().catch(() => ({ error: 'invalid_response' })) as T & { error?: string };
+      if (!response.ok || !result.success) throw new Error(result.error ?? `control_plane_failed:${response.status}`);
       return result;
     } finally {
       clearTimeout(timeout);

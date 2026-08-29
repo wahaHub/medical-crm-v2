@@ -81,6 +81,35 @@ describe('AuthorizationWatchdog', () => {
     expect(watchdog.accept(trackRegression, regressing, 650)).toBe(false);
   });
 
+  it('rejects low, high, or mixed track revisions within a job snapshot', () => {
+    const watchdog = new AuthorizationWatchdog(execution);
+    const lowTrack = watchdog.begin(100)!;
+    expect(watchdog.accept(lowTrack, response(lowTrack, {
+      authorizationRevision: 6,
+      tracks: [{ ...response(lowTrack).tracks[0]!, authorizationRevision: 5 }],
+    }), 150)).toBe(false);
+
+    const highTrack = watchdog.begin(200)!;
+    expect(watchdog.accept(highTrack, response(highTrack, {
+      authorizationRevision: 6,
+      tracks: [{ ...response(highTrack).tracks[0]!, authorizationRevision: 7 }],
+    }), 250)).toBe(false);
+
+    const mixedTracks = watchdog.begin(300)!;
+    expect(watchdog.accept(mixedTracks, response(mixedTracks, {
+      authorizationRevision: 6,
+      tracks: [
+        { ...response(mixedTracks).tracks[0]!, authorizationRevision: 6 },
+        {
+          ...response(mixedTracks).tracks[0]!,
+          id: 'track-2',
+          trackSid: 'TR_2',
+          authorizationRevision: 5,
+        },
+      ],
+    }), 350)).toBe(false);
+  });
+
   it('allows at most one refresh in flight', () => {
     const watchdog = new AuthorizationWatchdog(execution);
     const request = watchdog.begin(100)!;

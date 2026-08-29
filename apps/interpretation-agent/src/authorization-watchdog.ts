@@ -62,7 +62,7 @@ export class AuthorizationWatchdog {
       if (previous && (track.languageVersion < previous.languageVersion
         || track.consentVersion < previous.consentVersion
         || track.authorizationRevision < previous.authorizationRevision)) return false;
-      if (track.authorizationRevision > response.authorizationRevision) return false;
+      if (track.authorizationRevision !== response.authorizationRevision) return false;
       nextTracks.set(track.id, track);
     }
 
@@ -85,5 +85,9 @@ export class AuthorizationWatchdog {
 
   get authorizationDeadlineMonotonicMs(): number {
     return this.#deadlineMonotonicMs;
+  }
+
+  get authorizedTracks(): AuthorizedTrack[] {
+    return [...this.#tracks.values()].filter((track) => track.authorized);
   }
 }

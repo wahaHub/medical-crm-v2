@@ -165,7 +165,7 @@ In either mode, never ship a standard OpenAI API key to the browser. Only a shor
 
 Official current candidates include:
 
-- `gpt-realtime-translate`: dedicated streaming speech-to-speech translation, translated audio plus transcript deltas, published at `$0.034` per audio minute;
+- `gpt-realtime-translate`: dedicated streaming speech-to-speech translation, translated audio plus documented `session.input_transcript.delta` source text and `session.output_transcript.delta` translated text, published at `$0.034` per audio minute;
 - `gpt-realtime-2.1-mini`: lower-cost general Realtime voice/reasoning model with WebRTC, WebSocket, SIP, audio input/output, and function calling; evaluate it as a separate translation candidate, but reject it if it paraphrases, explains, omits, or invents clinically material content;
 - `gpt-realtime-2.1`: higher-cost comparator for cases where the mini model fails the agreed quality threshold.
 
@@ -198,7 +198,9 @@ The per-turn audio buffer is capped initially at 30 seconds and 8 MiB. If either
 
 Explicitly configure and test the `zh` or `en` threshold rather than relying on an English default when no STT language signal exists. Treat the detector as a quality signal, not a guarantee: the current implementation can time out and commit, so interruption, long-pause, short-answer, crosstalk, and fallback behavior remain blocking tests.
 
-For the dedicated continuous `gpt-realtime-translate` endpoint, do not assume undocumented automatic-turn disable, manual commit, response cancel, or input-buffer operations. LiveKit remains the product turn/playout authority; provider segmentation is a transport detail. The adapter must deterministically map provider audio/transcript events to `local_turn_id` using stable response/item IDs, ordered deltas, input audio range/offset or an equivalent causal boundary, and an observable final/drain barrier. One local turn may merge ordered provider subsegments, but arrival time or a silence timeout is not a valid mapping rule.
+For the dedicated `gpt-realtime-translate` endpoint, do not assume undocumented automatic-turn disable, manual commit, response cancel, or input-buffer operations. LiveKit remains the product turn/playout authority; provider segmentation is a transport detail. OpenAI does document `session.close` for a translation source stream and requires clients to continue draining until `session.closed`.
+
+The Phase B safety-first MVP therefore uses one translation session per admitted local speech turn. It opens at Silero speech-start, immediately streams the bounded pre-roll plus live PCM, sends `session.close` at VAD speech-end, and treats `session.closed` as the provider final/drain barrier. The whole provider session maps one-to-one to one `local_turn_id`, avoiding an undocumented cross-turn response mapper. Playback still waits for both the parallel grace timer and LiveKit Turn Detector acceptance. This increases session setup frequency, so cold-start, latency, and billing measurements are blocking; a later continuous-session optimization is allowed only after stable event identity, causal boundaries, and per-turn finality are executable-tested.
 
 Seal the local turn at LiveKit EOT and release it only after mapped output reaches the proved final/drain state. Unknown ownership, a response crossing a local boundary without a deterministic rule, missing finality, or reconnect sequence discontinuity fails closed. If the speaker resumes before release and the endpoint cannot cancel, discard the entire local-turn buffer, close the source session through the existing provider fence, and keep that speaker AI-unavailable until confirmed closure/expiry permits a clean session. If the endpoint cannot provide enough causal/finality signals while still meeting the first-audio target, `gpt-realtime-translate` fails the V1 gate; choose a controllable general Realtime adapter or later decomposed profile instead.
 
@@ -225,15 +227,19 @@ Automatic direction switching is off at launch. Unknown or materially mismatched
 
 On consent withdrawal, STOP, member removal, track unpublish, execution invalidation, optional self-hosted lease loss, or generation change, the agent must unsubscribe immediately and within the two-second product bound: stop forwarding frames, flush PCM/VAD/provider-input buffers, cancel or close that source's provider session where supported, purge interim/final replay, discard queued TTS, unpublish affected translated output, and emit an audit event.
 
+Low-cost V1 exposes a single-participant witnessed-withdrawal mutation. Every consent row has a monotonic `version`, and grant/withdrawal mutations serialize with the same consultation -> active job -> consent lock order. In one transaction withdrawal records `REVOKED`, increments the consent version, advances the active job authorization revision, invalidates that participant's current source tracks with the exact new consent version, and writes `CONSENT_CHANGED`. It does not pre-label provider rows orphaned: the next watchdog snapshot drives the agent's synchronous unsubscribe/buffer/playout invalidation first, after which provider closure or the conservative expiry reconciler owns the billing fence. Repeating the same withdrawal is idempotent and does not advance either version again.
+
+The legacy batch-grant mutation is deliberately monotonic: it may create a missing version-1 grant or idempotently confirm an existing `GRANTED` row, but it returns `EXPLICIT_RECONSENT_REQUIRED` for `REVOKED` or `DECLINED`. Therefore a delayed pre-withdrawal request cannot overwrite a completed withdrawal. Re-enabling AI after withdrawal is outside this gated MVP; it requires a separately reviewed re-consent ceremony bound to the current consent version and a fresh, single-use server attestation. Until that mutation exists, the original call continues without AI for that participant.
+
 This remains a lower-cost trust compromise: LiveKit grants `canSubscribe` at room scope, not as an application-enforced per-track consent policy. A compromised hosted or self-hosted agent runtime holding a valid room token could bypass the agent's filtering. Mitigations are one exact agent identity per execution version, `autoSubscribe=false`, minimal provider keys, dispatch/token removal on STOP or invalidation, runtime isolation, and audit/reconciliation. Workloads requiring infrastructure-enforced per-track isolation must use the enterprise profile or a separately reviewed room topology.
 
 ### 6.2 Per-speaker processing
 
-Each source microphone track has independent logical state, authorization, language, buffering, captions, and provider-session ownership. V1 creates provider sessions lazily for speaking tracks instead of opening eight continuous paid streams when the room starts. It keeps a short local PCM pre-roll so the first syllable is not lost, caps concurrently active provider sessions at two initially, and closes an inactive session only after a measured idle threshold and provider-specific billing test.
+Each source microphone track has independent logical state, authorization, language, buffering, captions, and provider-session ownership. The safety-first integrated-endpoint MVP creates one provider session lazily per admitted speech turn instead of opening eight continuous paid streams when the room starts. It keeps a short local PCM pre-roll so the first syllable is not lost, caps concurrently active provider sessions at two initially, and closes/drains each session at the VAD speech-end barrier. A later continuous-session optimization may use a measured idle threshold only after provider billing and cross-turn mapping tests pass.
 
 Different speakers never share one provider session merely because they use the same translation direction: shared context would break speaker attribution, consent withdrawal, cancellation, and crosstalk isolation. Exactly one provider profile is active for a job; launch does not run both profiles simultaneously.
 
-Provider-slot admission is deterministic: order newly speaking tracks by the server-observed speech-start timestamp, then stable member/track ID. An active turn is not preempted. A third simultaneous speaker retains at most two seconds or 512 KiB of in-memory PCM pre-roll, whichever comes first; if no slot becomes available before that cap, discard that turn's AI input, publish `AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER`, and never translate it later as stale audio. Original human audio always continues. A session in `CLOSING` or `ORPHAN_WAIT` still occupies its slot until the existing provider-session fence releases it.
+Low-cost V1 uses immediate capacity degradation rather than a promotion queue. An active turn is not preempted. If both provider slots are occupied, a third simultaneous speaker's current speech turn is not sent to AI, `AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER` is published without audio or transcript content, and original human audio continues. Slot release never starts translation halfway through that discarded utterance or replays stale pre-roll; the speaker may compete again only on a later explicit speech-start. A session in `CLOSING` or `ORPHAN_WAIT` still occupies its slot until the existing provider-session fence releases it.
 
 `INTEGRATED_REALTIME` is:
 
@@ -246,7 +252,7 @@ LiveKit source track
   -> validated translated captions and target-language LiveKit audio publication
 ```
 
-The exact translation endpoint must prove whether transcript deltas represent source text, translated text, or both, including interim/final, segment mapping, and reconnect semantics. Current public documentation does not promise a separate source-language transcript. If the approved product requires source and translated captions, `INTEGRATED_REALTIME` does not qualify by itself unless that capability is proved and contractually stable; otherwise select `DECOMPOSED`. Do not silently add a parallel STT stream, because that would create a hybrid profile with duplicate audio upload and additional billing requiring separate review.
+The current official translation guide documents separate source (`session.input_transcript.delta`) and translated (`session.output_transcript.delta`) transcript streams. The executable qualification must still prove language-pair accuracy, ordering, completeness at `session.closed`, reconnect behavior, and whether interim deltas can be safely shown. If those tests fail, select `DECOMPOSED`; do not silently add a parallel STT stream, because that would create a hybrid profile with duplicate audio upload and additional billing requiring separate review.
 
 `DECOMPOSED` is:
 
@@ -335,7 +341,7 @@ Add or retain these bounded records:
    - expected source language, target language, language version, setter and set timestamp;
    - published/unpublished timestamps and current generation.
 4. `video_consultation_ai_consents`
-   - participant, policy version, granted/declined/revoked state and audit attribution.
+   - participant, policy version, monotonic consent version, granted/declined/revoked state and audit attribution.
 5. `video_consultation_provider_sessions`
    - one row per job and source track provider session;
    - provider/profile, opaque provider session/reference ID when supplied, job and source-track IDs;
@@ -428,7 +434,7 @@ await session.start({
 });
 ```
 
-Omitting `record` is forbidden because the SDK can defer to the server-side job/project recording setting. In the pinned Node SDK, `record: false` disables upload of session audio, transcript, traces, and logs. The adapter must use the repository's tested `privateAgentSessionStartOptions(agent)` helper so a future refactor cannot silently rely on Dashboard configuration alone. Verify the effective project setting and session behavior with an executable test before any PHI; application logs remain redacted even if LiveKit offers richer observability.
+Omitting `record` is forbidden for any path that creates a LiveKit `AgentSession`, because the SDK can defer to the server-side job/project recording setting. In the pinned Node SDK, `record: false` disables upload of session audio, transcript, traces, and logs. Such a path must use the repository's tested `privateAgentSessionStartOptions(agent)` helper so a future refactor cannot silently rely on Dashboard configuration alone. The current low-level RTC media adapter does not create an `AgentSession`, so that option is not invoked there; it must instead pass an executable no-AgentSession/no-upload check while project Agent Observability remains off. Verify the effective project setting and session behavior before any PHI; application logs remain redacted even if LiveKit offers richer observability.
 
 ### 9.3 Optional interpretation Lightsail
 
@@ -655,6 +661,10 @@ Clinical operations defines blocking thresholds before translated speech is enab
 - A/B `gpt-realtime-translate` and `gpt-realtime-2.1-mini` on de-identified medical bilingual material;
 - run long-pause, interruption, billing, cold-start, quota, reconnect, and 2/4/8-party tests.
 
+Implementation status on 2026-08-29: the repository contains the dedicated WebSocket adapter, source/translated caption parsing, translated PCM buffering, server-listed microphone reconciliation, watchdog-bound explicit subscriptions, two-session cap, per-turn `session.close`/`session.closed` finality, target-language LiveKit audio publication, and a synthetic/de-identified capability probe. The non-overridable production media gate remains `false`. On the current development machine, both HTTPS and WebSocket TLS connections to `api.openai.com:443` are reset before authentication, and no LiveKit project credentials are configured; therefore real provider output and an end-to-end LiveKit room have not yet passed. Do not describe Phase B as complete or enable real-patient audio until both tests pass and review is clean.
+
+Provider admission writes a server-owned conservative expiry bound for every `CREATING` row, including the connect-before-activate crash window. Admission and a later consultation START reconcile elapsed bounds transactionally, move the unresolved fence to audited terminal `FAILED`, and never use `application_deadline_at` as provider-closure evidence. The pinned OpenAI translation profile currently reserves two hours plus five minutes of skew/drain margin. This is code scaffolding, not a verified provider claim: production enablement additionally requires official contract evidence and an executable exact-endpoint test proving that `/v1/realtime/translations` cannot outlive that bound. If that proof fails, increase the bound from verified provider terms or keep the profile disabled; never shorten it from an agent-supplied timestamp.
+
 ### Phase C: Contracted real-patient launch
 
 - select only a provider/model/endpoint with approved privacy terms and passing source-caption, translation, latency, and safety gates;
@@ -690,12 +700,12 @@ These gates are blocking for multiparty clinical launch:
 - agent crash/restart, provider disconnect, API outage, execution invalidation, and room generation change produce no feedback loop or duplicate translated speech; stale-execution captions/audio fail the client fence;
 - language selection/update, unknown language, mismatch, and code-switching tests match the server-authorized language-version policy;
 - every selected profile proves one source-turn authority: controllable profiles disable provider automatic turn detection and use documented manual commit from LiveKit EOT; no second detector may split/commit/cancel independently;
-- a dedicated continuous endpoint proves stable response/item identity, ordered deltas, causal input range or equivalent boundary, final/drain semantics, cross-local-turn handling, resume behavior, and reconnect continuity before any mapped output is released; arrival-time/silence heuristics are forbidden;
+- the Phase B per-turn translation-session profile proves session-open latency, ordered deltas, `session.close`/`session.closed` drain semantics, resume behavior, and reconnect failure closure before any mapped output is released; any later continuous-session profile additionally proves stable response/item identity, causal input range or equivalent boundary, cross-local-turn handling, and reconnect continuity; arrival-time/silence heuristics are forbidden;
 - exact integrated-endpoint tests prove transcript meaning/finality/mapping/reconnect behavior and any claimed cancellation operation before those capabilities are enabled; a profile without unique mapping/finality fails closed and is not the V1 default;
 - Silero VAD plus LiveKit Turn Detector passes Chinese/English long-pause, short-answer, interruption, backchannel, crosstalk, timeout, and fallback tests; the 600–800 ms monotonic grace clock starts at VAD speech-end in parallel with detector evaluation, no second fixed delay is added after EOT acceptance, and measured playback begins within the approved 0.8–1.3 second product window after true end of turn;
 - `TURN_GATED_BUFFERED` proves source upload/provider computation remains streaming while no translated speech is audible before EOT; 30-second/8-MiB overflow degrades without unbounded storage, and `COMMIT_AFTER_EOT` cannot silently substitute if it misses the latency gate;
 - lazy per-speaker activation preserves bounded PCM pre-roll and attribution, never shares provider context across speakers, enforces two active slots, and accounts correctly for idle close/reopen;
-- three-speaker overlap, same-target-language simultaneous turns, deterministic slot admission, capacity UI, arbiter serialization, five-second eligible-item expiry, and resume/STOP stale-drop tests pass;
+- three-speaker overlap, same-target-language simultaneous turns, immediate third-speaker turn degradation, capacity UI, arbiter serialization, five-second eligible-item expiry, later-turn slot retry, and resume/STOP stale-drop tests pass;
 - the selected/enabled production provider profile passes its complete failure, load-shedding, cost, privacy, and capability tests; an unimplemented/deferred profile is absent from the runtime allowlist and does not block V1;
 - if `INTEGRATED_REALTIME` is selected, test joint caption/audio failure, transcript semantics, local suppression, endpoint cancellation, and billing behavior; if `DECOMPOSED` is later enabled, separately test STT → translation → TTS stage failures and degradation order before enablement;
 - soft and hard budget thresholds stop the correct work within the five-second enforcement interval plus documented provider granularity.
@@ -802,6 +812,7 @@ Do not provision enterprise components merely because they appear in the target 
 - Cloudflare HIPAA/BAA overview: <https://www.cloudflare.com/trust-hub/us-privacy-compliance/>
 - OpenAI Realtime WebRTC and ephemeral client secrets: <https://developers.openai.com/api/docs/guides/realtime-webrtc>
 - OpenAI Realtime VAD: <https://developers.openai.com/api/docs/guides/realtime-vad>
+- OpenAI Realtime Translation: <https://developers.openai.com/api/docs/guides/realtime-translation>
 - OpenAI GPT-Realtime-Translate: <https://developers.openai.com/api/docs/models/gpt-realtime-translate>
 - OpenAI GPT-Realtime-2.1 Mini: <https://developers.openai.com/api/docs/models/gpt-realtime-2.1-mini>
 - OpenAI HIPAA-eligible products and endpoints: <https://help.openai.com/en/articles/20001069-hipaa-eligible-products-and-functionality>

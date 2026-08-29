@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { voice } from '@livekit/agents';
 import { privateAgentSessionStartOptions } from '../agent-session-privacy.js';
+import { playoutAuthorityChanged } from '../livekit-media-adapter.js';
 import { PlayoutArbiter } from '../playout-arbiter.js';
 import { ProviderSlots } from '../provider-slots.js';
+import { SpeakerTurnBoundary } from '../speaker-turn-boundary.js';
 import { TurnGatedBuffer } from '../turn-gated-buffer.js';
 
 function chunk(sequence: number, durationMs = 100, bytes = 16) {
@@ -91,15 +93,40 @@ describe('TURN_GATED_BUFFERED state', () => {
 });
 
 describe('provider slots and target-language arbiter', () => {
-  it('caps provider sessions and deterministically admits waiting speakers', () => {
+  it('drops a resumed utterance through its END regardless of async close latency', () => {
+    const boundary = new SpeakerTurnBoundary();
+    expect(boundary.onSpeechStart(true)).toBe('DISCARD_ACTIVE');
+    // These frames arrive while provider/control-plane close is still pending.
+    expect(boundary.acceptsPcm()).toBe(false);
+    expect(boundary.onSpeechStart(false)).toBe('DROP');
+    expect(boundary.acceptsPcm()).toBe(false);
+    expect(boundary.onSpeechEnd()).toBe('DROPPED_END');
+    expect(boundary.acceptsPcm()).toBe(true);
+    expect(boundary.onSpeechStart(false)).toBe('START_TURN');
+  });
+
+  it('uses the same no-tail boundary for capacity loss and authorization revocation', () => {
+    for (const reason of ['CAPACITY', 'AUTHORIZATION_REVOKED']) {
+      const boundary = new SpeakerTurnBoundary();
+      boundary.discardUntilSpeechEnd();
+      expect(boundary.acceptsPcm(), reason).toBe(false);
+      expect(boundary.onSpeechEnd(), reason).toBe('DROPPED_END');
+      expect(boundary.acceptsPcm(), reason).toBe(true);
+    }
+  });
+
+  it('caps provider sessions, immediately degrades overflow, and allows a later turn to retry', () => {
     const slots = new ProviderSlots(2);
-    expect(slots.request({ trackId: 'a', observedAtMonotonicMs: 1 })).toBe('ACTIVE');
-    expect(slots.request({ trackId: 'b', observedAtMonotonicMs: 2 })).toBe('ACTIVE');
-    expect(slots.request({ trackId: 'd', observedAtMonotonicMs: 4 })).toBe('WAITING');
-    expect(slots.request({ trackId: 'c', observedAtMonotonicMs: 3 })).toBe('WAITING');
-    expect(slots.release('a')).toBe('c');
-    expect(slots.isActive('c')).toBe(true);
-    expect(slots.release('b')).toBe('d');
+    expect(slots.tryAcquire('a')).toBe('ACTIVE');
+    expect(slots.tryAcquire('b')).toBe('ACTIVE');
+    expect(slots.tryAcquire('c')).toBe('CAPACITY_UNAVAILABLE');
+    expect(slots.isActive('c')).toBe(false);
+    slots.release('a');
+    // No mid-utterance promotion exists. A later explicit speech turn retries.
+    expect(slots.isActive('c')).toBe(false);
+    expect(slots.tryAcquire('c')).toBe('ACTIVE');
+    slots.release('b');
+    slots.release('c');
   });
 
   it('serializes same-language playout and drops items older than five seconds', () => {
@@ -113,6 +140,28 @@ describe('provider slots and target-language arbiter', () => {
     arbiter.complete('zh');
     arbiter.enqueue({ id: 'expired', targetLanguage: 'zh', eligibleAtMonotonicMs: 100, payload: 'x' });
     expect(arbiter.next('zh', 5_101)).toBeNull();
+  });
+});
+
+describe('playout authority snapshots', () => {
+  const track = {
+    id: 'track-1',
+    participantIdentity: 'patient-1',
+    trackSid: 'TR_1',
+    sourceLanguage: 'en' as const,
+    targetLanguage: 'zh' as const,
+    languageVersion: 1,
+    consentVersion: 1,
+    authorizationRevision: 1,
+    authorized: true,
+  };
+
+  it('invalidates on removal or any authority-version change, but not identical refreshes', () => {
+    expect(playoutAuthorityChanged([track], [track])).toBe(false);
+    expect(playoutAuthorityChanged([track], [])).toBe(true);
+    expect(playoutAuthorityChanged([track], [{ ...track, authorizationRevision: 2 }])).toBe(true);
+    expect(playoutAuthorityChanged([track], [{ ...track, languageVersion: 2 }])).toBe(true);
+    expect(playoutAuthorityChanged([track], [{ ...track, consentVersion: 2 }])).toBe(true);
   });
 });
 

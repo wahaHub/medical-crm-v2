@@ -54,6 +54,7 @@ export function VideoConsultationRoom({
     agentIdentity: string;
     executionVersion: number;
     interpretationGeneration: number;
+    roomGeneration: number;
   } | null>(null);
 
   const [interpretationStarted, setInterpretationStarted] = useState(false);
@@ -135,14 +136,23 @@ export function VideoConsultationRoom({
       })
       .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         const fence = interpretationFence.current;
-        if (topic !== 'subtitle' || payload.byteLength > 64 * 1024
+        if (!['subtitle', 'interpretation-status'].includes(topic ?? '') || payload.byteLength > 64 * 1024
           || !fence || participant?.identity !== fence.agentIdentity) return;
         try {
           const msg = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>;
+          const matchesFence = msg.jobId === fence.jobId
+            && msg.roomGeneration === fence.roomGeneration
+            && msg.executionVersion === fence.executionVersion
+            && msg.interpretationGeneration === fence.interpretationGeneration;
+          if (topic === 'interpretation-status') {
+            if (msg.schema === 'medora.interpretation.status.v1' && matchesFence
+              && msg.code === 'AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER') {
+              setInterpretationError('This speech turn was not translated because both AI channels were busy. Please try again after the current speakers finish.');
+            }
+            return;
+          }
           if (msg.schema !== 'medora.subtitle.v1'
-            || msg.jobId !== fence.jobId
-            || msg.executionVersion !== fence.executionVersion
-            || msg.interpretationGeneration !== fence.interpretationGeneration
+            || !matchesFence
             || typeof msg.from !== 'string'
             || !['zh', 'en'].includes(String(msg.fromLanguage))
             || !['zh', 'en'].includes(String(msg.toLanguage))
@@ -249,6 +259,7 @@ export function VideoConsultationRoom({
           agentIdentity: string;
           executionVersion: number;
           interpretationGeneration: number;
+          roomGeneration: number;
         };
       };
 
@@ -262,6 +273,32 @@ export function VideoConsultationRoom({
       setInterpretationError(err instanceof Error ? err.message : String(err));
     } finally {
       setInterpretationLoading(false);
+    }
+  }
+
+  async function revokeInterpretationConsent(participantIdentity: string) {
+    if (!window.confirm(
+      `Confirm that ${participantIdentity} has withdrawn consent for AI captions and translated speech. Their original call audio will continue.`,
+    )) return;
+    setInterpretationError(null);
+    try {
+      const response = await fetch('/api/video-consultations/interpretation/consent/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consultationId,
+          participantIdentity,
+          witnessConfirmed: true,
+        }),
+      });
+      const result = await response.json().catch(() => ({ error: 'invalid_response' })) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.success) throw new Error(result.error || 'Consent withdrawal failed');
+      setStatus(`AI consent withdrawn for ${participantIdentity}; original call audio continues`);
+    } catch (error) {
+      setInterpretationError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -430,7 +467,16 @@ export function VideoConsultationRoom({
         </div>
       </section>
 
-      <footer className="flex items-center justify-center gap-4 border-t border-slate-800 bg-slate-900 px-6 py-4">
+      <footer className="flex flex-wrap items-center justify-center gap-4 border-t border-slate-800 bg-slate-900 px-6 py-4">
+        {interpretationStarted && [identity, ...remoteParticipants.map((participant) => participant.identity)].map((participantIdentity) => (
+          <button
+            key={`revoke-${participantIdentity}`}
+            onClick={() => void revokeInterpretationConsent(participantIdentity)}
+            className="rounded-lg border border-amber-700 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-950"
+          >
+            Withdraw AI: {participantIdentity === identity ? 'me' : participantIdentity}
+          </button>
+        ))}
         <button
           onClick={() => void toggleMic()}
           className={`flex h-12 w-12 items-center justify-center rounded-full ${localAudioEnabled ? 'bg-slate-700 text-white' : 'bg-rose-600 text-white'}`}

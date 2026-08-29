@@ -18,11 +18,17 @@ import {
   readLiveKitConfig,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
 } from '../video-interpretation/security.js';
+import { reconcileExpiredProviderSessions } from '../video-interpretation/provider-session-reconciliation.js';
 
 const app = new Hono();
 const idSchema = z.string().uuid();
 const consentSchema = z.object({
   participantIdentities: z.array(z.string().min(1).max(160)).min(2).max(8),
+  policyVersion: z.literal(INTERPRETATION_POLICY_VERSION),
+  witnessConfirmed: z.literal(true),
+});
+const revokeConsentSchema = z.object({
+  participantIdentity: z.string().min(1).max(160),
   policyVersion: z.literal(INTERPRETATION_POLICY_VERSION),
   witnessConfirmed: z.literal(true),
 });
@@ -151,48 +157,228 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
   const actor = requireOperator(c);
   const consultationId = idSchema.parse(c.req.param('id'));
   const body = consentSchema.parse(await c.req.json());
-  const consultation = await loadConsultation(consultationId);
   const identities = [...new Set(body.participantIdentities)];
   if (identities.length !== body.participantIdentities.length) {
     throw new HTTPException(400, { message: 'Duplicate participant identity' });
   }
-
   const sql = sqlClient();
-  const admitted = await sql<{ identity: string }[]>`
-    SELECT DISTINCT identity
-    FROM video_consultation_participants
-    WHERE consultation_id = ${consultationId}
-      AND left_at IS NULL
-  `;
-  const allowed = new Set(admitted.map((row) => row.identity));
-  if (consultation.host_identity) allowed.add(consultation.host_identity);
-  allowed.add(`operator-${actor.userId}-${consultation.id}`);
-  for (const identity of identities) {
-    if (!allowed.has(identity)) {
-      throw new HTTPException(409, { message: `Participant is not currently admitted: ${identity}` });
-    }
-  }
-
-  await sql.begin(async (tx) => {
+  const result = await sql.begin(async (tx) => {
     const query = tx as unknown as typeof sql;
+    // All consent mutations serialize in consultation -> active job -> consent
+    // order. A delayed legacy GRANT therefore observes a completed REVOKE and
+    // cannot silently turn it back into GRANTED.
+    const [consultation] = await query<ConsultationRow[]>`
+      SELECT id, room_name, room_generation, status, host_identity, patient_language
+      FROM video_consultations
+      WHERE id = ${consultationId}
+      FOR UPDATE
+    `;
+    if (!consultation) return { kind: 'missing_consultation' as const };
+    const [job] = await query<{ id: string; agent_execution_version: number }[]>`
+      SELECT id, agent_execution_version
+      FROM video_consultation_interpretation_jobs
+      WHERE consultation_id = ${consultationId}
+        AND desired_state = 'RUNNING'
+        AND status IN ('DISPATCHING', 'AWAITING_AGENT', 'ACTIVE', 'STOPPING')
+      ORDER BY interpretation_generation DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const admitted = await query<{ identity: string }[]>`
+      SELECT DISTINCT identity
+      FROM video_consultation_participants
+      WHERE consultation_id = ${consultationId}
+        AND left_at IS NULL
+    `;
+    const allowed = new Set(admitted.map((row) => row.identity));
+    if (consultation.host_identity) allowed.add(consultation.host_identity);
+    allowed.add(`operator-${actor.userId}-${consultation.id}`);
+    const disallowed = identities.find((identity) => !allowed.has(identity));
+    if (disallowed) return { kind: 'not_admitted' as const, identity: disallowed };
+
+    const current = await query<{ participant_identity: string; state: string; version: string | number }[]>`
+      SELECT participant_identity, state, version
+      FROM video_consultation_ai_consents
+      WHERE consultation_id = ${consultationId}
+        AND policy_version = ${body.policyVersion}
+        AND participant_identity = ANY(${query.array(identities)}::text[])
+      ORDER BY participant_identity
+      FOR UPDATE
+    `;
+    const existingByIdentity = new Map(current.map((row) => [row.participant_identity, row]));
+    const requiresReconsent = current.find((row) => row.state !== 'GRANTED');
+    if (requiresReconsent) {
+      return {
+        kind: 'explicit_reconsent_required' as const,
+        identity: requiresReconsent.participant_identity,
+        version: Number(requiresReconsent.version),
+      };
+    }
+
+    const created: Array<{ participantIdentity: string; version: number }> = [];
     for (const identity of identities) {
+      if (existingByIdentity.has(identity)) continue;
       await query`
         INSERT INTO video_consultation_ai_consents (
-          consultation_id, participant_identity, policy_version, state, recorded_by_principal_id
+          consultation_id, participant_identity, policy_version, state, version, recorded_by_principal_id
         ) VALUES (
-          ${consultationId}, ${identity}, ${body.policyVersion}, 'GRANTED', ${actor.userId}
+          ${consultationId}, ${identity}, ${body.policyVersion}, 'GRANTED', 1, ${actor.userId}
         )
-        ON CONFLICT (consultation_id, participant_identity, policy_version)
-        DO UPDATE SET
-          state = 'GRANTED',
-          recorded_by_principal_id = EXCLUDED.recorded_by_principal_id,
-          recorded_at = now(),
-          revoked_at = NULL
+      `;
+      created.push({ participantIdentity: identity, version: 1 });
+    }
+
+    if (job && created.length > 0) {
+      const [revision] = await query<{ authorization_revision: string | number }[]>`
+        UPDATE video_consultation_interpretation_jobs
+        SET authorization_revision = authorization_revision + 1, updated_at = now()
+        WHERE id = ${job.id}
+        RETURNING authorization_revision
+      `;
+      if (!revision) throw new Error('failed to advance authorization revision');
+      await query`
+        INSERT INTO video_consultation_interpretation_events (
+          job_id, event_type, actor_type, actor_id, execution_version, details
+        ) VALUES (
+          ${job.id}, 'CONSENT_CHANGED', 'PRINCIPAL', ${actor.userId},
+          ${job.agent_execution_version},
+          ${JSON.stringify({
+            participantIdentities: created.map((row) => row.participantIdentity),
+            state: 'GRANTED',
+            policyVersion: body.policyVersion,
+            authorizationRevision: Number(revision.authorization_revision),
+          })}::jsonb
+        )
       `;
     }
+    return {
+      kind: 'granted' as const,
+      created,
+      consents: identities.map((identity) => ({
+        participantIdentity: identity,
+        version: Number(existingByIdentity.get(identity)?.version ?? 1),
+      })),
+    };
   });
 
-  return c.json({ success: true, policyVersion: body.policyVersion, granted: identities.length });
+  if (result.kind === 'missing_consultation') {
+    throw new HTTPException(404, { message: 'Video consultation not found' });
+  }
+  if (result.kind === 'not_admitted') {
+    throw new HTTPException(409, { message: `Participant is not currently admitted: ${result.identity}` });
+  }
+  if (result.kind === 'explicit_reconsent_required') {
+    return c.json({
+      success: false,
+      code: 'EXPLICIT_RECONSENT_REQUIRED',
+      participantIdentity: result.identity,
+      consentVersion: result.version,
+    }, 409);
+  }
+  return c.json({
+    success: true,
+    policyVersion: body.policyVersion,
+    granted: identities.length,
+    created: result.created.length,
+    consents: result.consents,
+  });
+});
+
+app.post('/api/v2/video-consultations/:id/interpretation/consents/revoke', async (c) => {
+  const actor = requireOperator(c);
+  const consultationId = idSchema.parse(c.req.param('id'));
+  const body = revokeConsentSchema.parse(await c.req.json());
+  const sql = sqlClient();
+  const result = await sql.begin(async (tx) => {
+    const query = tx as unknown as typeof sql;
+    // Preserve the consultation -> job -> consent/source lock order used by
+    // START/STOP so revocation cannot splice two authorization revisions.
+    const [consultation] = await query<{ id: string }[]>`
+      SELECT id FROM video_consultations WHERE id = ${consultationId} FOR UPDATE
+    `;
+    if (!consultation) return 'missing_consultation' as const;
+    const [job] = await query<{ id: string; agent_execution_version: number }[]>`
+      SELECT id, agent_execution_version
+      FROM video_consultation_interpretation_jobs
+      WHERE consultation_id = ${consultationId}
+        AND desired_state = 'RUNNING'
+        AND status IN ('DISPATCHING', 'AWAITING_AGENT', 'ACTIVE', 'STOPPING')
+      ORDER BY interpretation_generation DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const [consent] = await query<{ id: string; state: string; version: string | number }[]>`
+      SELECT id, state, version
+      FROM video_consultation_ai_consents
+      WHERE consultation_id = ${consultationId}
+        AND participant_identity = ${body.participantIdentity}
+        AND policy_version = ${body.policyVersion}
+      FOR UPDATE
+    `;
+    if (!consent) return 'missing_consent' as const;
+    if (consent.state === 'REVOKED') {
+      return { kind: 'idempotent' as const, version: Number(consent.version) };
+    }
+
+    const [revokedConsent] = await query<{ version: string | number }[]>`
+      UPDATE video_consultation_ai_consents
+      SET state = 'REVOKED', revoked_at = now(), recorded_at = now(),
+          recorded_by_principal_id = ${actor.userId}, version = version + 1
+      WHERE id = ${consent.id}
+      RETURNING version
+    `;
+    if (!revokedConsent) throw new Error('failed to advance consent version');
+    const consentVersion = Number(revokedConsent.version);
+    if (!job) return { kind: 'revoked' as const, version: consentVersion };
+    const [revision] = await query<{ authorization_revision: string | number }[]>`
+      UPDATE video_consultation_interpretation_jobs
+      SET authorization_revision = authorization_revision + 1, updated_at = now()
+      WHERE id = ${job.id}
+      RETURNING authorization_revision
+    `;
+    if (!revision) throw new Error('failed to advance authorization revision');
+    const nextRevision = Number(revision.authorization_revision);
+    await query`
+      UPDATE video_consultation_source_tracks
+      SET authorized = false, consent_version = ${consentVersion},
+          authorization_revision = ${nextRevision},
+          unpublished_at = COALESCE(unpublished_at, now())
+      WHERE job_id = ${job.id}
+        AND participant_identity = ${body.participantIdentity}
+        AND unpublished_at IS NULL
+    `;
+    await query`
+      INSERT INTO video_consultation_interpretation_events (
+        job_id, event_type, actor_type, actor_id, execution_version, details
+      ) VALUES (
+        ${job.id}, 'CONSENT_CHANGED', 'PRINCIPAL', ${actor.userId},
+        ${job.agent_execution_version},
+        jsonb_build_object(
+          'participantIdentity', ${body.participantIdentity},
+          'state', 'REVOKED',
+          'policyVersion', ${body.policyVersion},
+          'consentVersion', ${consentVersion},
+          'authorizationRevision', ${nextRevision}
+        )
+      )
+    `;
+    return { kind: 'revoked' as const, version: consentVersion };
+  });
+
+  if (result === 'missing_consultation') {
+    throw new HTTPException(404, { message: 'Video consultation not found' });
+  }
+  if (result === 'missing_consent') {
+    throw new HTTPException(409, { message: 'No consent exists for this participant and policy' });
+  }
+  return c.json({
+    success: true,
+    policyVersion: body.policyVersion,
+    participantIdentity: body.participantIdentity,
+    consentVersion: typeof result === 'string' ? undefined : result.version,
+    revoked: typeof result !== 'string' && result.kind === 'revoked',
+    idempotent: typeof result !== 'string' && result.kind === 'idempotent',
+  });
 });
 
 app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
@@ -248,6 +434,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     if (existing) return { job: existing, createdByThisRequest: false };
 
     await query`SELECT pg_advisory_xact_lock(hashtext('video_interpretation_capacity'))`;
+    await reconcileExpiredProviderSessions(query, { consultationId });
     const [{ blocked_count: blockedProviderSessions } = { blocked_count: MAX_ACTIVE_AI_ROOMS }] = await query<{
       blocked_count: number;
     }[]>`

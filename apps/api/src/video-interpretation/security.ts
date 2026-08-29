@@ -3,15 +3,20 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 export const INTERPRETATION_POLICY_VERSION = 'video-ai-consent-v1';
 export const MAX_ACTIVE_AI_ROOMS = 2;
 export const MAX_PROVIDER_SESSIONS_PER_ROOM = 2;
+// Server-owned fallback for the pinned /v1/realtime/translations profile:
+// two hours maximum lifetime plus five minutes for skew/drain. The production
+// media gate must remain false until the exact endpoint/model contract and an
+// executable probe prove that this bound cannot be extended by the provider.
+export const OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS = (2 * 60 + 5) * 60;
 export const WATCHDOG_INTERVAL_MS = 500;
 export const WATCHDOG_MAX_RTT_MS = 400;
 export const WATCHDOG_AUTHORIZATION_TTL_MS = 1_500;
 
 // This is deliberately a code gate, not an environment switch. The current
-// hosted agent implements the authorization/control-plane state machines but
-// does not yet forward media to an approved provider or publish translations.
-// Enabling patient audio requires a reviewed implementation change together
-// with track reconciliation, provider capability, PHI, and budget gates.
+// hosted agent now contains the media/provider path, but the de-identified
+// OpenAI probe and an end-to-end LiveKit room have not passed from this
+// environment. Enabling patient audio still requires a reviewed code change
+// after those executable gates and the privacy/contract gates pass.
 export const VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
 
 export type ProviderSessionMutableState = 'CREATING' | 'ACTIVE' | 'CLOSING' | 'ORPHAN_WAIT';

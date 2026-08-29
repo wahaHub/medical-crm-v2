@@ -10,6 +10,7 @@ Implemented now:
 - `autoSubscribe=SUBSCRIBE_NONE` until exact server-authorized tracks exist;
 - Silero VAD and the LiveKit audio turn detector prewarmed with explicit Chinese/English thresholds;
 - tested turn-gated audio buffering, two-provider-slot admission, and target-language playout serialization.
+- a required `privateAgentSessionStartOptions(agent)` helper that sets `record: false` for every future clinical `AgentSession.start` call.
 
 The production provider/media adapter does not exist yet. `apps/api` therefore has a code-level, non-environment-overridable gate that always rejects START with `VIDEO_INTERPRETATION_SCAFFOLD_ONLY`. The existing environment flags are necessary future gates, but cannot enable this scaffold. A reviewed code change may remove the hard gate only after source-track reconciliation and revocation, provider capability/finality, PHI contract, and server-authoritative budget/deadline gates all pass.
 
@@ -22,4 +23,4 @@ pnpm --filter @medical-crm/interpretation-agent typecheck
 pnpm --filter @medical-crm/interpretation-agent dev
 ```
 
-The agent needs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_INTERPRETATION_AGENT_NAME`, `LIVEKIT_INTERPRETATION_BOOTSTRAP_SECRET`, and `CRM_API_URL`. Keep content recording and transcript observability disabled in the LiveKit project.
+The agent needs `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_INTERPRETATION_AGENT_NAME`, `LIVEKIT_INTERPRETATION_BOOTSTRAP_SECRET`, and `CRM_API_URL`. Keep Agent Observability disabled in the LiveKit project as the first privacy layer. When the media adapter creates an `AgentSession`, it must also call `session.start(privateAgentSessionStartOptions(agent))`; omitting the explicit `record: false` is a release blocker.

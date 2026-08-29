@@ -11,25 +11,26 @@ export interface BufferedAudioChunk {
 export class TurnGatedBuffer {
   readonly #maxDurationMs: number;
   readonly #maxBytes: number;
-  readonly #debounceMs: number;
+  readonly #gracePeriodMs: number;
   #chunks: BufferedAudioChunk[] = [];
   #durationMs = 0;
   #bytes = 0;
-  #sealedAt: number | null = null;
+  #graceStartedAt: number | null = null;
+  #endOfTurnAccepted = false;
   #providerFinal = false;
   #discardReason: TurnDiscardReason | null = null;
   #lastSequence = -1;
   #responseId: string | null = null;
   #itemId: string | null = null;
 
-  constructor(maxDurationMs = 30_000, maxBytes = 8 * 1024 * 1024, debounceMs = 700) {
+  constructor(maxDurationMs = 30_000, maxBytes = 8 * 1024 * 1024, gracePeriodMs = 700) {
     this.#maxDurationMs = maxDurationMs;
     this.#maxBytes = maxBytes;
-    this.#debounceMs = debounceMs;
+    this.#gracePeriodMs = gracePeriodMs;
   }
 
   append(chunk: BufferedAudioChunk): boolean {
-    if (this.#sealedAt !== null || this.#discardReason || this.#providerFinal) return false;
+    if (this.#discardReason || this.#providerFinal) return false;
     if (this.#responseId !== null
       && (chunk.responseId !== this.#responseId || chunk.itemId !== this.#itemId)) {
       this.discard('MAPPING_UNPROVED');
@@ -53,8 +54,16 @@ export class TurnGatedBuffer {
     return true;
   }
 
-  seal(endOfTurnMonotonicMs: number): void {
-    if (!this.#discardReason && this.#sealedAt === null) this.#sealedAt = endOfTurnMonotonicMs;
+  speechEnded(vadSpeechEndMonotonicMs: number): void {
+    if (!this.#discardReason && this.#graceStartedAt === null) {
+      this.#graceStartedAt = vadSpeechEndMonotonicMs;
+    }
+  }
+
+  acceptEndOfTurn(): boolean {
+    if (this.#discardReason) return false;
+    this.#endOfTurnAccepted = true;
+    return true;
   }
 
   markProviderFinal(responseId: string, itemId: string): boolean {
@@ -71,8 +80,9 @@ export class TurnGatedBuffer {
   }
 
   eligible(nowMonotonicMs: number): boolean {
-    return !this.#discardReason && this.#sealedAt !== null && this.#providerFinal
-      && nowMonotonicMs >= this.#sealedAt + this.#debounceMs;
+    return !this.#discardReason && this.#graceStartedAt !== null
+      && this.#endOfTurnAccepted && this.#providerFinal
+      && nowMonotonicMs >= this.#graceStartedAt + this.#gracePeriodMs;
   }
 
   drain(nowMonotonicMs: number): BufferedAudioChunk[] {

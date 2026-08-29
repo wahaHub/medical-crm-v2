@@ -18,7 +18,7 @@ The low-cost V1 topology is:
 
 1. Keep the CRM API and a minimal PostgreSQL control plane on the existing API Lightsail instance.
 2. Deploy the multiparty interpretation agent to LiveKit Cloud first. This requires zero new AWS servers and preserves server-controlled AI identity, consent enforcement, and output publication.
-3. Use Silero VAD plus LiveKit Audio Turn Detector for end-of-turn decisions, followed by a measured 600–800 ms cancellable playout debounce.
+3. Use Silero VAD plus LiveKit Audio Turn Detector for end-of-turn decisions. Start a measured 600–800 ms cancellable playout grace period at VAD speech-end in parallel with Turn Detector evaluation; never add the same fixed delay again after EOT acceptance.
 4. Evaluate OpenAI `gpt-realtime-translate` and `gpt-realtime-2.1-mini` against de-identified medical bilingual material. Do not enable either for PHI until the exact endpoint, account, retention configuration, and contract are approved.
 5. Defer the Cloudflare STT → translation → TTS comparator until the first integrated provider works end to end.
 6. Keep one 4 GB Lightsail agent as a portability/cost fallback, not a V1 purchase. Add a second only if the self-hosted profile is later selected and availability or capacity requires it.
@@ -173,20 +173,22 @@ General OpenAI Realtime sessions document server VAD, semantic VAD, and `speech_
 
 ### 5.5 V1 end-of-turn and playout policy
 
-V1 uses Silero VAD plus LiveKit Audio Turn Detector. The detector analyzes audio semantics and acoustic cues, supports Chinese and English, and is better suited than energy-only VAD to pauses such as “我们这个产品呢……”. LiveKit currently provides full `v1` at no additional inference cost for agents deployed to LiveKit Cloud; self-hosted agents default to local `v1-mini`.
+V1 uses Silero VAD plus LiveKit Audio Turn Detector. The detector analyzes audio semantics and acoustic cues, supports Chinese and English, and is better suited than energy-only VAD to pauses such as “我们这个产品呢……”. LiveKit currently provides full `v1` at no additional inference cost for agents deployed to LiveKit Cloud; self-hosted agents default to local `v1-mini`. As of this design, AgentSession endpointing defaults tighten to `minDelay=300 ms` and `maxDelay=2500 ms` when the audio detector is used, and a prediction that does not return in roughly one second follows LiveKit's documented commit/fallback behavior. These endpointing waits are part of the detector decision and must not be followed by another fixed 600–800 ms delay.
 
 V1 selects one explicit audience-playout mode: `TURN_GATED_BUFFERED`. The detector and provider run in parallel, but translated speech is turn-based/consecutive rather than audible rolling simultaneous interpretation:
 
 ```text
 source PCM
   +--> provider receives authorized streaming audio and produces translated events
-  +--> Silero VAD + LiveKit Audio Turn Detector estimate true end of turn
+  +--> Silero VAD speech-end starts the 600–800 ms cancellable grace clock
+  +--> LiveKit Audio Turn Detector evaluates true end of turn in parallel
 
 provider event -> verified response/item + causal-range mapper -> local_turn_id
 mapped output -> bounded per-turn in-memory buffer; not audible yet
-true end of turn -> measured 600–800 ms cancellable debounce
+playout requires BOTH grace elapsed AND Turn Detector EOT accepted
+do not start another fixed debounce after Turn Detector acceptance
 speaker resumes before release -> discard/cancel that turn
-speaker remains silent + mapped output reaches proved final/drain barrier
+speaker remains silent + both gates pass + mapped output reaches proved final/drain barrier
   -> mark PLAYOUT_ELIGIBLE and publish through target-language arbiter
 ```
 
@@ -200,7 +202,7 @@ For the dedicated continuous `gpt-realtime-translate` endpoint, do not assume un
 
 Seal the local turn at LiveKit EOT and release it only after mapped output reaches the proved final/drain state. Unknown ownership, a response crossing a local boundary without a deterministic rule, missing finality, or reconnect sequence discontinuity fails closed. If the speaker resumes before release and the endpoint cannot cancel, discard the entire local-turn buffer, close the source session through the existing provider fence, and keep that speaker AI-unavailable until confirmed closure/expiry permits a clean session. If the endpoint cannot provide enough causal/finality signals while still meeting the first-audio target, `gpt-realtime-translate` fails the V1 gate; choose a controllable general Realtime adapter or later decomposed profile instead.
 
-The debounce is a latency/turn-taking policy, not an authorization control. In hosted or self-hosted central-agent mode it runs in the interpretation agent; in `CLIENT_DIRECT_EXPERIMENT` it may run locally.
+The grace period is a latency/turn-taking policy, not an authorization control. It begins on the monotonic VAD speech-end timestamp while Turn Detector evaluation continues. If the grace period finishes first, output remains buffered until EOT acceptance; if EOT is accepted first, output remains buffered only until the already-running grace period finishes. A speaker resume before release cancels/discards the turn. In hosted or self-hosted central-agent mode this policy runs in the interpretation agent; in `CLIENT_DIRECT_EXPERIMENT` it may run locally.
 
 ## 6. AI media pipeline
 
@@ -417,7 +419,16 @@ Deploy the agent as a named production deployment with a pinned SDK/runtime and 
 
 The free Build plan is for de-identified/internal evaluation only: it can scale production to zero, cold-start by 10–20 seconds, permits at most five concurrent sessions, and stops accepting new work after its included 1,000 agent session minutes. Before real-patient use, verify a paid/contracted plan keeps production warm, has sufficient quota and support, and covers the selected region and agent-hosting data flow.
 
-Agent Observability can include transcripts, events, and audio recordings with a retention window. Keep content recording and transcript capture disabled for this product unless separately approved; verify the effective project settings with an executable test before any PHI. Application logs remain redacted even if LiveKit offers richer observability.
+Agent Observability can include transcripts, traces, logs, and audio recordings with a retention window. Apply two independent privacy layers for this product unless content capture is separately approved: keep Agent Observability disabled in the LiveKit project's Data and privacy settings, and explicitly start every clinical Node AgentSession with `record: false`:
+
+```ts
+await session.start({
+  agent,
+  record: false,
+});
+```
+
+Omitting `record` is forbidden because the SDK can defer to the server-side job/project recording setting. In the pinned Node SDK, `record: false` disables upload of session audio, transcript, traces, and logs. The adapter must use the repository's tested `privateAgentSessionStartOptions(agent)` helper so a future refactor cannot silently rely on Dashboard configuration alone. Verify the effective project setting and session behavior with an executable test before any PHI; application logs remain redacted even if LiveKit offers richer observability.
 
 ### 9.3 Optional interpretation Lightsail
 
@@ -638,7 +649,8 @@ Clinical operations defines blocking thresholds before translated speech is enab
 
 - deploy one named LiveKit Cloud Hosted Agent in an isolated non-PHI project;
 - implement the minimal job, consent, execution-version, provider-session, and budget records;
-- add Silero VAD, LiveKit Audio Turn Detector, explicit `zh`/`en` handling, parallel provider streaming, and cancellable playout buffering;
+- add Silero VAD, LiveKit Audio Turn Detector, explicit `zh`/`en` handling, parallel provider streaming, and cancellable playout buffering whose VAD grace clock runs in parallel with Turn Detector evaluation;
+- require every clinical `AgentSession.start` call to set `record: false` through the tested privacy helper, in addition to disabling project Agent Observability;
 - lazily create speaker-isolated provider sessions with a concurrency cap of two and PCM pre-roll;
 - A/B `gpt-realtime-translate` and `gpt-realtime-2.1-mini` on de-identified medical bilingual material;
 - run long-pause, interruption, billing, cold-start, quota, reconnect, and 2/4/8-party tests.
@@ -647,7 +659,7 @@ Clinical operations defines blocking thresholds before translated speech is enab
 
 - select only a provider/model/endpoint with approved privacy terms and passing source-caption, translation, latency, and safety gates;
 - move Hosted Agent production to the approved warm plan and region with sufficient quota;
-- verify content recording/transcript observability is disabled and execute all required BAAs/DPAs;
+- verify project Agent Observability is disabled, every clinical session explicitly starts with `record: false`, no audio/transcript/trace/log upload occurs, and all required BAAs/DPAs are executed;
 - enable translated captions/audio for an allowlist, with original/translated/ducking controls and human escalation;
 - keep the Cloudflare decomposed comparator deferred unless the integrated profile cannot meet cost or feature requirements.
 
@@ -680,7 +692,7 @@ These gates are blocking for multiparty clinical launch:
 - every selected profile proves one source-turn authority: controllable profiles disable provider automatic turn detection and use documented manual commit from LiveKit EOT; no second detector may split/commit/cancel independently;
 - a dedicated continuous endpoint proves stable response/item identity, ordered deltas, causal input range or equivalent boundary, final/drain semantics, cross-local-turn handling, resume behavior, and reconnect continuity before any mapped output is released; arrival-time/silence heuristics are forbidden;
 - exact integrated-endpoint tests prove transcript meaning/finality/mapping/reconnect behavior and any claimed cancellation operation before those capabilities are enabled; a profile without unique mapping/finality fails closed and is not the V1 default;
-- Silero VAD plus LiveKit Turn Detector passes Chinese/English long-pause, short-answer, interruption, backchannel, crosstalk, timeout, and fallback tests; measured playback begins within the approved 0.8–1.3 second product window after true end of turn;
+- Silero VAD plus LiveKit Turn Detector passes Chinese/English long-pause, short-answer, interruption, backchannel, crosstalk, timeout, and fallback tests; the 600–800 ms monotonic grace clock starts at VAD speech-end in parallel with detector evaluation, no second fixed delay is added after EOT acceptance, and measured playback begins within the approved 0.8–1.3 second product window after true end of turn;
 - `TURN_GATED_BUFFERED` proves source upload/provider computation remains streaming while no translated speech is audible before EOT; 30-second/8-MiB overflow degrades without unbounded storage, and `COMMIT_AFTER_EOT` cannot silently substitute if it misses the latency gate;
 - lazy per-speaker activation preserves bounded PCM pre-roll and attribution, never shares provider context across speakers, enforces two active slots, and accounts correctly for idle close/reopen;
 - three-speaker overlap, same-target-language simultaneous turns, deterministic slot admission, capacity UI, arbiter serialization, five-second eligible-item expiry, and resume/STOP stale-drop tests pass;
@@ -692,7 +704,7 @@ These gates are blocking for multiparty clinical launch:
 
 - Build-plan testing uses only synthetic or properly de-identified audio and fails AI closed on cold start, five-session concurrency limit, or 1,000-minute hard quota;
 - real-patient production uses an approved warm plan/region and executed contracts covering agent hosting, Turn Detector, secrets, and observability;
-- an executable privacy test confirms transcript/audio observability and content recording are disabled as intended before PHI;
+- executable privacy tests confirm project Agent Observability is off and session-level `record: false` suppresses audio, transcript, trace, and log upload before PHI;
 - dispatch credentials are short-lived and purpose-bound; agent secrets, build context, runtime logs, and callbacks pass leakage and stale-execution tests;
 - dispatch/room/participant metadata contains no credential; bootstrap exchange is single-use per execution, scope-limited, rate-limited, rotatable, and rejects wrong room/dispatch/generation/version;
 - the watchdog's request sequence, nonce, authorization revision, version checks, 400 ms maximum RTT, and request-start-based 1.5-second TTL stop provider-bound audio/output within two seconds under STOP, consent withdrawal, API loss, delayed/reordered/duplicated responses, response-after-STOP, clock-wall-time jumps, delayed removal, and stale execution;
@@ -768,7 +780,7 @@ Do not provision enterprise components merely because they appear in the target 
 | First integrated provider candidate | OpenAI `gpt-realtime-translate`; not the complete launch default unless source-caption semantics pass the blocking gate |
 | General Realtime comparator | OpenAI `gpt-realtime-2.1-mini`; reject clinically material paraphrase/invention, with `2.1` only as a quality comparator |
 | Lowest-component-cost comparator | Deferred: Cloudflare Nova-3 → M2M100 → language-qualified TTS |
-| Initial turn detection | Silero VAD + LiveKit Audio Turn Detector + measured 600–800 ms cancellable playout debounce |
+| Initial turn detection | Silero VAD + LiveKit Audio Turn Detector; VAD starts the measured 600–800 ms cancellable grace clock in parallel, and playout waits for both gates without a post-EOT fixed delay |
 | PHI on `gpt-realtime-translate` | Blocked until OpenAI confirms `/v1/realtime/translations` coverage for the approved organization in writing |
 | TTS for Cloudflare pipeline | Select separate proven English and Chinese adapters if one candidate cannot pass both |
 | Persistent transcript | Off |

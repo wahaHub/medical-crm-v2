@@ -131,9 +131,7 @@ export function VideoConsultationsList({ initialData }: Props) {
     setError(null);
     try {
       const data = await mutationFetch<LiveKitTokenResponse>('/api/video-consultations/token', 'POST', {
-        roomName: consultation.room_name,
-        identity: consultation.host_identity || `admin-${consultation.id}`,
-        displayName: consultation.doctor_name || 'Admin',
+        consultationId: consultation.id,
       });
       setRoomToken(data);
     } catch (err) {

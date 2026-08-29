@@ -45,7 +45,7 @@ function getClientIp(c: { req: { header: (name: string) => string | undefined } 
 function safeRateLimiter(options: Parameters<typeof rateLimiter>[0]): MiddlewareHandler {
   const limiter = rateLimiter({
     ...options,
-    skipFailedRequests: true,
+    skipFailedRequests: options.skipFailedRequests ?? true,
   });
 
   return async (c, next) => {
@@ -94,6 +94,23 @@ export function applySecurityMiddleware(app: Hono) {
     limit: 100,
     keyGenerator: getClientIp,
     standardHeaders: 'draft-7',
+    // Hosted agents refresh every 500 ms, so they use the tighter purpose-
+    // specific limits below instead of the human/global request bucket.
+    skip: (c) => new URL(c.req.url).pathname.startsWith('/api/v2/internal/video-interpretation/'),
+  }));
+  app.use('/api/v2/internal/video-interpretation/bootstrap', safeRateLimiter({
+    windowMs: 60_000,
+    limit: 20,
+    keyGenerator: getClientIp,
+    standardHeaders: 'draft-7',
+    skipFailedRequests: false,
+  }));
+  app.use('/api/v2/internal/video-interpretation/jobs/*', safeRateLimiter({
+    windowMs: 60_000,
+    limit: 600,
+    keyGenerator: getClientIp,
+    standardHeaders: 'draft-7',
+    skipFailedRequests: false,
   }));
   app.use('/auth/*', safeRateLimiter({
     windowMs: 300_000,

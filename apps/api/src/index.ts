@@ -9,6 +9,7 @@ import routes from './routes/index.js';
 import internalRoutes from './routes/internal.routes.js';
 import resendInboundRoutes from './routes/resend-inbound.routes.js';
 import stripeWebhookRoutes from './routes/stripe-webhook.routes.js';
+import videoInterpretationAgentRoutes from './routes/video-interpretation-agent.routes.js';
 import {
   forgotHospitalPasswordSchema,
   registerHospitalUserSchema,
@@ -194,6 +195,9 @@ app.route('/', chatbotV3PublicRoutes);
 
 // Internal: worker endpoint (X-Internal-Secret header auth, not Keycloak)
 app.route('/', internalRoutes);
+// Hosted interpretation agents authenticate with a single-use deployment
+// bootstrap followed by a job-scoped capability, not a human Keycloak token.
+app.route('/', videoInterpretationAgentRoutes);
 
 // Public: Resend inbound email webhook (Svix signature auth, not Keycloak)
 app.route('/api/webhooks/resend', resendInboundRoutes);

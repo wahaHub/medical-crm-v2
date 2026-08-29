@@ -14,6 +14,10 @@ import {
 import { Button, LoadingSpinner } from '@medical-crm/ui';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react';
 
+// Mirrors the API's non-overridable scaffold gate. This may only become true in
+// the same reviewed change that implements the production media/provider path.
+const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
+
 interface Props {
   token: string;
   livekitUrl: string;
@@ -45,15 +49,18 @@ export function VideoConsultationRoom({
   const [remoteVideoTracks, setRemoteVideoTracks] = useState<RemoteVideoTrack[]>([]);
   const [remoteAudioTracks, setRemoteAudioTracks] = useState<RemoteAudioTrack[]>([]);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
-  const audioTrackOwners = useRef<Record<string, string>>({});
+  const interpretationFence = useRef<{
+    jobId: string;
+    agentIdentity: string;
+    executionVersion: number;
+    interpretationGeneration: number;
+  } | null>(null);
 
   const [interpretationStarted, setInterpretationStarted] = useState(false);
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
-  const [myLanguage] = useState('zh');
-  const [remoteLanguage] = useState(patientLanguage);
   const [subtitles, setSubtitles] = useState<
     Array<{
       from: string;
@@ -90,16 +97,12 @@ export function VideoConsultationRoom({
       .on(RoomEvent.LocalTrackPublished, () => syncLocalVideo())
       .on(RoomEvent.LocalTrackUnpublished, () => syncLocalVideo())
       .on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
-        console.log('[admin-room] track subscribed', participant.identity, track.kind, track.sid);
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTracks((prev) => {
             if (prev.some((t) => t.sid === track.sid)) return prev;
             return [...prev, track as RemoteVideoTrack];
           });
         } else if (track.kind === Track.Kind.Audio) {
-          if (track.sid) {
-            audioTrackOwners.current[track.sid] = participant.identity;
-          }
           setRemoteAudioTracks((prev) => {
             if (prev.some((t) => t.sid === track.sid)) return prev;
             return [...prev, track as RemoteAudioTrack];
@@ -114,9 +117,6 @@ export function VideoConsultationRoom({
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTracks((prev) => prev.filter((t) => t.sid !== track.sid));
         } else if (track.kind === Track.Kind.Audio) {
-          if (track.sid) {
-            delete audioTrackOwners.current[track.sid];
-          }
           setRemoteAudioTracks((prev) => prev.filter((t) => t.sid !== track.sid));
         }
       })
@@ -126,9 +126,6 @@ export function VideoConsultationRoom({
           if (prev.some((p) => p.identity === participant.identity)) return prev;
           return [...prev, participant];
         });
-        if (!interpretationStarted && !interpretationLoading) {
-          void startInterpretation(participant);
-        }
       })
       .on(RoomEvent.ParticipantDisconnected, (participant) => {
         setStatus(`Remote left: ${participant.identity}`);
@@ -136,13 +133,25 @@ export function VideoConsultationRoom({
         setRemoteVideoTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
         setRemoteAudioTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
       })
-      .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
-        console.log('[admin-room] data received', { topic, size: payload.byteLength });
-        if (topic !== 'subtitle') return;
+      .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+        const fence = interpretationFence.current;
+        if (topic !== 'subtitle' || payload.byteLength > 64 * 1024
+          || !fence || participant?.identity !== fence.agentIdentity) return;
         try {
-          const msg = JSON.parse(new TextDecoder().decode(payload));
-          console.log('[admin-room] subtitle msg', msg);
-          setSubtitles((prev) => [...prev.slice(-50), msg]);
+          const msg = JSON.parse(new TextDecoder().decode(payload)) as Record<string, unknown>;
+          if (msg.schema !== 'medora.subtitle.v1'
+            || msg.jobId !== fence.jobId
+            || msg.executionVersion !== fence.executionVersion
+            || msg.interpretationGeneration !== fence.interpretationGeneration
+            || typeof msg.from !== 'string'
+            || !['zh', 'en'].includes(String(msg.fromLanguage))
+            || !['zh', 'en'].includes(String(msg.toLanguage))
+            || typeof msg.sourceText !== 'string'
+            || typeof msg.translatedText !== 'string'
+            || msg.sourceText.length > 4_000
+            || msg.translatedText.length > 4_000
+            || typeof msg.isFinal !== 'boolean') return;
+          setSubtitles((prev) => [...prev.slice(-50), msg as unknown as (typeof prev)[number]]);
         } catch {
           // Ignore malformed subtitle messages.
         }
@@ -164,11 +173,6 @@ export function VideoConsultationRoom({
       setStatus(`Joined: ${roomName}`);
       setConnecting(false);
 
-      // If the patient is already in the room when admin joins, start interpretation immediately.
-      const existingRemote = Array.from(lkRoom.remoteParticipants.values())[0];
-      if (existingRemote) {
-        void startInterpretation(existingRemote);
-      }
     }
 
     connect().catch((err) => {
@@ -212,30 +216,47 @@ export function VideoConsultationRoom({
     if (!room) return;
     const targetParticipant = remoteParticipant ?? remoteParticipants[0];
     if (!targetParticipant) return;
+    if (!window.confirm(
+      'Confirm that every listed participant has explicitly consented to AI captions and translated speech. AI output is assistive; keep original audio available.',
+    )) return;
     setInterpretationLoading(true);
     setInterpretationError(null);
 
     try {
-      const participants = [
-        { identity, language: myLanguage },
-        { identity: targetParticipant.identity, language: remoteLanguage },
-      ];
-
+      const normalizedPatientLanguage = patientLanguage.trim().toLowerCase();
+      const sourceLanguage = normalizedPatientLanguage === 'zh' || normalizedPatientLanguage.startsWith('zh-')
+        ? 'zh'
+        : normalizedPatientLanguage === 'en' || normalizedPatientLanguage.startsWith('en-')
+          ? 'en'
+          : null;
+      if (!sourceLanguage) throw new Error('Confirm either Chinese or English before starting AI translation');
       const res = await fetch('/api/video-consultations/interpretation/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName, participants }),
+        body: JSON.stringify({
+          consultationId,
+          participantIdentities: [identity, ...remoteParticipants.map((participant) => participant.identity)],
+          sourceLanguage,
+          consentWitnessConfirmed: true,
+        }),
       });
 
       const data = (await res.json().catch(() => ({ error: 'invalid_response' }))) as {
         success?: boolean;
         error?: string;
+        job?: {
+          id: string;
+          agentIdentity: string;
+          executionVersion: number;
+          interpretationGeneration: number;
+        };
       };
 
-      if (!res.ok || !data.success) {
+      if (!res.ok || !data.success || !data.job) {
         throw new Error(data.error || 'Failed to start interpretation');
       }
 
+      interpretationFence.current = { ...data.job, jobId: data.job.id };
       setInterpretationStarted(true);
     } catch (err) {
       setInterpretationError(err instanceof Error ? err.message : String(err));
@@ -244,22 +265,35 @@ export function VideoConsultationRoom({
     }
   }
 
-  async function stopInterpretation() {
-    if (!interpretationStarted) return;
+  async function stopInterpretation(): Promise<boolean> {
+    if (!interpretationStarted) return true;
+    setInterpretationLoading(true);
+    setInterpretationError(null);
     try {
       const res = await fetch('/api/video-consultations/interpretation/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName }),
+        body: JSON.stringify({ consultationId }),
       });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({ error: 'unknown' }))) as { error?: string };
-        console.warn('Failed to stop interpretation:', data.error);
+      const data = (await res.json().catch(() => ({ error: 'invalid_response' }))) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'AI stop was not confirmed by the server');
       }
+      interpretationFence.current = null;
+      setInterpretationStarted(false);
+      setSubtitles([]);
+      return true;
     } catch (err) {
-      console.warn('Error stopping interpretation:', err);
+      setInterpretationError(
+        `AI stop not confirmed; retry before ending the meeting. ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    } finally {
+      setInterpretationLoading(false);
     }
-    setInterpretationStarted(false);
   }
 
   async function endMeeting() {
@@ -269,7 +303,10 @@ export function VideoConsultationRoom({
     setEndingMeeting(true);
     setMeetingError(null);
     try {
-      await stopInterpretation();
+      const stopConfirmed = await stopInterpretation();
+      if (!stopConfirmed) {
+        throw new Error('Meeting was not ended because AI stop could not be confirmed');
+      }
       const res = await fetch(`/api/video-consultations/${consultationId}/complete`, {
         method: 'POST',
       });
@@ -343,16 +380,7 @@ export function VideoConsultationRoom({
                   ))}
                 </div>
               )}
-              {remoteAudioTracks
-                .filter((track) => {
-                  const owner = track.sid ? audioTrackOwners.current[track.sid] : undefined;
-                  const isBotTrack = owner?.startsWith('translator-') ?? false;
-                  if (interpretationStarted) {
-                    return isBotTrack;
-                  }
-                  return true;
-                })
-                .map((track) => (
+              {remoteAudioTracks.map((track) => (
                   <AudioRenderer key={track.sid} track={track} />
                 ))}
             </div>
@@ -435,7 +463,7 @@ export function VideoConsultationRoom({
             'End Meeting'
           )}
         </button>
-        {!interpretationStarted && (
+        {!interpretationStarted && AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
           <button
             onClick={() => void startInterpretation()}
             disabled={interpretationLoading || remoteParticipants.length === 0}
@@ -453,8 +481,19 @@ export function VideoConsultationRoom({
                 : 'Start Translation'}
           </button>
         )}
+        {!interpretationStarted && !AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
+          <span className="ml-2 rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-400">
+            AI translation is not available in this build
+          </span>
+        )}
         {interpretationStarted && (
-          <span className="ml-2 text-sm text-teal-400">Translation active</span>
+          <button
+            onClick={() => void stopInterpretation()}
+            disabled={interpretationLoading}
+            className="ml-2 rounded-full bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-800"
+          >
+            {interpretationLoading ? 'Stopping AI…' : 'Stop AI translation'}
+          </button>
         )}
       </footer>
       {interpretationError && (

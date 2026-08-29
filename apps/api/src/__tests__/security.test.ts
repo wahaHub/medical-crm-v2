@@ -132,4 +132,41 @@ describe('Security middleware', () => {
     expect(res.status).toBe(500);
     await expect(res.json()).resolves.toEqual({ error: 'downstream failure' });
   });
+
+  it('gives the 500ms interpretation watchdog a dedicated request bucket', async () => {
+    const { Hono } = await import('hono');
+    const { applySecurityMiddleware } = await import('../middleware/security');
+    const testApp = new Hono();
+    applySecurityMiddleware(testApp);
+    testApp.post('/api/v2/internal/video-interpretation/jobs/job-1/authorization', (c) => c.json({ ok: true }));
+
+    for (let index = 0; index < 120; index += 1) {
+      const response = await testApp.request(
+        '/api/v2/internal/video-interpretation/jobs/job-1/authorization',
+        { method: 'POST', headers: { 'x-forwarded-for': '203.0.113.41' } },
+      );
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('counts rejected hosted bootstrap attempts against its strict limit', async () => {
+    const { Hono } = await import('hono');
+    const { applySecurityMiddleware } = await import('../middleware/security');
+    const testApp = new Hono();
+    applySecurityMiddleware(testApp);
+    testApp.post('/api/v2/internal/video-interpretation/bootstrap', (c) => c.json({ error: 'rejected' }, 401));
+
+    for (let index = 0; index < 20; index += 1) {
+      const response = await testApp.request('/api/v2/internal/video-interpretation/bootstrap', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': '203.0.113.42' },
+      });
+      expect(response.status).toBe(401);
+    }
+    const blocked = await testApp.request('/api/v2/internal/video-interpretation/bootstrap', {
+      method: 'POST',
+      headers: { 'x-forwarded-for': '203.0.113.42' },
+    });
+    expect(blocked.status).toBe(429);
+  });
 });

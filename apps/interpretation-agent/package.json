@@ -1,0 +1,24 @@
+{
+  "name": "@medical-crm/interpretation-agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/main.ts dev",
+    "start": "node --import tsx src/main.ts start",
+    "download": "node --import tsx src/main.ts download-files",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@livekit/agents": "^1.7.1",
+    "@livekit/agents-plugin-silero": "^1.7.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

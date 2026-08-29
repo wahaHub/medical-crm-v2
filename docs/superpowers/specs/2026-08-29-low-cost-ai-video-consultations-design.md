@@ -2,37 +2,40 @@
 
 **Date:** 2026-08-29
 
-**Status:** Proposed low-cost production design; provider and clinical quality gates remain blocking
+**Status:** Proposed hosted-first V1 and low-cost production fallback; provider, privacy, and clinical quality gates remain blocking
 
 **Primary system:** `medical-crm-v2`
 
 **Related patient frontend:** `medicaltourismchina-platform`
+
 **Replaces:** Nothing. This is a cost-reduced launch profile alongside the enterprise target design dated 2026-08-28.
 
 ## 1. Executive decision
 
 Launch secure multiparty video, AI captions, and translated speech without provisioning the enterprise design's ECS/Fargate, ECR, SQS, NAT Gateway, Multi-AZ ElastiCache, IAM Roles Anywhere, or private SigV4 proxy.
 
-The low-cost production topology is:
+The low-cost V1 topology is:
 
-1. Keep the CRM API, PostgreSQL-backed orchestration, and five lightweight batch loops on the existing API Lightsail instance.
-2. Add one 4 GB Lightsail instance for the LiveKit interpretation agent. Add a second identical instance only when load tests, concurrency, or availability requirements justify it.
-3. Keep LiveKit Cloud as the media SFU and TURN service.
-4. Call a streaming speech provider from the interpretation Lightsail. The first integrated candidate to evaluate is OpenAI `gpt-realtime-translate`, because one stream returns translated audio and transcript deltas at a published `$0.034` per audio minute. Its current public model page does not promise a separate source-language transcript, so it is not the complete launch default unless an exact endpoint capability test proves that requirement. Compare it against the lower-component-cost Cloudflare STT → translation → TTS pipeline before launch.
-5. Keep AI output explicitly assistive. The original audio remains available, every participant sees an AI warning, and a human interpreter remains the escalation path for clinically consequential decisions.
+1. Keep the CRM API and a minimal PostgreSQL control plane on the existing API Lightsail instance.
+2. Deploy the multiparty interpretation agent to LiveKit Cloud first. This requires zero new AWS servers and preserves server-controlled AI identity, consent enforcement, and output publication.
+3. Use Silero VAD plus LiveKit Audio Turn Detector for end-of-turn decisions, followed by a measured 600–800 ms cancellable playout debounce.
+4. Evaluate OpenAI `gpt-realtime-translate` and `gpt-realtime-2.1-mini` against de-identified medical bilingual material. Do not enable either for PHI until the exact endpoint, account, retention configuration, and contract are approved.
+5. Defer the Cloudflare STT → translation → TTS comparator until the first integrated provider works end to end.
+6. Keep one 4 GB Lightsail agent as a portability/cost fallback, not a V1 purchase. Add a second only if the self-hosted profile is later selected and availability or capacity requires it.
+7. Keep AI output explicitly assistive. The original audio remains available, every participant sees an AI warning, and a human interpreter remains the escalation path for clinically consequential decisions.
 
-This profile targets an initial maximum of eight human participants, Chinese ↔ English, up to two concurrent AI-enabled rooms per interpretation host, and no recording or durable transcript by default. Those are launch limits, not untested capacity claims.
+This profile targets an initial maximum of eight human participants, Chinese ↔ English, two concurrent AI-enabled rooms, two simultaneous paid provider sessions per room, and no recording or durable transcript by default. Those are launch limits, not untested capacity claims.
 
 ## 2. Why this profile exists
 
 The enterprise target design optimizes for autoscaling, multi-AZ state, highly isolated workload identity, and extensively fenced recovery. Those controls are valuable at larger scale, but they introduce a substantial fixed-cost and operational baseline before the first AI-enabled consultation.
 
-This profile accepts the following bounded trade-offs:
+The hosted-first V1 accepts the following bounded trade-offs:
 
-- one interpretation host is a temporary single point of failure for AI, but never for the human call;
-- failover is lease-based and takes tens of seconds rather than being seamless;
-- deployments and scaling are host-oriented rather than container-orchestrated;
-- secrets are delivered as root-owned host files and rotated operationally instead of through a full cloud workload-identity chain;
+- the free LiveKit Build plan may cold-start an idle production deployment, currently documented as up to 10–20 seconds;
+- the Build allowance is currently capped at 1,000 hosted-agent session minutes per month and five concurrent sessions; it is a pilot boundary, not a clinical production SLA;
+- LiveKit Cloud becomes an additional processor for the agent runtime and must be covered by the applicable privacy contract and configuration;
+- paid hosted-agent cost must be measured against the fixed self-hosted Lightsail fallback before scale;
 - PostgreSQL is the job queue and source of truth at launch scale;
 - no Multi-AZ cache is required because no credential or authorization decision depends on cache survival.
 
@@ -45,8 +48,9 @@ It does not relax room authorization, invitation scope, LiveKit grant restrictio
 | Human participants | Maximum 8 per room |
 | Service participants | Maximum 1 interpretation agent per active room generation |
 | Languages | Chinese (`zh`) ↔ English (`en`) |
-| Concurrent AI rooms per 4 GB interpretation host | Start at 2; raise only after measured load tests |
+| Concurrent AI rooms | Maximum 2 for V1 even if the LiveKit plan permits more |
 | Video provider | LiveKit Cloud |
+| Agent runtime | LiveKit Cloud Hosted Agent for V1; self-hosted Lightsail fallback |
 | AI features | Source captions, translated captions, translated speech |
 | Recording | Off |
 | Durable transcript | Off by default |
@@ -68,36 +72,39 @@ flowchart LR
     API --> Email["Email provider"]
     API --> LK["LiveKit Cloud"]
 
-    API --> Jobs["PostgreSQL AI jobs + leases"]
-    Agent["Interpretation agent on one Lightsail"] --> API
+    API --> Jobs["Minimal PostgreSQL AI jobs + session fences"]
+    Agent["LiveKit Cloud Hosted Agent"] --> API
     Agent --> LK
+    Fallback["Optional self-hosted Lightsail agent"] -. migration path .-> API
+    Fallback -. migration path .-> LK
 
     LK --> Admin
     LK --> Guest
     LK --> Agent
 
     Agent --> Integrated["Integrated realtime translation candidate"]
-    Agent --> Decomposed["Decomposed STT → translation → TTS candidate"]
+    Agent -. deferred comparator .-> Decomposed["Cloudflare STT → translation → TTS"]
     Agent --> LK
 ```
 
 ### 4.1 Resource count
 
-Required incremental infrastructure for launch:
+Required incremental infrastructure for V1:
 
 | Resource | Count | Purpose |
 |---|---:|---|
 | Existing API Lightsail | 0 new | API, invitation/email/action/cleanup loops, PostgreSQL job coordination |
-| 4 GB interpretation Lightsail | 1 new | LiveKit agent, audio routing, provider WebSockets, TTS publication |
-| Second 4 GB interpretation Lightsail | 0 initially; 1 optional | Additional capacity or warm standby after testing |
-| Cloudflare Workers Paid account | 0 for OpenAI path; 1 for Cloudflare AI production path | Workers AI production usage will normally require the paid plan; it is not an execution host for the agent |
+| LiveKit Cloud Hosted Agent | 1 deployment | Agent runtime, audio routing, provider connections, translated output publication |
+| 4 GB interpretation Lightsail | 0 initially; 1 optional | Self-hosted migration after cost, runtime, or portability trigger |
+| Second 4 GB interpretation Lightsail | 0 initially; 1 later optional | Capacity or warm standby only after selecting self-hosting |
+| Cloudflare Workers Paid account | 0 for V1 | Deferred inference comparator; never the LiveKit Agent runtime |
 | LiveKit Cloud project | Existing or 1 per environment | SFU, TURN, webhooks, room server APIs |
 
 No launch requirement exists for ECS, Fargate, ECR, SQS, NAT Gateway, ElastiCache, Cloudflare Durable Objects, Cloudflare Queues, or Cloudflare Containers.
 
-The optional staff-only `CLIENT_DIRECT_EXPERIMENT` uses zero additional Lightsail instances, but it is not the recommended multiparty production profile. `SERVER_AGENT` requires one additional interpretation host.
+Both `HOSTED_AGENT_V1` and the optional staff-only `CLIENT_DIRECT_EXPERIMENT` use zero additional Lightsail instances. Unlike client-direct mode, `HOSTED_AGENT_V1` remains a centrally controlled service participant suitable for multiparty evaluation.
 
-Staging can share the interpretation host only while it has a separate process user, configuration, LiveKit project, database namespace, and strict capacity reservation. Before public clinical rollout, production should have a dedicated interpretation host.
+Use separate LiveKit projects or otherwise contractually approved environment isolation for development, staging, and production. The free Build plan's cold starts and hard quota are acceptable only for a pilot that can fail closed to AI while leaving human video available. Real-patient production requires an approved LiveKit plan/contract, verified warm-start behavior, and sufficient quota.
 
 ## 5. Cloudflare decision
 
@@ -114,9 +121,9 @@ Therefore:
 
 Cloudflare Containers could eventually host a conventional agent process, but they add a newer runtime, separate deployment model, network validation, and usage-based compute. Reconsider them only after a staging proof demonstrates LiveKit connectivity, codec/runtime compatibility, predictable sleep behavior, graceful draining, and a lower measured monthly cost than Lightsail.
 
-### 5.2 Where Cloudflare can reduce AI cost
+### 5.2 Deferred Cloudflare cost comparator
 
-The Lightsail agent may call Workers AI directly from server-side code:
+After the hosted integrated-provider V1 works, the interpretation agent may compare Workers AI directly from server-side code:
 
 - streaming STT candidate: `@cf/deepgram/nova-3` over WebSocket;
 - batch fallback STT: `@cf/openai/whisper-large-v3-turbo`, not for low-latency primary captions;
@@ -124,7 +131,7 @@ The Lightsail agent may call Workers AI directly from server-side code:
 - TTS candidate: `@cf/myshell-ai/melotts`, only for language tags and voices proven by an executable Chinese/English capability test;
 - English-only quality candidate: Deepgram Aura; it cannot be the sole Chinese ↔ English launch adapter.
 
-The adapter interface must allow Cloudflare, OpenAI, xAI, or another provider to be swapped without changing meeting authorization or LiveKit grants.
+The adapter boundary must allow Cloudflare, OpenAI, xAI, or another provider to be swapped without changing meeting authorization or LiveKit grants. Do not build the decomposed Cloudflare profile in parallel with the first V1: it adds three latency/failure stages before core turn-taking and translation quality are proven.
 
 Workers AI is inexpensive enough to evaluate, but price is not approval. Before real patient audio is sent, confirm contractual terms, processing locations, retention/logging, subprocessors, deletion behavior, and whether the required healthcare/privacy agreement covers each selected model. Cloudflare states that a HIPAA BAA is limited to Enterprise customers; self-service Workers AI must not be assumed to cover PHI.
 
@@ -150,23 +157,50 @@ For the multiparty medical meeting, however, direct playback returns translated 
 - room-wide caption replay, consistent speaker attribution, spend enforcement, and support diagnostics become fragmented across clients;
 - autoplay, echo cancellation, audio capture, and feedback behavior vary by browser.
 
-Therefore this design permits client-direct mode only as an explicit `CLIENT_DIRECT_EXPERIMENT` for staff-only or one-to-one evaluation. Production multiparty mode remains `SERVER_AGENT`, using one interpretation Lightsail so that AI identity, routing, consent, and output publication stay centrally controlled. Promotion of client-direct mode requires a separate threat model and the complete browser/device test matrix; it is not an automatic way to claim zero servers.
+Therefore this design permits client-direct mode only as an explicit `CLIENT_DIRECT_EXPERIMENT` for staff-only or one-to-one evaluation. Multiparty mode remains a server-side service participant: `HOSTED_AGENT_V1` first, or `SELF_HOSTED_AGENT` after a measured migration decision. Promotion of client-direct mode requires a separate threat model and the complete browser/device test matrix; it is not an automatic way to claim zero servers.
 
 In either mode, never ship a standard OpenAI API key to the browser. Only a short-lived provider client secret may leave the backend. The application issuance record is bound to consultation, member, model, language, and auth version; provider session configuration is locked to the narrowest supported values. Issuance must be authorized, rate-limited, metered, and audited.
 
-### 5.4 OpenAI provider candidates and turn detection
+### 5.4 OpenAI provider candidates
 
 Official current candidates include:
 
 - `gpt-realtime-translate`: dedicated streaming speech-to-speech translation, translated audio plus transcript deltas, published at `$0.034` per audio minute;
-- `gpt-realtime-2.1-mini`: lower-cost general Realtime voice/reasoning model with WebRTC, WebSocket, SIP, audio input/output, and function calling; evaluate it only when prompt-controlled business phrasing adds value over faithful translation;
+- `gpt-realtime-2.1-mini`: lower-cost general Realtime voice/reasoning model with WebRTC, WebSocket, SIP, audio input/output, and function calling; evaluate it as a separate translation candidate, but reject it if it paraphrases, explains, omits, or invents clinically material content;
 - `gpt-realtime-2.1`: higher-cost comparator for cases where the mini model fails the agreed quality threshold.
 
-General OpenAI Realtime sessions document server VAD, semantic VAD, and `speech_started`, but those capabilities must not be inferred for the dedicated `/v1/realtime/translations` endpoint. Enable provider-side turn detection or cancellation only after an executable test of the exact model, endpoint, and transport proves the accepted configuration, event names/order, barge-in behavior, cancellation behavior, and whether cancellation stops billing.
+General OpenAI Realtime sessions document server VAD, semantic VAD, and `speech_started`, but those capabilities must not be inferred for the dedicated `/v1/realtime/translations` endpoint. Every provider profile has exactly one source-turn authority. For a controllable general Realtime or decomposed adapter, disable provider automatic turn detection so it cannot commit, split, create, or cancel a response; Silero VAD plus LiveKit Audio Turn Detector is authoritative and invokes only documented, executable-tested manual commit/response operations. A profile that cannot disable competing automatic turns cannot use this contract.
 
-For `gpt-realtime-translate`, default to lightweight local PCM energy/VAD in the interpretation agent for playout discard, ducking, and lag handling. Treat a 600–800 ms cancellable playout debounce only as a starting measurement, not a provider guarantee. If the provider cannot cancel output, discard or mute it locally and close the source session when necessary. Do not copy unverified fixed low/medium/high timeout numbers into product behavior.
+### 5.5 V1 end-of-turn and playout policy
 
-The debounce is a latency/turn-taking policy, not an authorization control. In `SERVER_AGENT` mode it runs in the interpretation agent; in `CLIENT_DIRECT_EXPERIMENT` it may run locally.
+V1 uses Silero VAD plus LiveKit Audio Turn Detector. The detector analyzes audio semantics and acoustic cues, supports Chinese and English, and is better suited than energy-only VAD to pauses such as “我们这个产品呢……”. LiveKit currently provides full `v1` at no additional inference cost for agents deployed to LiveKit Cloud; self-hosted agents default to local `v1-mini`.
+
+V1 selects one explicit audience-playout mode: `TURN_GATED_BUFFERED`. The detector and provider run in parallel, but translated speech is turn-based/consecutive rather than audible rolling simultaneous interpretation:
+
+```text
+source PCM
+  +--> provider receives authorized streaming audio and produces translated events
+  +--> Silero VAD + LiveKit Audio Turn Detector estimate true end of turn
+
+provider event -> verified response/item + causal-range mapper -> local_turn_id
+mapped output -> bounded per-turn in-memory buffer; not audible yet
+true end of turn -> measured 600–800 ms cancellable debounce
+speaker resumes before release -> discard/cancel that turn
+speaker remains silent + mapped output reaches proved final/drain barrier
+  -> mark PLAYOUT_ELIGIBLE and publish through target-language arbiter
+```
+
+Do not wait until the end of a long utterance before uploading all source audio; that would add the utterance duration to provider computation. `COMMIT_AFTER_EOT` is allowed only when the exact endpoint documents and passes a manual-commit test; the dedicated translation endpoint is not assumed to support it. Measure the additional post-EOT delay, and reject the profile as V1 default if it misses the 0.8–1.3 second first-audio gate.
+
+The per-turn audio buffer is capped initially at 30 seconds and 8 MiB. If either cap is reached, discard translated speech for that turn, retain only qualified captions when independently available, keep original audio connected, and ask the speaker to use shorter turns. Never persist this buffer or allow an unbounded utterance backlog.
+
+Explicitly configure and test the `zh` or `en` threshold rather than relying on an English default when no STT language signal exists. Treat the detector as a quality signal, not a guarantee: the current implementation can time out and commit, so interruption, long-pause, short-answer, crosstalk, and fallback behavior remain blocking tests.
+
+For the dedicated continuous `gpt-realtime-translate` endpoint, do not assume undocumented automatic-turn disable, manual commit, response cancel, or input-buffer operations. LiveKit remains the product turn/playout authority; provider segmentation is a transport detail. The adapter must deterministically map provider audio/transcript events to `local_turn_id` using stable response/item IDs, ordered deltas, input audio range/offset or an equivalent causal boundary, and an observable final/drain barrier. One local turn may merge ordered provider subsegments, but arrival time or a silence timeout is not a valid mapping rule.
+
+Seal the local turn at LiveKit EOT and release it only after mapped output reaches the proved final/drain state. Unknown ownership, a response crossing a local boundary without a deterministic rule, missing finality, or reconnect sequence discontinuity fails closed. If the speaker resumes before release and the endpoint cannot cancel, discard the entire local-turn buffer, close the source session through the existing provider fence, and keep that speaker AI-unavailable until confirmed closure/expiry permits a clean session. If the endpoint cannot provide enough causal/finality signals while still meeting the first-audio target, `gpt-realtime-translate` fails the V1 gate; choose a controllable general Realtime adapter or later decomposed profile instead.
+
+The debounce is a latency/turn-taking policy, not an authorization control. In hosted or self-hosted central-agent mode it runs in the interpretation agent; in `CLIENT_DIRECT_EXPERIMENT` it may run locally.
 
 ## 6. AI media pipeline
 
@@ -187,13 +221,17 @@ An authenticated member or host may request a launch-language preference through
 
 Automatic direction switching is off at launch. Unknown or materially mismatched language suppresses translated speech and asks the user or host to confirm the language while original audio continues. A provider language-confidence signal may flag mismatch but cannot authorize a direction change. Brief code-switching remains best effort in the configured direction; sustained switching requires an explicit language update and session restart.
 
-On consent withdrawal, STOP, member removal, track unpublish, lease loss, or generation change, the agent must unsubscribe immediately and within the two-second product bound: stop forwarding frames, flush PCM/VAD/provider-input buffers, cancel or close that source's provider session where supported, purge interim/final replay, discard queued TTS, unpublish affected translated output, and emit an audit event.
+On consent withdrawal, STOP, member removal, track unpublish, execution invalidation, optional self-hosted lease loss, or generation change, the agent must unsubscribe immediately and within the two-second product bound: stop forwarding frames, flush PCM/VAD/provider-input buffers, cancel or close that source's provider session where supported, purge interim/final replay, discard queued TTS, unpublish affected translated output, and emit an audit event.
 
-This remains a lower-cost trust compromise: LiveKit grants `canSubscribe` at room scope, not as an application-enforced per-track consent policy. A compromised interpretation host holding a valid room token could bypass the agent's filtering. Mitigations are one short-lived agent identity/token per room generation, `autoSubscribe=false`, minimal provider keys, token removal on lease loss/STOP, host isolation, and audit/reconciliation. Workloads requiring infrastructure-enforced per-track isolation must use the enterprise profile or a separately reviewed room topology.
+This remains a lower-cost trust compromise: LiveKit grants `canSubscribe` at room scope, not as an application-enforced per-track consent policy. A compromised hosted or self-hosted agent runtime holding a valid room token could bypass the agent's filtering. Mitigations are one exact agent identity per execution version, `autoSubscribe=false`, minimal provider keys, dispatch/token removal on STOP or invalidation, runtime isolation, and audit/reconciliation. Workloads requiring infrastructure-enforced per-track isolation must use the enterprise profile or a separately reviewed room topology.
 
 ### 6.2 Per-speaker processing
 
-Each source microphone track has an independent provider session. Exactly one provider profile is active for a job; launch does not run both profiles simultaneously.
+Each source microphone track has independent logical state, authorization, language, buffering, captions, and provider-session ownership. V1 creates provider sessions lazily for speaking tracks instead of opening eight continuous paid streams when the room starts. It keeps a short local PCM pre-roll so the first syllable is not lost, caps concurrently active provider sessions at two initially, and closes an inactive session only after a measured idle threshold and provider-specific billing test.
+
+Different speakers never share one provider session merely because they use the same translation direction: shared context would break speaker attribution, consent withdrawal, cancellation, and crosstalk isolation. Exactly one provider profile is active for a job; launch does not run both profiles simultaneously.
+
+Provider-slot admission is deterministic: order newly speaking tracks by the server-observed speech-start timestamp, then stable member/track ID. An active turn is not preempted. A third simultaneous speaker retains at most two seconds or 512 KiB of in-memory PCM pre-roll, whichever comes first; if no slot becomes available before that cap, discard that turn's AI input, publish `AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER`, and never translate it later as stale audio. Original human audio always continues. A session in `CLOSING` or `ORPHAN_WAIT` still occupies its slot until the existing provider-session fence releases it.
 
 `INTEGRATED_REALTIME` is:
 
@@ -201,7 +239,8 @@ Each source microphone track has an independent provider session. Exactly one pr
 LiveKit source track
   -> PCM resample / optional local VAD
   -> integrated realtime translation session
-  -> translated audio + provider-documented transcript deltas
+  -> provider-documented response/item IDs + translated audio/transcript deltas
+  -> verified causal-range/finality mapper -> local_turn_id
   -> validated translated captions and target-language LiveKit audio publication
 ```
 
@@ -231,7 +270,7 @@ Caption segments carry server-derived:
 - source member ID and display label;
 - source track SID;
 - source and target language;
-- language version and current lease version;
+- language version and current agent execution version;
 - monotonic segment sequence;
 - source start/end time;
 - final/interim state.
@@ -240,7 +279,7 @@ The provider cannot choose consultation, member, destination, language authority
 
 ### 6.3 Caption delivery
 
-The agent publishes captions through a dedicated LiveKit data topic. Clients accept caption messages only from the API-designated exact current interpretation-agent identity and validate the current room/interpretation generation, language version, lease version, and schema version.
+The agent publishes captions through a dedicated LiveKit data topic. Clients accept caption messages only from the API-designated exact current interpretation-agent identity and validate the current room/interpretation generation, language version, agent execution version, and schema version.
 
 Interim captions are best effort and never stored. Final captions may be retained in the agent's memory for at most two minutes and replayed only to a newly reconnected, currently authorized participant. No transcript is written to PostgreSQL unless a later product and retention decision explicitly enables it.
 
@@ -255,11 +294,11 @@ For Chinese ↔ English launch:
 - translated audio is visibly labeled as AI-generated;
 - the agent never subscribes to its own translated tracks, preventing feedback loops.
 
-Common behavior caps translated-speech lag at five seconds and never plays stale output.
+Each target language has one agent-memory-only playout arbiter. It never mixes two translated speakers. Turns are ordered by `PLAYOUT_ELIGIBLE_at`, then source member ID and segment sequence. The 0.8–1.3 second first-audio objective applies to an uncontended arbiter; contention is an explicit degraded state. An item waiting more than five seconds after becoming eligible, or whose execution/consent/language version becomes stale, is discarded; qualified captions may remain. If any human speech resumes while translated audio is playing to that group, stop and discard the remaining translated speech rather than speaking over the human. Chinese → English and English → Chinese use separate arbiters because they serve different target-language groups.
 
-With `INTEGRATED_REALTIME`, the agent publishes provider-translated audio directly; there is no application TTS queue. On excessive lag it discards or stops publishing stale audio and closes the source session if it cannot recover. It may keep captions active only if the exact endpoint has proved that transcript delivery survives audio suppression or cancellation.
+With `INTEGRATED_REALTIME`, the agent buffers provider-translated audio by source turn and releases it through the arbiter only after `TURN_GATED_BUFFERED` eligibility; there is no application TTS queue. If the original speaker resumes before release, or arbiter wait exceeds five seconds, it discards that turn's speech and closes the source session if it cannot recover. It may keep captions active only if the exact endpoint has proved that transcript delivery survives audio suppression or cancellation.
 
-With `DECOMPOSED`, TTS begins only from final or explicitly stable partial translation segments. The agent serializes speech per target language, drops superseded queued partials, and pauses translated audio while keeping captions active when lag exceeds the cutoff.
+With `DECOMPOSED`, TTS begins only from final or explicitly stable partial translation segments. The same target-language arbiter serializes speech, drops superseded queued partials, and discards speech while keeping captions active when eligibility wait exceeds the cutoff.
 
 ### 6.5 Medical safety behavior
 
@@ -281,12 +320,13 @@ Add or retain these bounded records:
 1. `video_consultation_interpretation_jobs`
    - one row per consultation/room/interpretation generation;
    - desired state, status, language pair, consent policy version;
-   - assigned worker ID, lease version, lease expiry, heartbeat;
+   - current LiveKit dispatch/agent identity, monotonically increasing execution version, and one-time capability-exchange state;
+   - assigned worker ID, lease version, lease expiry, and heartbeat only after self-hosting is enabled;
    - failure code, started/stopped timestamps;
    - provider profile, maximum AI duration, reserved/estimated-consumed micro-dollars, soft/hard budget state;
    - unique active job per consultation generation.
 2. `video_consultation_interpretation_events`
-   - append-only START, CLAIM, HEARTBEAT_LOST, TAKEOVER, STOP, FAIL, COMPLETE events;
+   - append-only START, DISPATCH, STOP, FAIL, COMPLETE events; add CLAIM, HEARTBEAT_LOST, and TAKEOVER only for self-hosting;
    - no raw audio, transcript, provider secret, or LiveKit token.
 3. `video_consultation_source_tracks`
    - current human microphone authority derived from LiveKit state;
@@ -297,40 +337,48 @@ Add or retain these bounded records:
 5. `video_consultation_provider_sessions`
    - one row per job and source track provider session;
    - provider/profile, opaque provider session/reference ID when supplied, job and source-track IDs;
-   - room/interpretation generation, source/target language, language version, assigned worker ID, and lease version;
+   - room/interpretation generation, source/target language, language version, and agent execution version;
+   - assigned worker ID and lease version only for the self-hosted profile;
    - state, created/last-seen/application-deadline/provider-expiry/closed timestamps;
    - close capability/result, orphan-risk state, and non-content metering counters;
    - a PostgreSQL partial unique constraint permits at most one `CREATING`, `ACTIVE`, `CLOSING`, or `ORPHAN_WAIT` row per job, source track, and interpretation generation; language fields are deliberately excluded so a direction change cannot bypass the billing fence;
    - never provider secrets, raw audio, captions, transcripts, or reusable credentials.
-6. `video_consultation_interpretation_hosts`
+6. `video_consultation_hosted_deployments`
+   - deployment ID, bootstrap-secret digest, enabled/revoked state, created/rotated/revoked timestamps;
+   - no raw bootstrap secret and no authority beyond exchanging a verified dispatch for a job-scoped capability.
+7. `video_consultation_interpretation_hosts` — deferred until self-hosting
    - random installation ID, bearer-secret SHA-256 digest, enabled/revoked status;
    - maximum jobs, created/rotated/revoked timestamps and operator attribution;
    - never the raw host bearer secret.
 
 Do not add a separate capacity subsystem until one of these becomes true:
 
-- more than two concurrent rooms per host;
+- more than two concurrent AI rooms are required;
 - multiple simultaneous providers per source track;
 - automatic cross-host takeover is enabled;
 - measured scheduling contention shows that the job and provider-session constraints are insufficient.
 
-### 7.2 Claim and lease protocol
+### 7.2 Hosted V1 dispatch and execution fence
 
-- Each interpretation host receives one random 256-bit bearer secret. The raw secret exists only in its root-owned `/etc/medora/` secret file; the API stores only a SHA-256 digest on a host record containing `worker_installation_id`, status, created/rotated/revoked timestamps, and optional operator attribution.
-- TLS is mandatory. The bearer authenticates claim, heartbeat, agent-token, STOP acknowledgment, complete, and fail endpoints. Rotation accepts an explicitly bounded overlap; revocation immediately blocks new calls and forces owned leases toward STOP/recovery.
-- The API-side claim service uses `SELECT ... FOR UPDATE SKIP LOCKED` at a bounded interval and exposes only the authenticated claim contract.
-- Claim increments `lease_version`, binds the job to the authenticated `worker_installation_id`, and sets a 30-second lease.
-- Agent claims and heartbeats every 10 seconds only through CRM API endpoints. The interpretation host has no PostgreSQL credential or network route.
-- Every post-claim call must match job ID, room generation, interpretation generation, assigned worker installation ID, and current lease version; the database mutation repeats those fields in its conditional update.
-- The API mints an agent LiveKit token only for the exact authenticated host holding the current unexpired lease.
-- Every state mutation includes job ID, room generation, interpretation generation, and lease version.
-- A worker stops provider-bound audio immediately when it cannot renew two consecutive heartbeats.
-- API reconciliation may make an expired job claimable after the old agent has been removed from LiveKit or confirmed absent.
-- Takeover cannot create a replacement provider session merely because the old lease expired. Reconciliation first expires the lease, removes the old LiveKit participant, and requests provider closure. A replacement becomes eligible only after confirmed closure, conservative `provider_expiry` for an uncloseable `ORPHAN_WAIT` session, or a provider-documented and executable-tested transfer/resume. Database state must never claim `CLOSED` without evidence. The old budget reservation remains held through orphan expiry.
-- Every agent LiveKit identity/token, caption payload, and translated-track metadata includes `lease_version`. Clients accept output only from the API-designated exact identity and current lease version; late output from an old fence fails the same check. The partial unique provider-session constraint is the billing fence, while LiveKit removal and lease-version validation are the playback fence.
-- `STOP` is monotonic for a generation. No late heartbeat can turn it back into `RUNNING`.
+- START atomically increments `agent_execution_version`, reserves budget, and requests one named LiveKit Hosted Agent dispatch for the exact room and interpretation generation.
+- LiveKit encrypted runtime secrets contain one random deployment-scoped bootstrap secret. The API stores only its digest and grants it only `exchange_hosted_dispatch`; it cannot read arbitrary consultations, mint LiveKit tokens, STOP jobs, or reach PostgreSQL.
+- Dispatch, room, participant, and track metadata contain only non-secret identifiers such as job ID, dispatch ID, and execution version. Never put a bearer, job capability, provider key, or reusable credential in metadata, observability fields, URLs, or logs.
+- Over TLS, the dispatched agent presents the bootstrap secret plus current dispatch identifiers to an exchange endpoint. The API verifies the active job, stored dispatch ID, exact room/generations/execution version, and an atomic unused exchange slot. One successful exchange consumes the slot and returns an opaque random job capability while storing only its digest.
+- The job capability is bound to job, dispatch, execution version, audience, and application deadline. It can call only that job's authorization-watchdog, provider-session, metering, and event endpoints. STOP or execution increment invalidates it immediately; crash/redispatch creates a fresh exchange slot and cannot reuse the old capability.
+- Every agent mutation and output carries job ID, room generation, interpretation generation, exact agent identity, and execution version. Conditional updates and clients reject stale versions.
+- A job-level execution-authorization watchdog keeps at most one refresh in flight every 500 ms. Each request carries a strictly increasing execution-local `request_seq` and random nonce. The response echoes both and carries job/generations/execution version, a job-level monotonic `authorization_revision`, and every track's consent/language versions. STOP, execution invalidation, or any consent/track/generation authority change increments the applicable revision/version in the same database transaction.
+- The agent accepts a response only when execution and nonce match, `request_seq` is newer than the last accepted sequence, authorization revision is not below the highest observed revision, and no track version moves backward. Duplicate, reordered, or regressing responses fail closed and never restore a stopped track. A process restart obtains a new execution/capability before resetting local sequence state.
+- Authorization expires at `request_started_monotonic + 1.5 seconds`, never 1.5 seconds after response arrival. A response taking more than 400 ms is discarded and cannot extend the existing deadline. The agent uses a monotonic clock and checks the deadline plus exact-track snapshot at every PCM-to-provider boundary; request sequences do not require a database write.
+- On STOP, consent withdrawal, track/generation change, execution invalidation, or watchdog expiry, the agent immediately stops affected provider-bound frames, clears buffers, closes the provider session or records `ORPHAN_WAIT`, and unpublishes output. API/network loss therefore fails AI closed while human media continues. The 500 ms/1.5 second values must pass end-to-end failure injection with cleanup inside the two-second product bound.
+- `STOP` is monotonic for a generation. It immediately requests dispatch/participant removal, invalidates the capability/execution version, and cannot be reversed by a late callback. Async LiveKit removal is defense in depth; the watchdog supplies the privacy and billing deadline.
+- Restart or redispatch cannot create a replacement provider session until the old session is confirmed closed, conservatively expires in `ORPHAN_WAIT`, or an executable-tested provider transfer/resume succeeds. The active-session partial unique constraint remains the billing fence.
+- A hosted runtime must not receive PostgreSQL credentials, LiveKit server API secrets, invitation secrets, or unrestricted CRM credentials.
 
-With one host, failover means process restart. With two hosts, the standby claims only after lease expiry, old-agent removal, and the provider-session closure/expiry/transfer fence above. Duplicate translated audio or billing is less acceptable than a short AI interruption.
+This is the minimum V1 control plane. It adds one small exchange endpoint and one job-level watchdog, not host registration, ownership leases, Redis, SQS, mTLS, or a new auth service. LiveKit handles container lifecycle and scaling; the CRM still owns consent, application state, provider-session idempotency, cost limits, and which output identity clients trust. A leaked deployment bootstrap secret remains a deployment-wide trust compromise, so exchange attempts are rate-limited, alerted, and covered by immediate secret rotation.
+
+### 7.3 Optional self-hosted lease protocol
+
+Implement host registration, bearer rotation, job polling, heartbeats, leases, takeover, and capacity advertisement only when moving to `SELF_HOSTED_AGENT`. At that point, use a random per-host 256-bit bearer stored as a digest by the API, no database route from the agent, 30-second leases with 10-second heartbeats, conditional mutations bound to host and lease version, old-agent removal before takeover, and the same provider closure/expiry/transfer fence. Duplicate audio or billing is less acceptable than a short AI interruption.
 
 ## 8. API and invitation security
 
@@ -343,12 +391,12 @@ The low-cost profile retains the important controls from the enterprise design:
 - LiveKit credentials are minted by `apps/api`, last no more than 15 minutes for initial connection, and derive room, stable identity, grants, and role from database state;
 - all human tokens explicitly deny room-admin and metadata-update privileges;
 - moderation, removal, room close, and token revocation are server-side LiveKit operations and audit events;
-- join, leave, reconnect, invitation, consent, AI start/stop, agent claim, and provider failures are auditable;
+- join, leave, reconnect, invitation, consent, AI start/stop, hosted dispatch, optional self-hosted claim, and provider failures are auditable;
 - the browser never receives LiveKit API secret, provider key, Cloudflare API token, or email-provider secret.
 
 The exact two-minute Valkey credential-escrow protocol from the enterprise design is not used. Recovery is based on a narrowly scoped database redemption state and a browser-held bootstrap secret whose digest is stored. No authorization depends on a cache, so Redis/Valkey is not a launch dependency.
 
-## 9. Host deployment
+## 9. Agent deployment
 
 ### 9.1 Existing API Lightsail
 
@@ -363,9 +411,17 @@ Run these as separate least-privilege systemd units or timers on the existing ho
 
 They are processes, not separate servers. Each unit has restart limits, a health timestamp, structured redacted logs, and a dedicated database role where practical.
 
-### 9.2 Interpretation Lightsail
+### 9.2 LiveKit Cloud Hosted Agent V1
 
-Recommended starting bundle: Linux 4 GB RAM, 2 vCPU. Run:
+Deploy the agent as a named production deployment with a pinned SDK/runtime and explicit region. LiveKit Cloud manages builds, container lifecycle, scaling, health checks, and rollback. V1 still enforces a CRM-side maximum of two simultaneous AI rooms.
+
+The free Build plan is for de-identified/internal evaluation only: it can scale production to zero, cold-start by 10–20 seconds, permits at most five concurrent sessions, and stops accepting new work after its included 1,000 agent session minutes. Before real-patient use, verify a paid/contracted plan keeps production warm, has sufficient quota and support, and covers the selected region and agent-hosting data flow.
+
+Agent Observability can include transcripts, events, and audio recordings with a retention window. Keep content recording and transcript capture disabled for this product unless separately approved; verify the effective project settings with an executable test before any PHI. Application logs remain redacted even if LiveKit offers richer observability.
+
+### 9.3 Optional interpretation Lightsail
+
+If a measured migration trigger selects self-hosting, start with Linux 4 GB RAM, 2 vCPU and run:
 
 - one `medora-video-interpretation` supervisor;
 - one isolated child process/task per active room;
@@ -375,11 +431,13 @@ Recommended starting bundle: Linux 4 GB RAM, 2 vCPU. Run:
 - host firewall allowing only SSH through an operator allowlist and required outbound traffic;
 - no public application listener unless a health endpoint is protected by the API host or monitoring allowlist.
 
-The host does not hold the LiveKit server API secret. It requests a short-lived, generation-bound agent participant token from `apps/api` after a valid job claim.
+The host does not hold the LiveKit server API secret. It requests a short-lived, generation-bound agent participant token from `apps/api` after a valid job claim. If local LiveKit Turn Detector `v1-mini` is used, soak-test CPU and inference timeouts: LiveKit recommends compute-optimized rather than burstable hosts for that model, so the standard `$24` Lightsail bundle is not assumed adequate.
 
-### 9.3 Secrets
+### 9.4 Secrets
 
-For the low-cost host profile:
+For `HOSTED_AGENT_V1`, use LiveKit's encrypted runtime-secret injection for the smallest provider credential set and the deployment bootstrap secret, do not include secrets in the build context, and rotate them independently from deployments. The bootstrap can only exchange a verified dispatch for a job capability; it is never placed in LiveKit metadata. Confirm the contract and project access controls before PHI.
+
+For the optional self-hosted profile:
 
 - store secrets outside the repository in root-owned files under `/etc/medora/` with mode `0600`, and expose them to the non-root systemd service through `LoadCredential=` or an equivalently scoped runtime credential file;
 - give the service only its per-host CRM bearer and the provider keys it needs;
@@ -394,9 +452,10 @@ This is operationally simpler but weaker than workload identity. Upgrade to a ma
 
 ## 10. Capacity and backpressure
 
-Launch limits are enforced by the API, not just by host convention:
+Launch limits are enforced by the API, not merely by runtime or plan convention:
 
-- maximum 2 active AI jobs on one 4 GB interpretation host;
+- maximum 2 active AI rooms for V1 regardless of hosted-plan quota;
+- maximum 2 concurrent paid provider sessions per room, dynamically assigned to speaking tracks without sharing state between speakers;
 - maximum 8 humans in one room;
 - maximum 8 subscribed human microphone tracks;
 - maximum one target-language speech queue per supported target language;
@@ -405,7 +464,7 @@ Launch limits are enforced by the API, not just by host convention:
 - tenant-level concurrent AI room cap;
 - reject new AI START with `AI_CAPACITY_UNAVAILABLE` while keeping video available.
 
-Before START, PostgreSQL atomically reserves a conservative worst-case amount using the approved provider rate, maximum AI duration, and currently consented source-stream count. Subscribing another source track requires an incremental reservation before the explicit LiveKit subscribe. The job stores reserved and locally estimated consumed micro-dollars without caption or transcript content.
+Before START, PostgreSQL atomically reserves a conservative worst-case amount using the approved provider rate, maximum AI duration, and the configured maximum concurrent paid provider sessions. Raising that concurrency cap requires an incremental reservation first. Merely subscribing locally to another consented track does not create a paid session; provider activation must acquire one of the reserved slots. The job stores reserved and locally estimated consumed micro-dollars without caption or transcript content.
 
 Budget enforcement runs at least every five seconds from local provider-audio/wall-clock counters rather than waiting for delayed vendor invoices:
 
@@ -424,23 +483,24 @@ Operational load shedding, separate from a hard cost cap, is profile-specific:
 5. at the hard resource/cost boundary, close provider sessions and stop AI;
 6. never shed or disconnect human LiveKit media.
 
-CPU, memory, event-loop lag, provider RTT, caption latency, speech lag, active tracks, and restart count are measured. Raise concurrency only after a 90-minute soak at target participants keeps memory below 70%, sustained CPU below 65%, no audio gaps caused by the agent, and translated-caption p95 latency within the approved product target.
+Event-loop lag, provider RTT, caption latency, turn-decision latency, speech lag, active tracks/sessions, cold starts, and restart count are measured in both runtimes. For self-hosting, also require a 90-minute soak with memory below 70%, sustained CPU below 65%, no local Turn Detector timeouts or agent-caused audio gaps, and translated-caption p95 latency within the approved product target.
 
 ## 11. Cost model
 
 All figures are estimates in USD and must be rechecked before purchase.
 
-### 11.1 Fixed monthly infrastructure
+### 11.1 Runtime comparison
 
-| Item | One-host OpenAI path | One-host Cloudflare AI path | Two-host Cloudflare AI path |
+| Item | Hosted Build pilot | Hosted paid production candidate | One self-hosted Lightsail |
 |---|---:|---:|---:|
-| New 4 GB Lightsail interpretation host | ~$24 | ~$24 | ~$48 |
-| Cloudflare Workers Paid minimum | $0 | ~$5 | ~$5 |
-| Logs/rebuild artifacts | usage-based | usage-based | usage-based |
-| Existing API/database/Vercel | unchanged | unchanged | unchanged |
-| Incremental fixed subtotal | **~$24/month** | **~$29/month** | **~$53/month** |
+| New AWS server | $0 | $0 | ~$24/month |
+| Hosted-agent allowance/cost | 1,000 session min included; hard cap | Recheck current plan + usage price | $0 hosted-agent compute |
+| Cold start | Up to 10–20 seconds when scaled to zero | Production documented to stay warm on paid plans; verify | Process normally warm; operator-managed |
+| Maximum concurrency | 5 plan sessions; application caps at 2 | Plan-specific; application caps at 2 initially | 2 rooms until soak passes |
+| Operations | Managed build/lifecycle/scaling | Managed build/lifecycle/scaling | Patching, secrets, monitoring, rebuilds |
+| Incremental fixed subtotal | **$0 within allowances** | **Plan/usage dependent** | **~$24/month** |
 
-LiveKit Cloud and AI inference are usage-based and excluded from the fixed subtotal. A LiveKit agent counts as a connected participant, so both connection minutes and outbound media must be included in the LiveKit estimate.
+LiveKit media, hosted-agent session time, observability, downstream data, and AI inference are separate metered dimensions subject to plan allowances. An agent also counts as a connected participant. The Build profile is a cost-free pilot boundary, not a guarantee that clinical production costs `$0`.
 
 ### 11.2 Cloudflare AI reference rates as of 2026-08-29
 
@@ -475,36 +535,37 @@ OpenAI currently publishes `gpt-realtime-translate` at `$0.034` per audio minute
 | 4 | 240 | ~$8.16 |
 | 8 | 480 | ~$16.32 |
 
-The exact billing behavior for silence, reconnection, overlapping speakers, and translation-session lifecycle must be measured against the production account. Do not market a flat `$2.04/hour` multiparty cost until metering proves that only one source stream is billed.
+The exact billing behavior for silence, reconnection, overlapping speakers, lazy session creation, idle closure, and translation-session lifecycle must be measured against the production account. V1 caps simultaneous paid sessions at two, but may serve more speakers sequentially; it does not share provider context between them. Do not market a flat `$2.04/hour` multiparty cost until metering proves the actual billable audio.
 
 `gpt-realtime-2.1-mini` currently publishes audio token rates of `$10` per million input audio tokens and `$20` per million output audio tokens, plus text/reasoning usage where applicable. Because audio tokens do not map to meeting minutes with one universal constant, estimate this candidate from real usage telemetry rather than inventing a per-minute price.
 
 ### 11.4 Cost decision
 
-Cloudflare can reduce inference cost, but it does not remove the interpretation Lightsail. The recommended budget is therefore:
+The recommended V1 budget is:
 
 ```text
 existing platform cost
-+ $24/month for one interpretation host
-+ optional $24/month for a second host
-+ either OpenAI per-audio-minute translation or Cloudflare STT/translation/TTS usage
-+ approximately $5/month Cloudflare platform minimum only if the Cloudflare AI path is enabled
-+ LiveKit usage
++ LiveKit Hosted Agent/media/observability usage after included allowances
++ selected OpenAI usage
++ $0 new AWS servers initially
 ```
+
+Defer Cloudflare inference spending until its comparator phase. Re-evaluate self-hosting when measured hosted-agent runtime cost materially exceeds `$24/month`, when cold-start/runtime constraints remain unacceptable, or when portability/contract requirements favor it. Cost alone cannot override the provider and PHI gates.
 
 ## 12. Reliability and recovery
 
 | Failure | Required behavior |
 |---|---|
-| Interpretation process crash | Human call continues; UI marks AI reconnecting; systemd restarts; lease prevents stale writes |
-| Interpretation host outage | Human call continues; AI remains unavailable or transfers to a second host only after lease expiry, old-agent removal, and the provider-session closure/expiry/transfer fence |
+| Hosted Agent process/container failure | Human call continues; UI marks AI reconnecting; stale execution output is rejected; redispatch waits for the provider-session fence |
+| Hosted Build cold start or quota exhaustion | Human call continues; UI marks AI unavailable/reconnecting; never bypass the quota or silently start unbudgeted processing |
+| Optional self-hosted process/host outage | Human call continues; restart/takeover follows the lease and provider-session closure/expiry/transfer fence |
 | `INTEGRATED_REALTIME` provider outage | Translated captions and speech for that source may fail together; close the session, show AI degraded, and use bounded retry only if generation/consent/budget remain valid |
 | `DECOMPOSED` STT outage | Stop downstream translation/TTS for that source and show AI degraded |
 | `DECOMPOSED` translation failure | Show source captions only; do not synthesize guessed speech |
 | `DECOMPOSED` TTS failure | Keep source and translated captions; original audio remains active |
-| API/database outage | Agent stops provider-bound processing when lease cannot be renewed; human LiveKit media continues |
+| API/database outage | Agent stops provider-bound processing when its short-lived authorization cannot be refreshed; human LiveKit media continues |
 | LiveKit webhook loss | API reconciliation lists the room and repairs current participant/track state |
-| Room generation changes | Old job becomes STOP; old agent token and identity are revoked/removed; new generation requires a new claim/token |
+| Room generation changes | Old job becomes STOP; old dispatch/identity is removed; new generation requires a new execution version and dispatch |
 | Soft cost threshold | Reject new AI jobs/source streams; `DECOMPOSED` may disable TTS first |
 | Hard cost threshold | Close all billed provider sessions for the job and stop AI; never terminate base video |
 
@@ -519,6 +580,7 @@ Before enabling AI for real consultations:
 - identify which privacy/healthcare laws and contracts apply to the actual patients, hospitals, regions, and vendors;
 - execute required data-processing agreements and, if applicable, BAAs;
 - verify that LiveKit Cloud and every STT/translation/TTS provider contract covers the data flow;
+- verify LiveKit Agent hosting, Turn Detector inference, secrets, observability, regions, and any content retention are covered and correctly configured;
 - disable provider content logging/training where configurable;
 - document processing regions, subprocessors, retention, deletion, and incident notification;
 - obtain explicit participant consent before subscribing their track for AI processing;
@@ -527,6 +589,8 @@ Before enabling AI for real consultations:
 - conduct a threat model and focused penetration test before public rollout.
 
 If HIPAA applies, do not send PHI through Lightsail or a self-service AI plan merely because the implementation is technically possible. As of this design date, Lightsail is not named in AWS's HIPAA-eligible services list, and Cloudflare states that BAAs are limited to Enterprise customers. Use only services and account terms explicitly approved for the workload, or keep the pilot de-identified and non-clinical.
+
+OpenAI's current HIPAA-eligible API list requires an executed BAA and an organization provisioned with Modified Retention. It lists `/v1/realtime`, `/v1/audio/transcriptions`, `/v1/audio/translations`, and `/v1/audio/speech`, but does not currently list the dedicated `/v1/realtime/translations` endpoint used by `gpt-realtime-translate`. Do not send PHI to that dedicated endpoint unless OpenAI confirms in writing that the exact endpoint and approved organization are covered. `gpt-realtime-2.1-mini` over `/v1/realtime` is still subject to the executed BAA, Modified Retention, exact configuration, and translation-quality gates; endpoint eligibility alone does not make its output clinically safe.
 
 Cloudflare's statement that customer content is not used to train LLMs is useful but does not replace a healthcare contract, data-processing review, or model-specific subprocessor review.
 
@@ -570,34 +634,26 @@ Clinical operations defines blocking thresholds before translated speech is enab
 - keep AI flags off;
 - validate 2/4/8-party calls across real networks.
 
-### Phase B: One-host caption path
+### Phase B: Zero-new-server Hosted Agent MVP
 
-- provision one 4 GB interpretation Lightsail;
-- implement PostgreSQL jobs/leases and one agent per room;
-- for `DECOMPOSED`, integrate streaming STT and text translation and publish source plus translated captions;
-- for `INTEGRATED_REALTIME`, consume proved transcript-delta semantics while discarding/unpublishing provider audio; it advances only if it supplies the required caption set;
-- enforce spend, capacity, consent, and failure isolation;
-- run staff-only soak and bilingual evaluation.
+- deploy one named LiveKit Cloud Hosted Agent in an isolated non-PHI project;
+- implement the minimal job, consent, execution-version, provider-session, and budget records;
+- add Silero VAD, LiveKit Audio Turn Detector, explicit `zh`/`en` handling, parallel provider streaming, and cancellable playout buffering;
+- lazily create speaker-isolated provider sessions with a concurrency cap of two and PCM pre-roll;
+- A/B `gpt-realtime-translate` and `gpt-realtime-2.1-mini` on de-identified medical bilingual material;
+- run long-pause, interruption, billing, cold-start, quota, reconnect, and 2/4/8-party tests.
 
-### Phase C: Profile-specific translated speech
+### Phase C: Contracted real-patient launch
 
-- for `DECOMPOSED`, add language-qualified TTS adapters;
-- for `INTEGRATED_REALTIME`, enable publication of provider-translated audio only after caption, lag, interruption, and billing behavior pass qualification;
-- publish target-language audio tracks with feedback prevention;
-- add original/translated/ducking controls;
-- enforce the five-second lag cutoff and the selected profile's documented load-shedding behavior;
-- allowlist only after clinical and latency gates pass.
+- select only a provider/model/endpoint with approved privacy terms and passing source-caption, translation, latency, and safety gates;
+- move Hosted Agent production to the approved warm plan and region with sufficient quota;
+- verify content recording/transcript observability is disabled and execute all required BAAs/DPAs;
+- enable translated captions/audio for an allowlist, with original/translated/ducking controls and human escalation;
+- keep the Cloudflare decomposed comparator deferred unless the integrated profile cannot meet cost or feature requirements.
 
-### Phase D: Optional second host
+### Phase D: Optional self-hosted migration
 
-Add a second 4 GB Lightsail only when one of these is observed:
-
-- more than two concurrent AI rooms are required;
-- maintenance must not interrupt AI;
-- measured host utilization exceeds the approved ceiling;
-- AI availability has a contractual objective.
-
-Then enable lease-based cross-host claims, old-agent removal before takeover, per-host capacity advertisement, and rolling deployment drain.
+Provision one 4 GB Lightsail only after a measured hosted-cost, runtime, portability, or contractual trigger. First prove that the bundle can run the selected media pipeline and local Turn Detector without CPU-credit timeouts; otherwise choose suitable compute rather than forcing the `$24` target. Implement host secrets, leases, heartbeat, rebuild, and takeover only in this phase. Add a second host only after self-hosting is selected and capacity or availability requires it.
 
 ## 16. Verification and launch gates
 
@@ -608,26 +664,50 @@ Then enable lease-based cross-host claims, old-agent removal before takeover, pe
 - every human token decodes to `roomAdmin: false` and metadata update disabled;
 - base human call survives every injected AI failure;
 - secrets and raw credentials are absent from git, database rows, logs, metrics, and process arguments;
-- no whole-instance snapshot exists after live secrets are provisioned.
 
-### 16.2 `SERVER_AGENT` production gates
+### 16.2 Central-agent production gates
 
 These gates are blocking for multiparty clinical launch:
 
 - agent joins with `autoSubscribe=false`; no source audio reaches it before fresh admission/track/generation/consent authorization;
 - forged caption packets and human-published translated audio are ignored as AI output;
 - consent withdrawal unsubscribes, stops provider-bound audio, purges source buffers/replay/TTS, and unpublishes affected output within two seconds;
-- interpretation host cannot sign LiveKit tokens, administer rooms, or reach PostgreSQL;
-- per-host bearer rotation/revocation and host+lease-bound conditional calls pass stolen/stale credential tests;
+- agent runtime cannot sign LiveKit tokens, administer rooms, or reach PostgreSQL;
 - provider-session partial uniqueness, crash/orphan/expiry reconciliation, and budget reservation/release converge without duplicate sessions or double billing;
-- takeover waits for proved provider closure, conservative provider expiry, or tested transfer/resume; `ORPHAN_WAIT` cannot be relabeled closed to bypass the fence;
-- agent crash/restart, provider disconnect, API outage, lease loss, room generation change, and stale takeover produce no feedback loop or duplicate translated speech; old-lease captions/audio fail the client fence;
+- redispatch/restart waits for proved provider closure, conservative provider expiry, or tested transfer/resume; `ORPHAN_WAIT` cannot be relabeled closed to bypass the fence;
+- agent crash/restart, provider disconnect, API outage, execution invalidation, and room generation change produce no feedback loop or duplicate translated speech; stale-execution captions/audio fail the client fence;
 - language selection/update, unknown language, mismatch, and code-switching tests match the server-authorized language-version policy;
-- exact integrated-endpoint tests prove transcript meaning/finality/mapping/reconnect behavior and any claimed turn-detection/cancel events before those capabilities are enabled;
-- `INTEGRATED_REALTIME` and `DECOMPOSED` failure/load-shedding tests match their documented semantics;
+- every selected profile proves one source-turn authority: controllable profiles disable provider automatic turn detection and use documented manual commit from LiveKit EOT; no second detector may split/commit/cancel independently;
+- a dedicated continuous endpoint proves stable response/item identity, ordered deltas, causal input range or equivalent boundary, final/drain semantics, cross-local-turn handling, resume behavior, and reconnect continuity before any mapped output is released; arrival-time/silence heuristics are forbidden;
+- exact integrated-endpoint tests prove transcript meaning/finality/mapping/reconnect behavior and any claimed cancellation operation before those capabilities are enabled; a profile without unique mapping/finality fails closed and is not the V1 default;
+- Silero VAD plus LiveKit Turn Detector passes Chinese/English long-pause, short-answer, interruption, backchannel, crosstalk, timeout, and fallback tests; measured playback begins within the approved 0.8–1.3 second product window after true end of turn;
+- `TURN_GATED_BUFFERED` proves source upload/provider computation remains streaming while no translated speech is audible before EOT; 30-second/8-MiB overflow degrades without unbounded storage, and `COMMIT_AFTER_EOT` cannot silently substitute if it misses the latency gate;
+- lazy per-speaker activation preserves bounded PCM pre-roll and attribution, never shares provider context across speakers, enforces two active slots, and accounts correctly for idle close/reopen;
+- three-speaker overlap, same-target-language simultaneous turns, deterministic slot admission, capacity UI, arbiter serialization, five-second eligible-item expiry, and resume/STOP stale-drop tests pass;
+- the selected/enabled production provider profile passes its complete failure, load-shedding, cost, privacy, and capability tests; an unimplemented/deferred profile is absent from the runtime allowlist and does not block V1;
+- if `INTEGRATED_REALTIME` is selected, test joint caption/audio failure, transcript semantics, local suppression, endpoint cancellation, and billing behavior; if `DECOMPOSED` is later enabled, separately test STT → translation → TTS stage failures and degradation order before enablement;
 - soft and hard budget thresholds stop the correct work within the five-second enforcement interval plus documented provider granularity.
 
-### 16.3 `CLIENT_DIRECT_EXPERIMENT` gates
+### 16.3 `HOSTED_AGENT_V1` gates
+
+- Build-plan testing uses only synthetic or properly de-identified audio and fails AI closed on cold start, five-session concurrency limit, or 1,000-minute hard quota;
+- real-patient production uses an approved warm plan/region and executed contracts covering agent hosting, Turn Detector, secrets, and observability;
+- an executable privacy test confirms transcript/audio observability and content recording are disabled as intended before PHI;
+- dispatch credentials are short-lived and purpose-bound; agent secrets, build context, runtime logs, and callbacks pass leakage and stale-execution tests;
+- dispatch/room/participant metadata contains no credential; bootstrap exchange is single-use per execution, scope-limited, rate-limited, rotatable, and rejects wrong room/dispatch/generation/version;
+- the watchdog's request sequence, nonce, authorization revision, version checks, 400 ms maximum RTT, and request-start-based 1.5-second TTL stop provider-bound audio/output within two seconds under STOP, consent withdrawal, API loss, delayed/reordered/duplicated responses, response-after-STOP, clock-wall-time jumps, delayed removal, and stale execution;
+- hosted restart/redispatch and rollback preserve the common provider-session and output fences.
+
+### 16.4 Optional `SELF_HOSTED_AGENT` gates
+
+- the selected host passes the full media and local Turn Detector soak without CPU-credit/inference timeouts;
+- per-host bearer rotation/revocation and host+lease-bound conditional calls pass stolen/stale credential tests;
+- takeover waits for old-agent removal and the provider closure/expiry/transfer fence;
+- clean-host rebuild, separate secret injection/rotation, and secret-free base-image verification pass;
+- no whole-instance snapshot exists after live secrets are provisioned;
+- applicable contracts explicitly permit the selected infrastructure for the actual data classification.
+
+### 16.5 `CLIENT_DIRECT_EXPERIMENT` gates
 
 These gates permit only staff-only or one-to-one evaluation and do not qualify multiparty clinical launch:
 
@@ -638,22 +718,22 @@ These gates permit only staff-only or one-to-one evaluation and do not qualify m
 - session maximum lifetime and local/server metering bound cost after client loss;
 - the experiment explicitly does not claim centralized output authenticity, room-wide consent enforcement, server-agent failover, or multiparty support.
 
-### 16.4 Shared media and quality gates
+### 16.6 Shared media and quality gates
 
 - current Chrome, Safari, Edge, iOS Safari, and Android Chrome;
-- 2/4/8 participants for `SERVER_AGENT`; one-to-one only for `CLIENT_DIRECT_EXPERIMENT`;
+- 2/4/8 participants for the hosted or self-hosted central agent; one-to-one only for `CLIENT_DIRECT_EXPERIMENT`;
 - device changes, duplicate tabs, mobile background/foreground;
 - packet loss, high latency, UDP blocked, TURN/TLS, Wi-Fi/cellular transition;
 - Chinese ↔ English in both directions, code-switching, interruptions, and crosstalk;
 - clinical bilingual thresholds pass before translated speech leaves the staff allowlist.
 
-### 16.5 Operations and cost
+### 16.7 Operations and cost
 
-- 90-minute two-room `SERVER_AGENT` soak on the selected 4 GB bundle;
-- measured CPU, memory, provider RTT, caption latency, TTS lag, and LiveKit traffic;
+- 90-minute two-room Hosted Agent soak including an intentional cold start, restart, redispatch, and quota-failure simulation;
+- measured provider RTT, turn-decision/caption/speech latency, active provider minutes, hosted-agent minutes, observability/data usage, and LiveKit traffic;
 - per-room/tenant soft and hard application budget tests, worst-case reservation, bounded overrun, and monthly alarm;
-- clean-host rebuild from pinned automation followed by separate secret injection/rotation;
-- secret-free base-image build verification, if a base image is used;
+- compare measured paid Hosted Agent runtime cost against the self-hosted estimate before purchasing infrastructure;
+- if self-hosting is selected, run the separate host soak/rebuild/secret tests in §16.4;
 - AI-off rollback leaves secure multiparty video usable.
 
 ## 17. Upgrade triggers to the enterprise architecture
@@ -662,13 +742,14 @@ Move selected components toward the 2026-08-28 enterprise target when measured r
 
 | Trigger | Upgrade |
 |---|---|
-| More than 4 concurrent AI rooms or bursty demand | Container orchestration/autoscaling evaluation |
-| AI uptime becomes contractual | At least two hosts/AZs, managed queue, tested drain and failover |
+| More than 4 concurrent AI rooms or bursty demand | Raise LiveKit hosted plan quota after load testing; evaluate self-host/orchestration only if economics or constraints justify it |
+| Paid hosted runtime materially exceeds measured self-host cost | Evaluate one self-hosted agent before purchasing it |
+| AI uptime becomes contractual | Contracted hosted SLA/multi-region first; two self-hosted hosts/AZs only if the self-host profile is selected |
 | PostgreSQL job polling creates measurable contention | SQS/managed queue with transactional outbox |
 | Cache-dependent credential recovery is introduced | Dedicated non-evicting managed Valkey |
-| Host secret distribution becomes an audit finding | Managed secrets plus workload identity |
+| Self-host secret distribution becomes an audit finding | Managed secrets plus workload identity |
 | Multiple teams/providers need isolated permissions | Stronger service identities and private control ingress |
-| Regulatory scope excludes Lightsail or self-service AI | Migrate PHI processing to explicitly eligible/contracted services |
+| Regulatory scope excludes a runtime, model, or endpoint | Keep PHI off it and migrate only to explicitly eligible/contracted services |
 
 Do not provision enterprise components merely because they appear in the target document. Provision them against an observed scale, availability, compliance, or audit requirement.
 
@@ -676,15 +757,19 @@ Do not provision enterprise components merely because they appear in the target 
 
 | Decision | Recommended default |
 |---|---|
-| Initial interpretation hosts | One 4 GB Lightsail |
+| Initial interpretation hosts | Zero new AWS hosts; one LiveKit Cloud Hosted Agent deployment |
 | Concurrent AI rooms | Two maximum until soak passes |
+| Concurrent provider sessions per room | Two maximum, lazily assigned to speaker-isolated state |
 | Initial languages | Chinese ↔ English |
-| Production media topology | `SERVER_AGENT` on one Lightsail |
+| V1 media topology | `HOSTED_AGENT_V1` as a central LiveKit service participant |
+| Free Build scope | Synthetic/de-identified pilot only; 1,000 agent minutes and cold starts are hard product constraints |
+| Self-hosted fallback | Buy one suitable host only after a measured migration trigger; `$24` Lightsail is not presumed adequate for local Turn Detector |
 | Zero-new-host experiment | `CLIENT_DIRECT_EXPERIMENT`, staff-only/one-to-one |
 | First integrated provider candidate | OpenAI `gpt-realtime-translate`; not the complete launch default unless source-caption semantics pass the blocking gate |
-| Business-rephrasing candidate | OpenAI `gpt-realtime-2.1-mini`, with `2.1` only as a quality comparator |
-| Lowest-component-cost comparator | Cloudflare Nova-3 → M2M100 → language-qualified TTS |
-| Initial turn detection | Local PCM VAD by default; provider VAD/cancel only after exact model + endpoint + transport proof; 600–800 ms is a measured starting debounce |
+| General Realtime comparator | OpenAI `gpt-realtime-2.1-mini`; reject clinically material paraphrase/invention, with `2.1` only as a quality comparator |
+| Lowest-component-cost comparator | Deferred: Cloudflare Nova-3 → M2M100 → language-qualified TTS |
+| Initial turn detection | Silero VAD + LiveKit Audio Turn Detector + measured 600–800 ms cancellable playout debounce |
+| PHI on `gpt-realtime-translate` | Blocked until OpenAI confirms `/v1/realtime/translations` coverage for the approved organization in writing |
 | TTS for Cloudflare pipeline | Select separate proven English and Chinese adapters if one candidate cannot pass both |
 | Persistent transcript | Off |
 | Recording | Off |
@@ -707,6 +792,10 @@ Do not provision enterprise components merely because they appear in the target 
 - OpenAI Realtime VAD: <https://developers.openai.com/api/docs/guides/realtime-vad>
 - OpenAI GPT-Realtime-Translate: <https://developers.openai.com/api/docs/models/gpt-realtime-translate>
 - OpenAI GPT-Realtime-2.1 Mini: <https://developers.openai.com/api/docs/models/gpt-realtime-2.1-mini>
+- OpenAI HIPAA-eligible products and endpoints: <https://help.openai.com/en/articles/20001069-hipaa-eligible-products-and-functionality>
 - LiveKit Cloud billing: <https://docs.livekit.io/deploy/admin/billing/>
+- LiveKit Hosted Agent deployment: <https://docs.livekit.io/deploy/agents/>
+- LiveKit agent quotas, cold starts, and Build allowances: <https://docs.livekit.io/deploy/admin/quotas-and-limits/>
+- LiveKit Audio Turn Detector: <https://docs.livekit.io/agents/logic/turns/turn-detector/>
 - LiveKit participant/token lifecycle: <https://docs.livekit.io/intro/basics/rooms-participants-tracks/participants/>
 - LiveKit webhooks: <https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/>

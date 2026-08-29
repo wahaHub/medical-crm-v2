@@ -66,6 +66,8 @@ const agent = defineAgent<ProcessData>({
       watchdog,
       client,
       applicationDeadlineAt: bootstrap.job.applicationDeadlineAt,
+      providerModel: bootstrap.job.providerModel,
+      providerEndpoint: bootstrap.job.providerEndpoint,
     });
 
     let stopped = false;

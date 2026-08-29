@@ -1,0 +1,36 @@
+[Unit]
+Description=Medora self-hosted video interpretation agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=medora-interpretation
+Group=medora-interpretation
+WorkingDirectory=/opt/medora/medical-crm-v2
+Environment=NODE_ENV=production
+Environment=CRM_API_URL=https://replace-with-approved-api.example
+Environment=MEDORA_SELF_HOST_ID=replace-with-registered-host-uuid
+Environment=MEDORA_SELF_HOST_BEARER_FILE=%d/self_host_bearer
+Environment=OPENAI_API_KEY_FILE=%d/openai_api_key
+LoadCredential=self_host_bearer:/etc/medora/video-interpretation/self-host-bearer
+LoadCredential=openai_api_key:/etc/medora/video-interpretation/openai-api-key
+ExecStart=/usr/bin/pnpm --filter @medical-crm/interpretation-agent start:self-hosted
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

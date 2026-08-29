@@ -24,6 +24,8 @@ export interface LiveKitMediaAdapterOptions {
   watchdog: AuthorizationWatchdog;
   client: ControlPlaneClient;
   applicationDeadlineAt: string;
+  providerModel: string;
+  providerEndpoint: string;
 }
 
 export function playoutAuthorityChanged(
@@ -151,6 +153,8 @@ export class LiveKitMediaAdapter {
       client: this.#options.client,
       output: this.#output,
       applicationDeadlineAt: this.#options.applicationDeadlineAt,
+      providerModel: this.#options.providerModel,
+      providerEndpoint: this.#options.providerEndpoint,
       acquireProviderSlot: (trackId, _observedAtMonotonicMs) => {
         const result = this.#providerSlots.tryAcquire(trackId);
         if (result === 'ACTIVE') return true;

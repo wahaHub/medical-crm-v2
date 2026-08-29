@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx src/main.ts dev",
     "start": "node --import tsx src/main.ts start",
+    "start:self-hosted": "node --import tsx src/self-hosted-runner.ts",
     "download": "node --import tsx src/main.ts download-files",
     "probe:translation": "node --import tsx src/probe-realtime-translation.ts",
     "build": "tsc --noEmit",

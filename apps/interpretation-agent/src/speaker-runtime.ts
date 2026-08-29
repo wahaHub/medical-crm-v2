@@ -29,6 +29,8 @@ export interface SpeakerRuntimeOptions {
   client: ControlPlaneClient;
   output: LiveKitOutputPublisher;
   applicationDeadlineAt: string;
+  providerModel: string;
+  providerEndpoint: string;
   acquireProviderSlot: (trackId: string, observedAtMonotonicMs: number) => boolean;
   releaseProviderSlot: (trackId: string) => void;
 }
@@ -166,6 +168,7 @@ export class SpeakerRuntime {
       // Validate all local prerequisites before creating the durable provider
       // fence; a synchronous constructor failure must not strand CREATING.
       const openAiKey = requireOpenAiKey();
+      assertApprovedProviderTarget(this.#options.providerModel, this.#options.providerEndpoint);
       const providerSession = await this.#options.client.openProviderSession(
         this.#options.execution.jobId,
         this.#authorization.id,
@@ -175,6 +178,8 @@ export class SpeakerRuntime {
         apiKey: openAiKey,
         targetLanguage: this.#authorization.targetLanguage,
         safetyIdentifier: safetyIdentifierForJob(this.#options.execution.jobId),
+        model: this.#options.providerModel,
+        endpoint: this.#options.providerEndpoint,
       });
       const turn = new TranslationTurn({
         transport,
@@ -351,6 +356,19 @@ export class SpeakerRuntime {
     const guarded = task.catch(() => undefined);
     this.#tasks.add(guarded);
     void guarded.then(() => this.#tasks.delete(guarded));
+  }
+}
+
+function assertApprovedProviderTarget(model: string, endpoint: string): void {
+  const parsed = new URL(endpoint);
+  if (model !== 'gpt-realtime-translate'
+    || parsed.protocol !== 'wss:'
+    || parsed.hostname !== 'api.openai.com'
+    || parsed.port !== ''
+    || parsed.pathname !== '/v1/realtime/translations'
+    || parsed.search !== ''
+    || parsed.hash !== '') {
+    throw new Error('provider target is not approved by this interpretation build');
   }
 }
 

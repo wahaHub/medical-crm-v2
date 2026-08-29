@@ -97,4 +97,25 @@ describe('LiveKitOutputPublisher authorization invalidation', () => {
     // One clear happens at invalidation and another closes the enqueue race.
     expect(source.clearQueue).toHaveBeenCalledTimes(2);
   });
+
+  it('publishes reliable content-free playout boundaries for client ducking', async () => {
+    const publishData = vi.fn(async () => undefined);
+    const room = { localParticipant: { publishData } } as unknown as Room;
+    const { output } = fakeOutput();
+    const publisher = new LiveKitOutputPublisher(room, execution, async () => output);
+
+    await publisher.play('zh', [new Uint8Array(480)], performance.now());
+
+    const statuses = publishData.mock.calls.map(([encoded, options]) => ({
+      payload: JSON.parse(new TextDecoder().decode(encoded)),
+      options,
+    }));
+    expect(statuses.map(({ payload }) => payload.code)).toEqual([
+      'TRANSLATED_PLAYOUT_STARTED',
+      'TRANSLATED_PLAYOUT_ENDED',
+    ]);
+    expect(statuses.every(({ options }) => options.reliable === true
+      && options.topic === 'interpretation-status')).toBe(true);
+    expect(JSON.stringify(statuses)).not.toContain('transcript');
+  });
 });

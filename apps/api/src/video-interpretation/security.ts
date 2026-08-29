@@ -18,6 +18,21 @@ export const WATCHDOG_AUTHORIZATION_TTL_MS = 1_500;
 // environment. Enabling patient audio still requires a reviewed code change
 // after those executable gates and the privacy/contract gates pass.
 export const VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
+// These remain code gates. Database attestations and environment flags are
+// necessary but cannot independently authorize PHI or self-hosted execution.
+export const VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED = false;
+export const VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED = true;
+export const SELF_HOST_LEASE_SECONDS = 30;
+export const SELF_HOST_HEARTBEAT_SECONDS = 10;
+export const SELF_HOST_CLAIM_TIMEOUT_SECONDS = 60;
+export const LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS = 10;
+export const HOSTED_DISPATCH_RECOVERY_SETTLE_SECONDS = 30;
+export const HOSTED_BOOTSTRAP_TIMEOUT_SECONDS = 60;
+export const LIFECYCLE_RECONCILER_STALE_SECONDS = 90;
+// A zero-match dispatch recovery cannot release capacity until an executable
+// LiveKit Cloud probe establishes a bounded late-commit/list-consistency window.
+export const HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED = false;
+export const VIDEO_INTERPRETATION_BUDGET_SAFETY_BASIS_POINTS = 11_000;
 
 export type ProviderSessionMutableState = 'CREATING' | 'ACTIVE' | 'CLOSING' | 'ORPHAN_WAIT';
 export type ProviderSessionAgentTransition = 'CLOSING' | 'CLOSED' | 'ORPHAN_WAIT';
@@ -66,6 +81,72 @@ export function approvedProviderProfile(): 'DISABLED' | 'INTEGRATED_REALTIME' {
     && process.env.VIDEO_INTERPRETATION_PROVIDER_PROFILE === 'INTEGRATED_REALTIME'
     ? 'INTEGRATED_REALTIME'
     : 'DISABLED';
+}
+
+export function approvedRuntimeProfile(): 'DISABLED' | 'HOSTED_AGENT_V1' | 'SELF_HOSTED_AGENT' {
+  const requested = process.env.VIDEO_INTERPRETATION_RUNTIME_PROFILE ?? 'HOSTED_AGENT_V1';
+  if (requested === 'HOSTED_AGENT_V1') return 'HOSTED_AGENT_V1';
+  if (requested !== 'SELF_HOSTED_AGENT') return 'DISABLED';
+  return VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED
+    && process.env.VIDEO_INTERPRETATION_SELF_HOST_APPROVED === 'true'
+    && liveKitMediaPlaneRevocationApproved(process.env.LIVEKIT_URL)
+    ? 'SELF_HOSTED_AGENT'
+    : 'DISABLED';
+}
+
+/**
+ * Both central-agent profiles keep LiveKit Cloud as the media plane. Cloud
+ * token revocation is the server-enforced boundary that makes a fenced old
+ * execution unable to rejoin with a cached or server-refreshed JWT.
+ */
+export function liveKitMediaPlaneRevocationApproved(livekitUrl: string | undefined): boolean {
+  if (process.env.VIDEO_INTERPRETATION_LIVEKIT_CLOUD_REVOCATION_VERIFIED !== 'true') return false;
+  try {
+    const url = new URL(livekitUrl ?? '');
+    return url.protocol === 'wss:' && url.hostname.endsWith('.livekit.cloud');
+  } catch {
+    return false;
+  }
+}
+
+export function selfHostedJoinTokenTtlSeconds(leaseExpiresAt: string, nowMs = Date.now()): number {
+  const remainingMs = new Date(leaseExpiresAt).getTime() - nowMs;
+  const seconds = Math.floor(remainingMs / 1_000);
+  if (!Number.isFinite(remainingMs) || seconds < 1) throw new Error('self_host_lease_expired_before_token_issue');
+  return Math.min(seconds, SELF_HOST_LEASE_SECONDS);
+}
+
+export function reserveInterpretationBudgetMicrodollars(
+  maximumAiDurationSeconds: number,
+  providerRateMicrodollarsPerMinute: number,
+  providerSessionCap = MAX_PROVIDER_SESSIONS_PER_ROOM,
+): number {
+  if (!Number.isInteger(maximumAiDurationSeconds) || maximumAiDurationSeconds <= 0
+    || !Number.isInteger(providerRateMicrodollarsPerMinute) || providerRateMicrodollarsPerMinute <= 0
+    || !Number.isInteger(providerSessionCap) || providerSessionCap <= 0) {
+    throw new Error('invalid video interpretation budget input');
+  }
+  return Math.ceil(
+    maximumAiDurationSeconds / 60
+      * providerRateMicrodollarsPerMinute
+      * providerSessionCap
+      * VIDEO_INTERPRETATION_BUDGET_SAFETY_BASIS_POINTS / 10_000,
+  );
+}
+
+export function integratedTranslationTargetApproved(model: string, endpoint: string): boolean {
+  try {
+    const parsed = new URL(endpoint);
+    return model === 'gpt-realtime-translate'
+      && parsed.protocol === 'wss:'
+      && parsed.hostname === 'api.openai.com'
+      && parsed.port === ''
+      && parsed.pathname === '/v1/realtime/translations'
+      && parsed.search === ''
+      && parsed.hash === '';
+  } catch {
+    return false;
+  }
 }
 
 export function readHostedAgentConfig(): {

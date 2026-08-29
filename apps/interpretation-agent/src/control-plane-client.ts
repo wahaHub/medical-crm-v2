@@ -13,6 +13,8 @@ interface BootstrapResponse {
     executionVersion: number;
     authorizationRevision: number;
     providerProfile: 'DISABLED' | 'INTEGRATED_REALTIME';
+    providerModel: string;
+    providerEndpoint: string;
     agentIdentity: string;
     applicationDeadlineAt: string;
   };
@@ -36,15 +38,19 @@ function requireEnv(name: string): string {
 
 export class ControlPlaneClient {
   readonly #baseUrl: string;
-  readonly #bootstrapSecret: string;
+  readonly #bootstrapSecret: string | null;
   #capability: string | null = null;
 
-  constructor() {
-    this.#baseUrl = requireEnv('CRM_API_URL').replace(/\/$/, '');
-    this.#bootstrapSecret = requireEnv('LIVEKIT_INTERPRETATION_BOOTSTRAP_SECRET');
+  constructor(options?: { baseUrl?: string; capability?: string }) {
+    this.#baseUrl = (options?.baseUrl ?? requireEnv('CRM_API_URL')).replace(/\/$/, '');
+    this.#bootstrapSecret = options?.capability
+      ? null
+      : requireEnv('LIVEKIT_INTERPRETATION_BOOTSTRAP_SECRET');
+    this.#capability = options?.capability ?? null;
   }
 
   async bootstrap(execution: DispatchMetadata, dispatchId: string): Promise<BootstrapResponse> {
+    if (!this.#bootstrapSecret) throw new Error('hosted bootstrap secret is unavailable');
     const response = await fetch(`${this.#baseUrl}/api/v2/internal/video-interpretation/bootstrap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

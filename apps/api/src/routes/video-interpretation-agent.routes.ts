@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
+import { getServerEnv } from '@medical-crm/config';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
-import { LiveKitAPI, TrackSource } from 'livekit-server-sdk';
+import { AccessToken, LiveKitAPI, TrackSource } from 'livekit-server-sdk';
 import {
   createOpaqueSecret,
   digestSecret,
   MAX_PROVIDER_SESSIONS_PER_ROOM,
+  LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
   OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS,
   providerSessionAllowedCurrentStates,
   oppositeLanguage,
@@ -14,8 +16,25 @@ import {
   WATCHDOG_AUTHORIZATION_TTL_MS,
   WATCHDOG_INTERVAL_MS,
   WATCHDOG_MAX_RTT_MS,
+  VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
+  SELF_HOST_HEARTBEAT_SECONDS,
+  SELF_HOST_LEASE_SECONDS,
+  selfHostedJoinTokenTtlSeconds,
+  liveKitMediaPlaneRevocationApproved,
 } from '../video-interpretation/security.js';
 import { reconcileExpiredProviderSessions } from '../video-interpretation/provider-session-reconciliation.js';
+import { reconcileInterpretationBudget } from '../video-interpretation/budget-reconciliation.js';
+import {
+  cleanupFencedSelfHostedExecutions,
+  fenceExpiredOrUnauthorizedUnclaimedSelfHostedJobs,
+  fenceExpiredSelfHostedLeases,
+  fenceUnauthorizedSelfHostedExecutions,
+} from '../video-interpretation/self-hosted-control-plane.js';
+import { prepareHostedTerminations } from '../video-interpretation/hosted-control-plane.js';
+import {
+  acquireReconcileRun,
+  type ReconcileProfile,
+} from '../video-interpretation/reconcile-run-lease.js';
 
 const app = new Hono();
 const idSchema = z.string().uuid();
@@ -42,6 +61,11 @@ const providerOpenSchema = z.object({
 const providerActivateSchema = z.object({
   providerSessionReference: z.string().min(1).max(160),
 });
+const selfHostHeartbeatSchema = z.object({
+  jobId: z.string().uuid(),
+  executionVersion: z.number().int().positive(),
+  leaseVersion: z.number().int().positive(),
+});
 
 interface CapabilityJob {
   id: string;
@@ -60,6 +84,17 @@ interface CapabilityJob {
   capability_expires_at: string | null;
   maximum_ai_duration_seconds?: number;
   started_at: string | null;
+  runtime_profile: 'HOSTED_AGENT_V1' | 'SELF_HOSTED_AGENT';
+  self_host_id: string | null;
+  self_host_credential_version: string | number | null;
+  lease_version: string | number | null;
+  lease_expires_at: string | null;
+  provider_rate_microdollars_per_minute: string | number | null;
+  hard_budget_microdollars: string | number | null;
+  data_classification: 'DEIDENTIFIED_EVALUATION' | 'REAL_PATIENT';
+  release_approval_id: string | null;
+  provider_model: string | null;
+  provider_endpoint: string | null;
   source_language: 'zh' | 'en';
   target_language: 'zh' | 'en';
   consent_policy_version: string;
@@ -102,12 +137,19 @@ async function authorizedJob(jobId: string, capability: string | null): Promise<
            provider_profile, agent_identity, dispatch_id, job_capability_digest,
            capability_expires_at, source_language, target_language,
            consent_policy_version, created_by_principal_id,
-           maximum_ai_duration_seconds, started_at
+           maximum_ai_duration_seconds, started_at, runtime_profile, self_host_id,
+           self_host_credential_version, lease_version, lease_expires_at,
+           provider_rate_microdollars_per_minute, hard_budget_microdollars,
+           data_classification, release_approval_id, provider_model, provider_endpoint
     FROM video_consultation_interpretation_jobs
     WHERE id = ${jobId}
   `;
   if (!job?.job_capability_digest || !secretDigestMatches(capability, job.job_capability_digest)) return null;
   if (!job.capability_expires_at || new Date(job.capability_expires_at).getTime() <= Date.now()) return null;
+  if (job.runtime_profile === 'SELF_HOSTED_AGENT'
+    && (!job.lease_expires_at || new Date(job.lease_expires_at).getTime() <= Date.now())) return null;
+  if (job.data_classification === 'REAL_PATIENT'
+    && !VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED) return null;
   return job;
 }
 
@@ -124,6 +166,8 @@ async function reconcileSourceTracks(
     host: liveKitApiHost(config.livekitUrl),
     apiKey: config.apiKey,
     secret: config.apiSecret,
+    requestTimeout: LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
+    failover: false,
   });
   const participants = await livekit.room.listParticipants(job.room_name);
   const sql = sqlClient();
@@ -135,12 +179,32 @@ async function reconcileSourceTracks(
              provider_profile, agent_identity, dispatch_id, job_capability_digest,
              capability_expires_at, source_language, target_language,
              consent_policy_version, created_by_principal_id,
-             maximum_ai_duration_seconds, started_at
+             maximum_ai_duration_seconds, started_at, runtime_profile, self_host_id,
+             self_host_credential_version, lease_version, lease_expires_at,
+             provider_rate_microdollars_per_minute, hard_budget_microdollars,
+             data_classification, release_approval_id, provider_model, provider_endpoint
       FROM video_consultation_interpretation_jobs
       WHERE id = ${job.id}
         AND capability_expires_at > now()
         AND started_at IS NOT NULL
         AND started_at + maximum_ai_duration_seconds * interval '1 second' > now()
+        AND EXISTS (
+          SELECT 1
+          FROM video_consultation_interpretation_allowlist allowlist
+          JOIN video_interpretation_release_approvals approval
+            ON approval.id = allowlist.release_approval_id
+          WHERE allowlist.consultation_id = video_consultation_interpretation_jobs.consultation_id
+            AND approval.id = video_consultation_interpretation_jobs.release_approval_id
+            AND approval.data_classification = video_consultation_interpretation_jobs.data_classification
+            AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
+            AND allowlist.expires_at > now()
+            AND approval.revoked_at IS NULL AND approval.expires_at > now()
+            AND approval.privacy_verified = true
+            AND approval.observability_disabled = true
+            AND approval.retention_verified = true
+            AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
+              OR approval.contracts_approved = true)
+        )
       FOR UPDATE
     `;
     if (!lockedJob || lockedJob.desired_state !== 'RUNNING' || lockedJob.status !== 'ACTIVE'
@@ -148,6 +212,13 @@ async function reconcileSourceTracks(
       || !lockedJob.job_capability_digest
       || !secretDigestMatches(capability, lockedJob.job_capability_digest)
       || !lockedJob.capability_expires_at || !lockedJob.started_at) return null;
+    if (lockedJob.runtime_profile === 'SELF_HOSTED_AGENT'
+      && (!lockedJob.lease_expires_at || new Date(lockedJob.lease_expires_at).getTime() <= Date.now())) return null;
+    if (lockedJob.data_classification === 'REAL_PATIENT'
+      && !VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED) return null;
+
+    const budget = await reconcileInterpretationBudget(query, lockedJob);
+    if (!budget.authorized) return null;
 
     const consents = await query<{ participant_identity: string; version: string | number }[]>`
       SELECT participant_identity, version
@@ -296,10 +367,14 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       SELECT j.id, j.room_name, j.room_generation, j.interpretation_generation,
              j.agent_execution_version, j.authorization_revision, j.desired_state, j.status,
              j.provider_profile, j.agent_identity, j.dispatch_id, j.job_capability_digest,
-             j.capability_expires_at, j.maximum_ai_duration_seconds
+             j.capability_expires_at, j.maximum_ai_duration_seconds,
+             j.runtime_profile, j.provider_model, j.provider_endpoint,
+             j.data_classification, j.release_approval_id
       FROM video_consultation_interpretation_jobs j
       WHERE j.id = ${body.jobId}
         AND j.hosted_deployment_id = ${locator.hosted_deployment_id}
+        AND j.hosted_bootstrap_deadline_at IS NOT NULL
+        AND j.hosted_bootstrap_deadline_at > now()
       FOR UPDATE OF j
     `;
     const matches = candidate
@@ -308,6 +383,9 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       && secretDigestMatches(body.bootstrapSecret, deployment.bootstrap_secret_digest)
       && candidate.desired_state === 'RUNNING'
       && candidate.status === 'AWAITING_AGENT'
+      && candidate.runtime_profile === 'HOSTED_AGENT_V1'
+      && Boolean(candidate.provider_model)
+      && Boolean(candidate.provider_endpoint)
       && candidate.dispatch_id === body.dispatchId
       && candidate.room_name === body.roomName
       && candidate.room_generation === body.roomGeneration
@@ -367,6 +445,8 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       executionVersion: claimed.agent_execution_version,
       authorizationRevision: Number(claimed.authorization_revision),
       providerProfile: claimed.provider_profile,
+      providerModel: claimed.provider_model,
+      providerEndpoint: claimed.provider_endpoint,
       agentIdentity: claimed.agent_identity,
       applicationDeadlineAt,
     },
@@ -376,6 +456,320 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       authorizationTtlMs: WATCHDOG_AUTHORIZATION_TTL_MS,
     },
   });
+});
+
+app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async (c) => {
+  const hostId = idSchema.parse(c.req.param('hostId'));
+  const hostBearer = bearer(c);
+  if (!hostBearer) return c.json({ success: false, error: 'host_authorization_rejected' }, 401);
+  const livekitConfig = readLiveKitConfig();
+  if (!liveKitMediaPlaneRevocationApproved(livekitConfig.livekitUrl)) {
+    return c.json({ success: false, error: 'livekit_cloud_revocation_not_verified' }, 503);
+  }
+  const sql = sqlClient();
+  const [authenticatedHost] = await sql<{
+    id: string;
+    bearer_secret_digest: string;
+    enabled: boolean;
+    revoked_at: string | null;
+  }[]>`
+    SELECT id, bearer_secret_digest, enabled, revoked_at
+    FROM video_interpretation_self_hosts
+    WHERE id = ${hostId}
+  `;
+  if (!authenticatedHost?.enabled || authenticatedHost.revoked_at
+    || !secretDigestMatches(hostBearer, authenticatedHost.bearer_secret_digest)) {
+    return c.json({ success: false, error: 'host_authorization_rejected' }, 401);
+  }
+
+  const capability = createOpaqueSecret();
+  const claim = await sql.begin(async (tx) => {
+    const query = tx as unknown as typeof sql;
+    const [host] = await query<{
+      id: string;
+      bearer_secret_digest: string;
+      credential_version: string | number;
+      max_jobs: number;
+      enabled: boolean;
+      revoked_at: string | null;
+    }[]>`
+      SELECT id, bearer_secret_digest, credential_version, max_jobs, enabled, revoked_at
+      FROM video_interpretation_self_hosts
+      WHERE id = ${hostId}
+      FOR UPDATE
+    `;
+    if (!host?.enabled || host.revoked_at
+      || !secretDigestMatches(hostBearer, host.bearer_secret_digest)) return 'unauthorized' as const;
+    const [{ active_count: activeCount } = { active_count: host.max_jobs }] = await query<{ active_count: number }[]>`
+      SELECT count(*)::int AS active_count
+      FROM video_consultation_interpretation_jobs
+      WHERE self_host_id = ${hostId}
+        AND desired_state = 'RUNNING'
+        AND status IN ('AWAITING_AGENT', 'ACTIVE')
+        AND lease_expires_at > now()
+    `;
+    if (activeCount >= host.max_jobs) return 'capacity' as const;
+    const [job] = await query<CapabilityJob[]>`
+      SELECT *
+      FROM video_consultation_interpretation_jobs candidate
+      WHERE candidate.runtime_profile = 'SELF_HOSTED_AGENT'
+        AND candidate.desired_state = 'RUNNING'
+        AND candidate.status = 'DISPATCHING'
+        AND candidate.self_host_id IS NULL
+        AND candidate.self_host_claim_deadline_at > now()
+        AND candidate.provider_model IS NOT NULL
+        AND candidate.provider_endpoint IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM video_consultation_interpretation_allowlist allowlist
+          JOIN video_interpretation_release_approvals approval
+            ON approval.id = allowlist.release_approval_id
+          WHERE allowlist.consultation_id = candidate.consultation_id
+            AND approval.id = candidate.release_approval_id
+            AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
+            AND allowlist.expires_at > now()
+            AND approval.revoked_at IS NULL AND approval.expires_at > now()
+            AND approval.privacy_verified = true
+            AND approval.observability_disabled = true
+            AND approval.retention_verified = true
+            AND (candidate.data_classification <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+        )
+      ORDER BY candidate.created_at
+      LIMIT 1
+      FOR UPDATE OF candidate SKIP LOCKED
+    `;
+    if (!job) return 'empty' as const;
+    if (job.data_classification === 'REAL_PATIENT'
+      && !VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED) return 'empty' as const;
+    const startedAtMs = job.started_at ? new Date(job.started_at).getTime() : Date.now();
+    const applicationDeadlineAt = new Date(
+      startedAtMs + Math.min(job.maximum_ai_duration_seconds ?? 1800, 7200) * 1_000,
+    ).toISOString();
+    if (new Date(applicationDeadlineAt).getTime() <= Date.now()) return 'expired' as const;
+    const capabilityExpiresAt = new Date(new Date(applicationDeadlineAt).getTime() + 5 * 60_000).toISOString();
+    const dispatchId = `self-host-${createOpaqueSecret(12)}`;
+    const [claimed] = await query<CapabilityJob[]>`
+      UPDATE video_consultation_interpretation_jobs
+      SET self_host_id = ${hostId},
+          self_host_credential_version = ${Number(host.credential_version)},
+          lease_version = COALESCE(lease_version, 0) + 1,
+          lease_expires_at = LEAST(
+            now() + ${SELF_HOST_LEASE_SECONDS} * interval '1 second',
+            COALESCE(started_at, now()) + maximum_ai_duration_seconds * interval '1 second'
+          ),
+          agent_identity_revoked_at = NULL,
+          dispatch_id = ${dispatchId}, exchange_available = false,
+          job_capability_digest = ${digestSecret(capability)},
+          capability_expires_at = ${capabilityExpiresAt}, status = 'ACTIVE',
+          self_host_claim_deadline_at = NULL,
+          started_at = COALESCE(started_at, now()), updated_at = now()
+      WHERE id = ${job.id} AND status = 'DISPATCHING' AND self_host_id IS NULL
+        AND self_host_claim_deadline_at > now()
+        AND EXISTS (
+          SELECT 1
+          FROM video_consultation_interpretation_allowlist allowlist
+          JOIN video_interpretation_release_approvals approval
+            ON approval.id = allowlist.release_approval_id
+          WHERE allowlist.consultation_id = video_consultation_interpretation_jobs.consultation_id
+            AND approval.id = video_consultation_interpretation_jobs.release_approval_id
+            AND approval.data_classification = video_consultation_interpretation_jobs.data_classification
+            AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
+            AND allowlist.expires_at > now()
+            AND approval.revoked_at IS NULL AND approval.expires_at > now()
+            AND approval.privacy_verified = true
+            AND approval.observability_disabled = true
+            AND approval.retention_verified = true
+            AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
+              OR approval.contracts_approved = true)
+        )
+      RETURNING *
+    `;
+    if (!claimed) return 'empty' as const;
+    await query`
+      UPDATE video_interpretation_self_hosts SET last_heartbeat_at = now() WHERE id = ${hostId}
+    `;
+    await query`
+      INSERT INTO video_consultation_interpretation_events (
+        job_id, event_type, actor_type, actor_id, execution_version, details
+      ) VALUES (
+        ${claimed.id}, 'CLAIM', 'AGENT', ${hostId}, ${claimed.agent_execution_version},
+        jsonb_build_object(
+          'leaseVersion', ${Number(claimed.lease_version)},
+          'credentialVersion', ${Number(host.credential_version)}
+        )
+      )
+    `;
+    return { claimed, applicationDeadlineAt, capabilityExpiresAt };
+  });
+  if (claim === 'unauthorized') return c.json({ success: false, error: 'host_authorization_rejected' }, 401);
+  if (claim === 'capacity') return c.json({ success: true, job: null, retryAfterSeconds: SELF_HOST_HEARTBEAT_SECONDS });
+  if (claim === 'empty' || claim === 'expired') {
+    return c.json({ success: true, job: null, retryAfterSeconds: SELF_HOST_HEARTBEAT_SECONDS });
+  }
+
+  const { claimed, applicationDeadlineAt, capabilityExpiresAt } = claim;
+  let tokenTtlSeconds: number;
+  try {
+    tokenTtlSeconds = selfHostedJoinTokenTtlSeconds(claimed.lease_expires_at!);
+  } catch {
+    return c.json({ success: false, error: 'lease_expired_before_token_issue' }, 503);
+  }
+  const token = new AccessToken(livekitConfig.apiKey, livekitConfig.apiSecret, {
+    identity: claimed.agent_identity,
+    name: 'Medora self-hosted interpretation',
+    ttl: tokenTtlSeconds,
+  });
+  token.addGrant({
+    room: claimed.room_name,
+    roomJoin: true,
+    roomAdmin: false,
+    roomList: false,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+  });
+  return c.json({
+    success: true,
+    capability,
+    capabilityExpiresAt,
+    livekitUrl: livekitConfig.livekitUrl,
+    livekitToken: await token.toJwt(),
+    job: {
+      id: claimed.id,
+      roomName: claimed.room_name,
+      roomGeneration: claimed.room_generation,
+      interpretationGeneration: claimed.interpretation_generation,
+      executionVersion: claimed.agent_execution_version,
+      authorizationRevision: Number(claimed.authorization_revision),
+      providerProfile: claimed.provider_profile,
+      providerModel: claimed.provider_model,
+      providerEndpoint: claimed.provider_endpoint,
+      agentIdentity: claimed.agent_identity,
+      applicationDeadlineAt,
+      leaseVersion: Number(claimed.lease_version),
+    },
+    watchdog: {
+      intervalMs: WATCHDOG_INTERVAL_MS,
+      maxRttMs: WATCHDOG_MAX_RTT_MS,
+      authorizationTtlMs: WATCHDOG_AUTHORIZATION_TTL_MS,
+    },
+    heartbeat: {
+      intervalSeconds: SELF_HOST_HEARTBEAT_SECONDS,
+      leaseSeconds: SELF_HOST_LEASE_SECONDS,
+    },
+  });
+});
+
+app.post('/api/v2/internal/video-interpretation/reconcile-lifecycle', async (c) => {
+  const secret = c.req.header('X-Internal-Secret');
+  if (!secret || secret !== getServerEnv().INTERNAL_API_SECRET) {
+    return c.json({ success: false, error: 'internal_authorization_rejected' }, 401);
+  }
+  const requestedProfile = c.req.query('profile');
+  if (requestedProfile !== 'HOSTED'
+    && requestedProfile !== 'SELF_HOSTED_FENCE'
+    && requestedProfile !== 'SELF_HOSTED_CLEANUP') {
+    return c.json({ success: false, error: 'invalid_reconcile_profile' }, 400);
+  }
+  const profile: ReconcileProfile = requestedProfile;
+  const sql = sqlClient();
+  const run = await acquireReconcileRun(sql, profile);
+  if (!run) return c.json({ success: true, profile, alreadyRunning: true });
+  let outcomeRecorded = false;
+  try {
+    if (profile === 'SELF_HOSTED_FENCE') {
+      await fenceExpiredOrUnauthorizedUnclaimedSelfHostedJobs(sql);
+      await fenceUnauthorizedSelfHostedExecutions(sql);
+      await fenceExpiredSelfHostedLeases(sql);
+      outcomeRecorded = await run.markSucceeded();
+      if (!outcomeRecorded) {
+        return c.json({ success: false, profile, error: 'reconcile_lease_lost' }, 503);
+      }
+      return c.json({ success: true, profile, alreadyRunning: false });
+    }
+    const config = readLiveKitConfig();
+    const livekit = new LiveKitAPI({
+      host: liveKitApiHost(config.livekitUrl),
+      apiKey: config.apiKey,
+      secret: config.apiSecret,
+      requestTimeout: LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
+      failover: false,
+    });
+    const outcome = profile === 'HOSTED'
+      ? await prepareHostedTerminations(sql, livekit, run)
+      : await cleanupFencedSelfHostedExecutions(sql, livekit, run);
+    if (outcome.incomplete || outcome.retryableFailureCount > 0) {
+      const errorCode = outcome.incomplete
+        ? 'RECONCILE_PASS_INCOMPLETE'
+        : 'REMOTE_CLEANUP_RETRY_REQUIRED';
+      outcomeRecorded = await run.markFailed(errorCode);
+      return c.json({ success: false, profile, error: 'reconcile_pass_incomplete' }, 503);
+    }
+    outcomeRecorded = await run.markSucceeded();
+    if (!outcomeRecorded) {
+      return c.json({ success: false, profile, error: 'reconcile_lease_lost' }, 503);
+    }
+    return c.json({ success: true, profile, alreadyRunning: false });
+  } catch (error) {
+    if (!outcomeRecorded) {
+      try {
+        outcomeRecorded = await run.markFailed('RECONCILE_PASS_EXCEPTION');
+      } catch {
+        // Preserve the original exception. With no newer successful outcome,
+        // START remains fail-closed even when failure recording also fails.
+      }
+    }
+    throw error;
+  } finally {
+    await run.release();
+  }
+});
+
+app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/heartbeat', async (c) => {
+  const hostId = idSchema.parse(c.req.param('hostId'));
+  const hostBearer = bearer(c);
+  const body = selfHostHeartbeatSchema.parse(await c.req.json());
+  if (!hostBearer) return c.json({ success: false, error: 'host_authorization_rejected' }, 401);
+  const sql = sqlClient();
+  const result = await sql.begin(async (tx) => {
+    const query = tx as unknown as typeof sql;
+    const [host] = await query<{
+      bearer_secret_digest: string;
+      credential_version: string | number;
+      enabled: boolean;
+      revoked_at: string | null;
+    }[]>`
+      SELECT bearer_secret_digest, credential_version, enabled, revoked_at
+      FROM video_interpretation_self_hosts WHERE id = ${hostId} FOR UPDATE
+    `;
+    if (!host?.enabled || host.revoked_at
+      || !secretDigestMatches(hostBearer, host.bearer_secret_digest)) return null;
+    const [job] = await query<{ id: string; lease_expires_at: string }[]>`
+      UPDATE video_consultation_interpretation_jobs
+      SET lease_expires_at = LEAST(
+            now() + ${SELF_HOST_LEASE_SECONDS} * interval '1 second',
+            started_at + maximum_ai_duration_seconds * interval '1 second'
+          ),
+          updated_at = now()
+      WHERE id = ${body.jobId}
+        AND runtime_profile = 'SELF_HOSTED_AGENT'
+        AND self_host_id = ${hostId}
+        AND self_host_credential_version = ${Number(host.credential_version)}
+        AND lease_version = ${body.leaseVersion}
+        AND agent_execution_version = ${body.executionVersion}
+        AND desired_state = 'RUNNING' AND status = 'ACTIVE'
+        AND lease_expires_at > now()
+        AND started_at IS NOT NULL
+        AND started_at + maximum_ai_duration_seconds * interval '1 second' > now()
+      RETURNING id, lease_expires_at
+    `;
+    if (!job) return null;
+    await query`UPDATE video_interpretation_self_hosts SET last_heartbeat_at = now() WHERE id = ${hostId}`;
+    return job;
+  });
+  if (!result) return c.json({ success: false, error: 'lease_rejected' }, 409);
+  return c.json({ success: true, leaseExpiresAt: result.lease_expires_at });
 });
 
 app.post('/api/v2/internal/video-interpretation/jobs/:jobId/provider-sessions/:sessionId/activate', async (c) => {
@@ -467,15 +861,38 @@ app.post('/api/v2/internal/video-interpretation/jobs/:id/provider-sessions', asy
                provider_profile, agent_identity, dispatch_id, job_capability_digest,
                capability_expires_at, source_language, target_language,
                consent_policy_version, created_by_principal_id,
-               maximum_ai_duration_seconds, started_at
+               maximum_ai_duration_seconds, started_at, runtime_profile, self_host_id,
+               self_host_credential_version, lease_version, lease_expires_at,
+               provider_rate_microdollars_per_minute, hard_budget_microdollars,
+               data_classification, release_approval_id, provider_model, provider_endpoint
         FROM video_consultation_interpretation_jobs
         WHERE id = ${jobId}
           AND desired_state = 'RUNNING'
           AND status = 'ACTIVE'
           AND capability_expires_at > now()
+          AND EXISTS (
+            SELECT 1
+            FROM video_consultation_interpretation_allowlist allowlist
+            JOIN video_interpretation_release_approvals approval
+              ON approval.id = allowlist.release_approval_id
+            WHERE allowlist.consultation_id = video_consultation_interpretation_jobs.consultation_id
+              AND approval.id = video_consultation_interpretation_jobs.release_approval_id
+              AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
+              AND allowlist.expires_at > now()
+              AND approval.revoked_at IS NULL AND approval.expires_at > now()
+              AND approval.privacy_verified = true
+              AND approval.observability_disabled = true
+              AND approval.retention_verified = true
+              AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
+                OR approval.contracts_approved = true)
+          )
         FOR UPDATE
       `;
       if (!job?.job_capability_digest || !secretDigestMatches(capability, job.job_capability_digest)) {
+        return 'unauthorized' as const;
+      }
+      if (job.runtime_profile === 'SELF_HOSTED_AGENT'
+        && (!job.lease_expires_at || new Date(job.lease_expires_at).getTime() <= Date.now())) {
         return 'unauthorized' as const;
       }
       if (job.provider_profile !== body.providerProfile) return 'profile' as const;

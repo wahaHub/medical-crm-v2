@@ -1,0 +1,25 @@
+[Unit]
+Description=Medora video interpretation Hosted and Self-hosted lifecycle reconciler
+After=network-online.target medora-crm-v2-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=medical-crm
+Group=medical-crm
+WorkingDirectory=/opt/medora/medical-crm-v2
+Environment=NODE_ENV=production
+Environment=CRM_API_URL=http://127.0.0.1:3001
+Environment=INTERNAL_API_SECRET_FILE=%d/internal_api_secret
+LoadCredential=internal_api_secret:/etc/medora/internal-api-secret
+ExecStart=/usr/bin/pnpm --filter @medical-crm/api start:video-interpretation-reconciler
+Restart=always
+RestartSec=2s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

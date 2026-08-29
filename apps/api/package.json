@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --env-file=.env --import tsx --watch src/server.ts",
     "start": "node --import tsx src/server.ts",
+    "start:video-interpretation-reconciler": "node --import tsx src/video-interpretation/lifecycle-reconcile-worker.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

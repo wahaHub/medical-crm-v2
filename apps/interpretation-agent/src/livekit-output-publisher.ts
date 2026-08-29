@@ -58,20 +58,7 @@ export class LiveKitOutputPublisher {
   }
 
   async publishCapacityUnavailable(sourceTrackId: string): Promise<void> {
-    if (this.#closed || !this.#room.localParticipant) return;
-    const payload = new TextEncoder().encode(JSON.stringify({
-      schema: 'medora.interpretation.status.v1',
-      jobId: this.#execution.jobId,
-      roomGeneration: this.#execution.roomGeneration,
-      interpretationGeneration: this.#execution.interpretationGeneration,
-      executionVersion: this.#execution.executionVersion,
-      sourceTrackId,
-      code: 'AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER',
-    }));
-    await this.#room.localParticipant.publishData(payload, {
-      reliable: true,
-      topic: 'interpretation-status',
-    });
+    await this.#publishStatus('AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER', { sourceTrackId }, true);
   }
 
   async play(
@@ -86,6 +73,11 @@ export class LiveKitOutputPublisher {
         || performance.now() - eligibleAtMonotonicMs > 5_000) return;
       const output = await this.#ensureAudioTrack(targetLanguage);
       if (this.#closed || interruptionGeneration !== this.#interruptionGeneration) return;
+      let announced = false;
+      await this.#publishStatus('TRANSLATED_PLAYOUT_STARTED', { targetLanguage }, true)
+        .then(() => { announced = true; })
+        .catch(() => undefined);
+      try {
       for (const bytes of chunks) {
         if (this.#closed || interruptionGeneration !== this.#interruptionGeneration) return;
         const copied = Uint8Array.from(bytes);
@@ -98,6 +90,12 @@ export class LiveKitOutputPublisher {
         }
       }
       await output.source.waitForPlayout();
+      } finally {
+        if (announced) {
+          await this.#publishStatus('TRANSLATED_PLAYOUT_ENDED', { targetLanguage }, true)
+            .catch(() => undefined);
+        }
+      }
     });
     this.#playout.set(targetLanguage, next);
     await next;
@@ -151,5 +149,23 @@ export class LiveKitOutputPublisher {
       new TrackPublishOptions({ source: TrackSource.SOURCE_UNKNOWN }),
     );
     return { source, track, publication };
+  }
+
+  async #publishStatus(
+    code: string,
+    details: Record<string, unknown>,
+    reliable: boolean,
+  ): Promise<void> {
+    if (this.#closed || !this.#room.localParticipant) return;
+    const payload = new TextEncoder().encode(JSON.stringify({
+      schema: 'medora.interpretation.status.v1',
+      jobId: this.#execution.jobId,
+      roomGeneration: this.#execution.roomGeneration,
+      interpretationGeneration: this.#execution.interpretationGeneration,
+      executionVersion: this.#execution.executionVersion,
+      code,
+      ...details,
+    }));
+    await this.#room.localParticipant.publishData(payload, { reliable, topic: 'interpretation-status' });
   }
 }

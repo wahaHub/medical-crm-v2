@@ -13,6 +13,7 @@ import {
 } from 'livekit-client';
 import { Button, LoadingSpinner } from '@medical-crm/ui';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react';
+import { classifyRemoteAudioTrust } from './video-interpretation-audio-policy';
 
 // Mirrors the API's non-overridable scaffold gate. This may only become true in
 // the same reviewed change that implements the production media/provider path.
@@ -47,7 +48,10 @@ export function VideoConsultationRoom({
   const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalVideoTrack | null>(null);
   const [remoteVideoTracks, setRemoteVideoTracks] = useState<RemoteVideoTrack[]>([]);
-  const [remoteAudioTracks, setRemoteAudioTracks] = useState<RemoteAudioTrack[]>([]);
+  const [remoteAudioTracks, setRemoteAudioTracks] = useState<Array<{
+    track: RemoteAudioTrack;
+    participantIdentity: string;
+  }>>([]);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const interpretationFence = useRef<{
     jobId: string;
@@ -56,12 +60,25 @@ export function VideoConsultationRoom({
     interpretationGeneration: number;
     roomGeneration: number;
   } | null>(null);
+  const interpretationMutationEpoch = useRef(0);
+  const interpretationStatusSequence = useRef(0);
+  const interpretationMutationInFlight = useRef(false);
+  const interpretationStatusInFlight = useRef(false);
+  const interpretationStatusAbort = useRef<AbortController | null>(null);
+  const interpretationRefreshPending = useRef(false);
+  const refreshInterpretationStatus = useRef<(() => void) | null>(null);
 
   const [interpretationStarted, setInterpretationStarted] = useState(false);
+  const [interpretationStatusResolved, setInterpretationStatusResolved] = useState(false);
+  const [interpretationStatusError, setInterpretationStatusError] = useState<string | null>(null);
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [originalAudioEnabled, setOriginalAudioEnabled] = useState(true);
+  const [translatedAudioEnabled, setTranslatedAudioEnabled] = useState(true);
+  const [duckOriginalAudio, setDuckOriginalAudio] = useState(true);
+  const [translatedPlayoutCount, setTranslatedPlayoutCount] = useState(0);
   const [subtitles, setSubtitles] = useState<
     Array<{
       from: string;
@@ -105,8 +122,8 @@ export function VideoConsultationRoom({
           });
         } else if (track.kind === Track.Kind.Audio) {
           setRemoteAudioTracks((prev) => {
-            if (prev.some((t) => t.sid === track.sid)) return prev;
-            return [...prev, track as RemoteAudioTrack];
+            if (prev.some((entry) => entry.track.sid === track.sid)) return prev;
+            return [...prev, { track: track as RemoteAudioTrack, participantIdentity: participant.identity }];
           });
         }
         setRemoteParticipants((prev) => {
@@ -118,7 +135,7 @@ export function VideoConsultationRoom({
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTracks((prev) => prev.filter((t) => t.sid !== track.sid));
         } else if (track.kind === Track.Kind.Audio) {
-          setRemoteAudioTracks((prev) => prev.filter((t) => t.sid !== track.sid));
+          setRemoteAudioTracks((prev) => prev.filter((entry) => entry.track.sid !== track.sid));
         }
       })
       .on(RoomEvent.ParticipantConnected, (participant) => {
@@ -132,7 +149,7 @@ export function VideoConsultationRoom({
         setStatus(`Remote left: ${participant.identity}`);
         setRemoteParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
         setRemoteVideoTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
-        setRemoteAudioTracks((prev) => prev.filter((t) => t.mediaStream?.id !== participant.sid));
+        setRemoteAudioTracks((prev) => prev.filter((entry) => entry.participantIdentity !== participant.identity));
       })
       .on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
         const fence = interpretationFence.current;
@@ -148,6 +165,14 @@ export function VideoConsultationRoom({
             if (msg.schema === 'medora.interpretation.status.v1' && matchesFence
               && msg.code === 'AI_CAPACITY_UNAVAILABLE_FOR_SPEAKER') {
               setInterpretationError('This speech turn was not translated because both AI channels were busy. Please try again after the current speakers finish.');
+            }
+            if (msg.schema === 'medora.interpretation.status.v1' && matchesFence
+              && msg.code === 'TRANSLATED_PLAYOUT_STARTED') {
+              setTranslatedPlayoutCount((count) => count + 1);
+            }
+            if (msg.schema === 'medora.interpretation.status.v1' && matchesFence
+              && msg.code === 'TRANSLATED_PLAYOUT_ENDED') {
+              setTranslatedPlayoutCount((count) => Math.max(0, count - 1));
             }
             return;
           }
@@ -197,6 +222,106 @@ export function VideoConsultationRoom({
     };
   }, [livekitUrl, token, roomName, onClose]);
 
+  useEffect(() => {
+    let disposed = false;
+    interpretationMutationEpoch.current += 1;
+    interpretationStatusSequence.current += 1;
+    interpretationFence.current = null;
+    setInterpretationStatusResolved(false);
+    setInterpretationStatusError(null);
+    setInterpretationStarted(false);
+    const refreshFence = async () => {
+      if (disposed || interpretationMutationInFlight.current || interpretationStatusInFlight.current) return;
+      interpretationRefreshPending.current = false;
+      interpretationStatusInFlight.current = true;
+      const abort = new AbortController();
+      interpretationStatusAbort.current = abort;
+      const mutationEpoch = interpretationMutationEpoch.current;
+      const requestSequence = ++interpretationStatusSequence.current;
+      try {
+        const response = await fetch(
+          `/api/video-consultations/interpretation/status?consultationId=${encodeURIComponent(consultationId)}`,
+          { signal: abort.signal },
+        );
+        const result = await response.json().catch(() => ({ error: 'invalid_response' })) as {
+          success?: boolean;
+          job?: null | {
+            id: string;
+            agentIdentity: string;
+            executionVersion: number;
+            interpretationGeneration: number;
+            roomGeneration: number;
+            desiredState: string;
+            status: string;
+          };
+        };
+        if (disposed || mutationEpoch !== interpretationMutationEpoch.current
+          || requestSequence !== interpretationStatusSequence.current) return;
+        if (!response.ok || !result.success) {
+          setInterpretationStatusResolved(false);
+          setInterpretationStatusError('AI status unavailable; retrying. Translator audio remains muted.');
+          return;
+        }
+        setInterpretationStatusResolved(true);
+        setInterpretationStatusError(null);
+        if (!result.job) {
+          interpretationFence.current = null;
+          setInterpretationStarted(false);
+          setTranslatedPlayoutCount(0);
+          setSubtitles([]);
+          return;
+        }
+        if (result.job.desiredState !== 'RUNNING'
+          || ['STOPPED', 'FAILED', 'BUDGET_EXHAUSTED'].includes(result.job.status)) {
+          interpretationFence.current = ['STOPPING'].includes(result.job.status)
+            ? { ...result.job, jobId: result.job.id }
+            : null;
+          setInterpretationStarted(false);
+          setTranslatedPlayoutCount(0);
+          setInterpretationError(`AI stopped: ${result.job.status}`);
+          return;
+        }
+        setInterpretationStarted(true);
+        const current = interpretationFence.current;
+        if (!current || current.jobId !== result.job.id
+          || current.executionVersion !== result.job.executionVersion
+          || current.agentIdentity !== result.job.agentIdentity
+          || current.roomGeneration !== result.job.roomGeneration
+          || current.interpretationGeneration !== result.job.interpretationGeneration) {
+          interpretationFence.current = { ...result.job, jobId: result.job.id };
+          setSubtitles([]);
+          setTranslatedPlayoutCount(0);
+          setStatus(`AI execution ${result.job.executionVersion} is reconnecting`);
+        }
+      } catch {
+        // The agent watchdog, not this UI poll, owns authorization expiry.
+        if (!disposed && mutationEpoch === interpretationMutationEpoch.current
+          && requestSequence === interpretationStatusSequence.current) {
+          setInterpretationStatusResolved(false);
+          setInterpretationStatusError('AI status unavailable; retrying. Translator audio remains muted.');
+        }
+      } finally {
+        if (interpretationStatusAbort.current === abort) {
+          interpretationStatusAbort.current = null;
+          interpretationStatusInFlight.current = false;
+        }
+        if (interpretationRefreshPending.current && !interpretationMutationInFlight.current) {
+          interpretationRefreshPending.current = false;
+          queueMicrotask(() => { void refreshFence(); });
+        }
+      }
+    };
+    refreshInterpretationStatus.current = () => { void refreshFence(); };
+    const interval = setInterval(() => { void refreshFence(); }, 1_000);
+    void refreshFence();
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+      interpretationStatusAbort.current?.abort();
+      refreshInterpretationStatus.current = null;
+    };
+  }, [consultationId]);
+
   async function toggleCam() {
     if (!room) return;
     const nextEnabled = !localVideoEnabled;
@@ -223,6 +348,7 @@ export function VideoConsultationRoom({
   }
 
   async function startInterpretation(remoteParticipant?: RemoteParticipant) {
+    if (interpretationMutationInFlight.current) return;
     if (!room) return;
     const targetParticipant = remoteParticipant ?? remoteParticipants[0];
     if (!targetParticipant) return;
@@ -231,6 +357,11 @@ export function VideoConsultationRoom({
     )) return;
     setInterpretationLoading(true);
     setInterpretationError(null);
+    interpretationMutationInFlight.current = true;
+    setInterpretationStatusResolved(false);
+    interpretationStatusAbort.current?.abort();
+    interpretationMutationEpoch.current += 1;
+    interpretationStatusSequence.current += 1;
 
     try {
       const normalizedPatientLanguage = patientLanguage.trim().toLowerCase();
@@ -267,11 +398,20 @@ export function VideoConsultationRoom({
         throw new Error(data.error || 'Failed to start interpretation');
       }
 
+      interpretationMutationEpoch.current += 1;
+      interpretationStatusSequence.current += 1;
       interpretationFence.current = { ...data.job, jobId: data.job.id };
+      setInterpretationStatusResolved(true);
       setInterpretationStarted(true);
     } catch (err) {
+      interpretationMutationEpoch.current += 1;
+      interpretationStatusSequence.current += 1;
+      setInterpretationStatusResolved(false);
       setInterpretationError(err instanceof Error ? err.message : String(err));
     } finally {
+      interpretationMutationInFlight.current = false;
+      interpretationRefreshPending.current = true;
+      refreshInterpretationStatus.current?.();
       setInterpretationLoading(false);
     }
   }
@@ -303,9 +443,15 @@ export function VideoConsultationRoom({
   }
 
   async function stopInterpretation(): Promise<boolean> {
-    if (!interpretationStarted) return true;
+    if (interpretationMutationInFlight.current) return false;
+    if (!interpretationStarted && interpretationStatusResolved) return true;
     setInterpretationLoading(true);
     setInterpretationError(null);
+    interpretationMutationInFlight.current = true;
+    setInterpretationStatusResolved(false);
+    interpretationStatusAbort.current?.abort();
+    interpretationMutationEpoch.current += 1;
+    interpretationStatusSequence.current += 1;
     try {
       const res = await fetch('/api/video-consultations/interpretation/stop', {
         method: 'POST',
@@ -319,17 +465,46 @@ export function VideoConsultationRoom({
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'AI stop was not confirmed by the server');
       }
+      interpretationMutationEpoch.current += 1;
+      interpretationStatusSequence.current += 1;
       interpretationFence.current = null;
+      setInterpretationStatusResolved(true);
       setInterpretationStarted(false);
       setSubtitles([]);
+      setTranslatedPlayoutCount(0);
       return true;
     } catch (err) {
+      interpretationMutationEpoch.current += 1;
+      interpretationStatusSequence.current += 1;
+      setInterpretationStatusResolved(false);
       setInterpretationError(
         `AI stop not confirmed; retry before ending the meeting. ${err instanceof Error ? err.message : String(err)}`,
       );
       return false;
     } finally {
+      interpretationMutationInFlight.current = false;
+      interpretationRefreshPending.current = true;
+      refreshInterpretationStatus.current?.();
       setInterpretationLoading(false);
+    }
+  }
+
+  async function requestHumanInterpreter() {
+    setInterpretationError(null);
+    try {
+      const response = await fetch('/api/video-consultations/interpretation/escalate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consultationId }),
+      });
+      const result = await response.json().catch(() => ({ error: 'invalid_response' })) as {
+        success?: boolean;
+        error?: string;
+      };
+      if (!response.ok || !result.success) throw new Error(result.error || 'Escalation request failed');
+      setStatus('Human interpreter escalation recorded; original audio remains active');
+    } catch (error) {
+      setInterpretationError(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -417,9 +592,29 @@ export function VideoConsultationRoom({
                   ))}
                 </div>
               )}
-              {remoteAudioTracks.map((track) => (
-                  <AudioRenderer key={track.sid} track={track} />
-                ))}
+              {remoteAudioTracks.map((entry) => {
+                const trust = classifyRemoteAudioTrust(
+                  entry.participantIdentity,
+                  interpretationStatusResolved,
+                  interpretationStarted,
+                  interpretationFence.current?.agentIdentity ?? null,
+                );
+                const translated = trust === 'TRANSLATED';
+                const enabled = trust === 'BLOCKED_AGENT'
+                  ? false
+                  : translated ? translatedAudioEnabled : originalAudioEnabled;
+                const volume = enabled
+                  ? (!translated && duckOriginalAudio && translatedPlayoutCount > 0 ? 0.25 : 1)
+                  : 0;
+                return (
+                  <AudioRenderer
+                    key={entry.track.sid}
+                    track={entry.track}
+                    enabled={enabled}
+                    volume={volume}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>
@@ -468,6 +663,34 @@ export function VideoConsultationRoom({
       </section>
 
       <footer className="flex flex-wrap items-center justify-center gap-4 border-t border-slate-800 bg-slate-900 px-6 py-4">
+        {interpretationStarted && (
+          <>
+            <button
+              onClick={() => setOriginalAudioEnabled((enabled) => !enabled)}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200"
+            >
+              Original audio: {originalAudioEnabled ? 'on' : 'off'}
+            </button>
+            <button
+              onClick={() => setTranslatedAudioEnabled((enabled) => !enabled)}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200"
+            >
+              Translated audio: {translatedAudioEnabled ? 'on' : 'off'}
+            </button>
+            <button
+              onClick={() => setDuckOriginalAudio((enabled) => !enabled)}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-200"
+            >
+              Duck original: {duckOriginalAudio ? 'on' : 'off'}
+            </button>
+            <button
+              onClick={() => void requestHumanInterpreter()}
+              className="rounded-lg border border-teal-700 px-3 py-2 text-xs text-teal-200"
+            >
+              Request human interpreter
+            </button>
+          </>
+        )}
         {interpretationStarted && [identity, ...remoteParticipants.map((participant) => participant.identity)].map((participantIdentity) => (
           <button
             key={`revoke-${participantIdentity}`}
@@ -509,7 +732,8 @@ export function VideoConsultationRoom({
             'End Meeting'
           )}
         </button>
-        {!interpretationStarted && AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
+        {!interpretationStarted && interpretationStatusResolved
+          && AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
           <button
             onClick={() => void startInterpretation()}
             disabled={interpretationLoading || remoteParticipants.length === 0}
@@ -532,6 +756,12 @@ export function VideoConsultationRoom({
             AI translation is not available in this build
           </span>
         )}
+        {!interpretationStarted && AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED
+          && !interpretationStatusResolved && (
+          <span className="ml-2 rounded-full border border-amber-800 px-4 py-2 text-xs text-amber-200">
+            Checking AI translation status…
+          </span>
+        )}
         {interpretationStarted && (
           <button
             onClick={() => void stopInterpretation()}
@@ -545,6 +775,11 @@ export function VideoConsultationRoom({
       {interpretationError && (
         <div className="border-t border-red-900/50 bg-red-950/50 px-6 py-2 text-center text-sm text-red-200">
           Translation error: {interpretationError}
+        </div>
+      )}
+      {interpretationStatusError && (
+        <div className="border-t border-amber-900/50 bg-amber-950/50 px-6 py-2 text-center text-sm text-amber-200">
+          {interpretationStatusError}
         </div>
       )}
       {meetingError && (
@@ -587,7 +822,15 @@ function VideoRenderer({
   );
 }
 
-function AudioRenderer({ track }: { track: RemoteAudioTrack }) {
+function AudioRenderer({
+  track,
+  enabled,
+  volume,
+}: {
+  track: RemoteAudioTrack;
+  enabled: boolean;
+  volume: number;
+}) {
   const ref = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -599,5 +842,12 @@ function AudioRenderer({ track }: { track: RemoteAudioTrack }) {
     };
   }, [track]);
 
-  return <audio ref={ref} autoPlay className="hidden" />;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.muted = !enabled;
+    el.volume = Math.max(0, Math.min(1, volume));
+  }, [enabled, volume]);
+
+  return <audio ref={ref} autoPlay muted={!enabled} className="hidden" />;
 }

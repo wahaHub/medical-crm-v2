@@ -162,7 +162,17 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
     socket.on('open', () => {
       socket.send(JSON.stringify({
         type: 'session.update',
-        session: { audio: { output: { language: this.#options.targetLanguage } } },
+        session: {
+          audio: {
+            // Request source-language transcripts; without this the endpoint
+            // never emits session.input_transcript.* events.
+            input: {
+              transcription: { model: 'gpt-realtime-whisper' },
+              noise_reduction: { type: 'near_field' },
+            },
+            output: { language: this.#options.targetLanguage },
+          },
+        },
       }));
     });
     socket.on('message', (data) => {

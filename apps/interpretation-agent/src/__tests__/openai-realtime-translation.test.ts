@@ -53,7 +53,15 @@ describe('OpenAI Realtime Translation protocol', () => {
     socket.emit('open');
     expect(JSON.parse(socket.sent[0]!)).toEqual({
       type: 'session.update',
-      session: { audio: { output: { language: 'zh' } } },
+      session: {
+        audio: {
+          input: {
+            transcription: { model: 'gpt-realtime-whisper' },
+            noise_reduction: { type: 'near_field' },
+          },
+          output: { language: 'zh' },
+        },
+      },
     });
     socket.emit('message', Buffer.from(JSON.stringify({
       type: 'session.updated',

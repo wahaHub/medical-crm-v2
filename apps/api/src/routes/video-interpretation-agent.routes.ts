@@ -594,8 +594,8 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
       ) VALUES (
         ${claimed.id}, 'CLAIM', 'AGENT', ${hostId}, ${claimed.agent_execution_version},
         jsonb_build_object(
-          'leaseVersion', ${Number(claimed.lease_version)},
-          'credentialVersion', ${Number(host.credential_version)}
+          'leaseVersion', ${Number(claimed.lease_version)}::int,
+          'credentialVersion', ${Number(host.credential_version)}::int
         )
       )
     `;

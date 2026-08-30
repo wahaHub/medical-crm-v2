@@ -51,7 +51,7 @@ export async function reconcileExpiredProviderSessions(
              'state', 'FAILED',
              'reason', 'provider_conservative_expiry_elapsed',
              'providerExpiresAt', expired.provider_expires_at,
-             'profileBoundSeconds', ${OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS}
+             'profileBoundSeconds', ${OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS}::int
            )
     FROM expired
   `;

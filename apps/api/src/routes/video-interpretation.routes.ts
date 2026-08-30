@@ -180,7 +180,7 @@ async function invalidateSelfHostJobs(
         job_id, event_type, actor_type, actor_id, execution_version, details
       ) VALUES (
         ${job.id}, 'STOP', 'PRINCIPAL', ${actorId}, ${job.agent_execution_version},
-        jsonb_build_object('reason', ${reason})
+        jsonb_build_object('reason', ${reason}::text)
       )
     `;
   }

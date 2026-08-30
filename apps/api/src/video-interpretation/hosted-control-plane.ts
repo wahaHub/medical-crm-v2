@@ -144,7 +144,7 @@ async function fenceRecoveredCreation(
         job_id, event_type, actor_type, actor_id, execution_version, details
       ) VALUES (
         ${job.id}, 'FAIL', 'SYSTEM', NULL, ${fenced.agent_execution_version},
-        jsonb_build_object('reason', ${failureCode}, 'state', 'HOSTED_CLEANUP_PENDING')
+        jsonb_build_object('reason', ${failureCode}::text, 'state', 'HOSTED_CLEANUP_PENDING')
       )
     `;
   });
@@ -330,7 +330,7 @@ export async function fenceExpiredOrUnauthorizedHostedJobs(sql: CrmSql): Promise
           job_id, event_type, actor_type, actor_id, execution_version, details
         ) VALUES (
           ${job.id}, ${eventType}, 'SYSTEM', NULL, ${fenced.agent_execution_version},
-          jsonb_build_object('state', 'HOSTED_CLEANUP_PENDING', 'reason', ${failureCode})
+          jsonb_build_object('state', 'HOSTED_CLEANUP_PENDING', 'reason', ${failureCode}::text)
         )
       `;
     }

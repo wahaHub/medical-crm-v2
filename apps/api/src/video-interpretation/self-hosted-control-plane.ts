@@ -334,7 +334,7 @@ export async function fenceUnauthorizedSelfHostedExecutions(sql: CrmSql): Promis
           job_id, event_type, actor_type, actor_id, execution_version, details
         ) VALUES (
           ${job.id}, ${eventType}, 'SYSTEM', NULL, ${fenced.agent_execution_version},
-          jsonb_build_object('state', 'SELF_HOST_CLEANUP_PENDING', 'reason', ${failureCode})
+          jsonb_build_object('state', 'SELF_HOST_CLEANUP_PENDING', 'reason', ${failureCode}::text)
         )
       `;
     }
@@ -443,7 +443,7 @@ export async function cleanupFencedSelfHostedExecutions(
           ) VALUES (
             ${job.id}, ${locked.application_deadline_at ? 'APPLICATION_DEADLINE_ELAPSED' : 'FAIL'},
             'SYSTEM', NULL, ${locked.agent_execution_version},
-            jsonb_build_object('reason', ${deadlineFailureCode}, 'state', 'SELF_HOST_CLEANUP_FINAL')
+            jsonb_build_object('reason', ${deadlineFailureCode}::text, 'state', 'SELF_HOST_CLEANUP_FINAL')
           )
         `;
       }

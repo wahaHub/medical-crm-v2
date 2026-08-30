@@ -102,9 +102,21 @@ export class SpeakerRuntime {
   }
 
   async #pumpAudio(): Promise<void> {
+    let frames = 0;
+    let loggedAt = 0;
     try {
       for await (const frame of this.#audioStream) {
         if (this.#closed) break;
+        frames += 1;
+        if (frames - loggedAt >= 250) {
+          loggedAt = frames;
+          let peak = 0;
+          for (const sample of frame.data) {
+            const v = Math.abs(sample);
+            if (v > peak) peak = v;
+          }
+          console.error(`[runtime] audio flowing: sid=${this.#authorization.trackSid} frames=${frames} peak=${peak}`);
+        }
         this.#vadStream.pushFrame(frame);
         this.#turnDetectorStream.pushAudio(frame);
         const pcm = pcm16Bytes(frame);
@@ -133,9 +145,11 @@ export class SpeakerRuntime {
     for await (const event of this.#vadStream) {
       if (this.#closed) return;
       if (event.type === VADEventType.START_OF_SPEECH) {
+        console.error(`[runtime] vad speech start: sid=${this.#authorization.trackSid}`);
         this.#options.output.interruptHumanSpeech();
         this.#trackTask(this.#onSpeechStart(performance.now()));
       } else if (event.type === VADEventType.END_OF_SPEECH) {
+        console.error(`[runtime] vad speech end: sid=${this.#authorization.trackSid}`);
         this.#trackTask(this.#onSpeechEnd(performance.now()));
       }
     }

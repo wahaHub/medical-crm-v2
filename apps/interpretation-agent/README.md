@@ -6,7 +6,7 @@ Implemented now:
 
 - explicit-dispatch validation and a generation-bound agent identity;
 - single-use deployment-bootstrap exchange for a job-scoped capability;
-- 500 ms authorization watchdog with a 400 ms response ceiling and request-start-based 1.5 s TTL;
+- 1 s authorization watchdog with a 2 s response ceiling and request-start-based 5 s TTL (sized for the cross-region Supabase path; see `security.ts`);
 - `autoSubscribe=SUBSCRIBE_NONE` until exact server-authorized tracks exist;
 - Silero VAD and the LiveKit audio turn detector prewarmed with explicit Chinese/English thresholds;
 - tested turn-gated audio buffering, two-provider-slot admission, and target-language playout serialization.
@@ -18,7 +18,7 @@ Implemented now:
 - an optional self-hosted claim path with per-host digest credentials, one concurrent job per V1 supervisor, short-lived exact-room LiveKit tokens, 30-second leases, 10-second heartbeats, and fenced takeover;
 - reliable translated-playout boundary events for original/translated/ducking controls without publishing transcript content.
 
-The production provider/media path is implemented but not release-qualified. `apps/api` therefore still has a code-level, non-environment-overridable gate that rejects START with `VIDEO_INTERPRETATION_SCAFFOLD_ONLY`. The existing environment flags cannot bypass it. Remove the hard gate only after the synthetic/de-identified OpenAI probe and an end-to-end LiveKit room pass from an approved network/project, the iterative review is clean, and the privacy/contract launch gates in the design document pass.
+The de-identified provider/media path was qualified on 2026-08-30 (OpenAI probe, LiveKit Cloud revocation and dispatch-absence probes, and the gated code flips recorded in `security.ts`). `VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED` remains false: REAL_PATIENT jobs are still rejected with `REAL_PATIENT_INTERPRETATION_NOT_RELEASED` until the privacy/contract launch gates in the design document pass and a separate reviewed change flips it.
 
 ## Local commands
 

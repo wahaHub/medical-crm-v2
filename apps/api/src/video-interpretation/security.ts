@@ -8,9 +8,17 @@ export const MAX_PROVIDER_SESSIONS_PER_ROOM = 2;
 // media gate must remain false until the exact endpoint/model contract and an
 // executable probe prove that this bound cannot be extended by the provider.
 export const OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS = (2 * 60 + 5) * 60;
-export const WATCHDOG_INTERVAL_MS = 500;
-export const WATCHDOG_MAX_RTT_MS = 400;
-export const WATCHDOG_AUTHORIZATION_TTL_MS = 1_500;
+// Watchdog budget tuned to the production topology: the CRM database is
+// Supabase us-east-2 while the API/agent run in us-west-2, so each SQL round
+// trip costs ~400 ms and a single authorization pass (several statements)
+// lands at 500-900 ms. The original 400 ms ceiling was authored against a
+// low-latency database. maxRttMs=2000 accepts the observed p99 with margin,
+// intervalMs=1000 halves load, and ttlMs=5000 tolerates two consecutive
+// rejected/slow polls before authority lapses. Worst-case stale-authority
+// bound: ~5 s plus the 1 s room-listing cache TTL.
+export const WATCHDOG_INTERVAL_MS = 1_000;
+export const WATCHDOG_MAX_RTT_MS = 2_000;
+export const WATCHDOG_AUTHORIZATION_TTL_MS = 5_000;
 
 // Qualified on 2026-08-30 by executable evidence: the de-identified OpenAI
 // probe (probe:translation, en→zh) passed from the production host with

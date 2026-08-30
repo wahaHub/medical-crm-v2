@@ -31,6 +31,7 @@ import {
   fenceUnauthorizedSelfHostedExecutions,
 } from '../video-interpretation/self-hosted-control-plane.js';
 import { prepareHostedTerminations } from '../video-interpretation/hosted-control-plane.js';
+import { listRoomParticipantsForAuthority } from '../video-interpretation/room-listing-cache.js';
 import {
   acquireReconcileRun,
   type ReconcileProfile,
@@ -161,15 +162,10 @@ async function reconcileSourceTracks(
   job: CapabilityJob,
   capability: string,
 ): Promise<AuthorizationSnapshot | null> {
-  const config = readLiveKitConfig();
-  const livekit = new LiveKitAPI({
-    host: liveKitApiHost(config.livekitUrl),
-    apiKey: config.apiKey,
-    secret: config.apiSecret,
-    requestTimeout: LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
-    failover: false,
-  });
-  const participants = await livekit.room.listParticipants(job.room_name);
+  // The listing goes through the 1s server-side cache so this endpoint can
+  // answer within the watchdog's 400 ms ceiling; fetch failures still fail
+  // closed (503) and never extend source-track authority.
+  const participants = await listRoomParticipantsForAuthority(job.room_name);
   const sql = sqlClient();
   const reconciled = await sql.begin(async (tx) => {
     const query = tx as unknown as typeof sql;

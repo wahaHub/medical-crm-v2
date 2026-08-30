@@ -49,3 +49,22 @@ proves ownership activity only; it is not health.
 Never point the production unit at the staging database, share internal API
 secrets between environments, or use staging reconciler health as evidence that
 production is ready.
+
+## Low-cost LiveKit Cloud deployment
+
+The Build plan has no named non-production deployments. For the staging MVP,
+use the project's single default deployment as staging and keep the API's
+code-level media gate closed. Build-plan agents scale to zero while idle, and
+the free allowance is a hard cap rather than metered overage. Do not upgrade the
+LiveKit plan just to obtain a named `staging` deployment.
+
+Deploy from `apps/interpretation-agent` with the checked-in `Dockerfile` and
+standalone lockfile. Supply only the staging OpenAI key, public staging CRM API
+URL, deployment name, and bootstrap secret; LiveKit injects its own project
+credentials. Never copy the full CRM API environment into LiveKit Cloud.
+
+After deployment, verify the agent reaches `Running` or `Sleeping`, no room is
+created, staging retains `VIDEO_INTERPRETATION_ENABLED=false`, no release
+approval exists, and all three lifecycle lease rows remain fresh. The deployed
+worker is infrastructure readiness evidence only; it is not authorization to
+process patient audio.

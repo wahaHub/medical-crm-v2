@@ -26,9 +26,10 @@ The production provider/media path is implemented but not release-qualified. `ap
 pnpm --filter @medical-crm/interpretation-agent download
 pnpm --filter @medical-crm/interpretation-agent test
 pnpm --filter @medical-crm/interpretation-agent typecheck
+pnpm --filter @medical-crm/interpretation-agent probe:vad
 pnpm --filter @medical-crm/interpretation-agent dev
 pnpm --filter @medical-crm/interpretation-agent start:self-hosted
-pnpm --filter @medical-crm/interpretation-agent probe:translation -- \
+pnpm --filter @medical-crm/interpretation-agent probe:translation \
   --input /path/to/24khz-mono-s16le.pcm \
   --output /path/to/translated-24khz-mono-s16le.pcm \
   --target zh

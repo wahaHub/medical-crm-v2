@@ -8,6 +8,7 @@
     "start": "node --import tsx src/main.ts start",
     "start:self-hosted": "node --import tsx src/self-hosted-runner.ts",
     "download": "node --import tsx src/main.ts download-files",
+    "probe:vad": "node --import tsx src/probe-silero.ts",
     "probe:translation": "node --import tsx src/probe-realtime-translation.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -18,11 +19,11 @@
     "@livekit/agents": "^1.7.1",
     "@livekit/agents-plugin-silero": "^1.7.1",
     "@livekit/rtc-node": "^0.13.34",
+    "tsx": "^4.21.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

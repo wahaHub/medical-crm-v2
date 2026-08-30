@@ -242,6 +242,9 @@ importers:
       '@livekit/rtc-node':
         specifier: ^0.13.34
         version: 0.13.34
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       ws:
         specifier: ^8.21.0
         version: 8.21.3
@@ -249,9 +252,6 @@ importers:
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
       typescript:
         specifier: ^5.7.0
         version: 5.9.3

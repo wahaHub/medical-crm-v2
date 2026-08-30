@@ -73,6 +73,14 @@ const agent = defineAgent<ProcessData>({
     let stopped = false;
     let interval: ReturnType<typeof setInterval> | null = null;
     let inFlightRefresh: Promise<void> | null = null;
+    // Cold-start grace: the watchdog deadline starts at -inf, so without a
+    // grace window a single slow first authorization (cold TLS to the LiveKit
+    // authority read can exceed the 400 ms RTT ceiling) kills the job before
+    // it ever gets a second attempt. During grace the agent remains fully
+    // fail-closed (no accepted authorization => no subscribed tracks); the
+    // window only delays the give-up decision.
+    const entryStartedMonotonicMs = performance.now();
+    const AUTHORIZATION_BOOTSTRAP_GRACE_MS = 10_000;
     ctx.addShutdownCallback(async () => {
       stopped = true;
       if (interval) clearInterval(interval);
@@ -101,7 +109,8 @@ const agent = defineAgent<ProcessData>({
       } catch {
         watchdog.reject(request);
       }
-      if (performance.now() > watchdog.authorizationDeadlineMonotonicMs) {
+      if (performance.now() > watchdog.authorizationDeadlineMonotonicMs
+        && performance.now() > entryStartedMonotonicMs + AUTHORIZATION_BOOTSTRAP_GRACE_MS) {
         watchdog.expire();
         media.reconcile([]);
         ctx.shutdown('interpretation authorization expired');

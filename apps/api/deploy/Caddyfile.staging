@@ -1,0 +1,10 @@
+staging-crmapi.medicaltourismchina.health {
+	@video_api path /health /api/v2/internal/video-interpretation/* /api/v2/video-interpretation/* /api/v2/video-consultations/*
+	handle @video_api {
+		reverse_proxy 127.0.0.1:3002
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+}

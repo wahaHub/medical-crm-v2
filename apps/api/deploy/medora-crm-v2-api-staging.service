@@ -1,0 +1,24 @@
+[Unit]
+Description=Medora CRM v2 staging API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/medora/medora-crm-v2-api-staging/release
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/medora/medora-crm-v2-api-staging/.env
+# Set the isolation boundary at command invocation so values inherited from
+# EnvironmentFile cannot move staging onto production's port or a public NIC.
+ExecStart=/usr/bin/env PORT=3002 API_BIND_HOST=127.0.0.1 /usr/bin/pnpm --filter @medical-crm/api start
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

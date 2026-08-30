@@ -22,6 +22,7 @@
     "db:generate": "pnpm --filter @medical-crm/infrastructure drizzle-kit generate",
     "db:migrate": "pnpm --filter @medical-crm/infrastructure db:migrate",
     "db:export:full": "node scripts/export-full-bootstrap-sql.mjs",
+    "db:export:video-staging": "node scripts/export-video-staging-bootstrap.mjs",
     "seed:faq:generate": "node scripts/generate-faq-seed.ts",
     "seed:faq:check": "node scripts/generate-faq-seed.ts --check",
     "seed:faq:import": "pnpm exec tsx scripts/import-faq-seed.ts",

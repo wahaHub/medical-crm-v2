@@ -11,8 +11,20 @@ const { patientAuthService } = getServices();
 registerPatientWs(app, upgradeWebSocket, patientAuthService);
 
 const port = Number(process.env.PORT ?? 3001);
-const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`API server listening on http://localhost:${info.port}`);
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error('PORT must be an integer between 1 and 65535');
+}
+
+const configuredBindHost = process.env.API_BIND_HOST;
+const bindHost = configuredBindHost?.trim();
+if (configuredBindHost !== undefined && !bindHost) {
+  throw new Error('API_BIND_HOST must not be empty when configured');
+}
+
+const server = serve({ fetch: app.fetch, port, hostname: bindHost }, (info) => {
+  console.log(
+    `API server listening on http://${bindHost ?? 'all-interfaces'}:${info.port}`,
+  );
 });
 
 injectWebSocket(server);

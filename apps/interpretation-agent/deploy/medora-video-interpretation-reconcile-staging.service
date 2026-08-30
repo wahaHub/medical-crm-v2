@@ -1,0 +1,27 @@
+[Unit]
+Description=Medora staging video interpretation lifecycle reconciler
+After=network-online.target medora-crm-v2-api-staging.service
+Wants=network-online.target
+Requires=medora-crm-v2-api-staging.service
+
+[Service]
+Type=simple
+User=medical-crm
+Group=medical-crm
+WorkingDirectory=/opt/medora/medora-crm-v2-api-staging/release
+Environment=NODE_ENV=production
+Environment=HOME=/tmp
+Environment=CRM_API_URL=http://127.0.0.1:3002
+Environment=INTERNAL_API_SECRET_FILE=/run/credentials/medora-video-interpretation-reconcile-staging.service/internal_api_secret
+LoadCredential=internal_api_secret:/etc/medora/staging/internal-api-secret
+ExecStart=/usr/bin/pnpm --filter @medical-crm/api start:video-interpretation-reconciler
+Restart=always
+RestartSec=2s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

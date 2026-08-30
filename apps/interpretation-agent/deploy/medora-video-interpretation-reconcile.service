@@ -9,8 +9,12 @@ User=medical-crm
 Group=medical-crm
 WorkingDirectory=/opt/medora/medical-crm-v2
 Environment=NODE_ENV=production
+Environment=HOME=/tmp
 Environment=CRM_API_URL=http://127.0.0.1:3001
-Environment=INTERNAL_API_SECRET_FILE=%d/internal_api_secret
+# Ubuntu 22.04 ships systemd 249, which supports LoadCredential but not the
+# newer %d credential-directory specifier. Keep the explicit system unit path
+# so this unit works on the existing API Lightsail as well as newer systemd.
+Environment=INTERNAL_API_SECRET_FILE=/run/credentials/medora-video-interpretation-reconcile.service/internal_api_secret
 LoadCredential=internal_api_secret:/etc/medora/internal-api-secret
 ExecStart=/usr/bin/pnpm --filter @medical-crm/api start:video-interpretation-reconciler
 Restart=always

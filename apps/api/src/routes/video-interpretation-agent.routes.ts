@@ -423,6 +423,7 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
     // endpoint derives the deadline from the committed started_at, so the
     // agent-facing deadline must use the same basis or it overshoots and
     // every provider session open is rejected as application_deadline_elapsed.
+    if (!claimed.started_at) return null; // unreachable: the UPDATE sets started_at
     const committedDeadlineAt = new Date(
       new Date(claimed.started_at).getTime()
         + Math.min(claimed.maximum_ai_duration_seconds ?? 0, 7200) * 1_000,
@@ -594,6 +595,7 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
     // Same transaction-start-time skew as the hosted bootstrap: derive the
     // agent-facing deadline from the committed started_at so it matches the
     // provider-session endpoint exactly.
+    if (!claimed.started_at) return 'empty' as const; // unreachable: the UPDATE sets started_at
     const committedDeadlineAt = new Date(
       new Date(claimed.started_at).getTime()
         + Math.min(claimed.maximum_ai_duration_seconds ?? 1800, 7200) * 1_000,

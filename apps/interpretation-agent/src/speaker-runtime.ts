@@ -156,10 +156,12 @@ export class SpeakerRuntime {
     if (!this.#authorizedNow()
       || Date.now() >= new Date(this.#options.applicationDeadlineAt).getTime()) return;
     if (!this.#options.acquireProviderSlot(this.#authorization.id, observedAtMonotonicMs)) {
+      console.error(`[runtime] provider slot unavailable: track=${this.#authorization.id}`);
       this.#beginDropUntilSpeechEnd();
       return;
     }
     this.#starting = true;
+    console.error(`[runtime] speech start: sid=${this.#authorization.trackSid} ${this.#authorization.sourceLanguage}->${this.#authorization.targetLanguage}`);
     this.#pendingPcm = this.#preRoll.splice(0);
     this.#pendingBytes = this.#preRollBytes;
     this.#preRollBytes = 0;
@@ -223,7 +225,8 @@ export class SpeakerRuntime {
       const pendingSpeechEndAt = this.#pendingSpeechEndAt;
       this.#pendingSpeechEndAt = null;
       if (pendingSpeechEndAt !== null) this.#trackTask(this.#onSpeechEnd(pendingSpeechEndAt));
-    } catch {
+    } catch (error) {
+      console.error(`[runtime] provider turn failed: track=${this.#authorization.id} ${error instanceof Error ? error.message : String(error)}`);
       if (this.#active) await this.#discardActive('PROVIDER_ERROR');
       else {
         this.#pendingPcm = [];
@@ -264,11 +267,14 @@ export class SpeakerRuntime {
         completed ? 'session_closed' : `turn_discarded:${active.turn.discardReason ?? 'incomplete'}`,
       );
       if (completed && this.#authorizedNow()) {
+        console.error(`[runtime] turn completed: sid=${this.#authorization.trackSid} audioBytes=${completed.audio.reduce((n, b) => n + b.byteLength, 0)}`);
         await this.#options.output.play(
           this.#authorization.targetLanguage,
           completed.audio,
           performance.now(),
         );
+      } else if (!completed) {
+        console.error(`[runtime] turn incomplete: sid=${this.#authorization.trackSid} reason=${active.turn.discardReason ?? 'unknown'}`);
       }
     } finally {
       this.#active = null;

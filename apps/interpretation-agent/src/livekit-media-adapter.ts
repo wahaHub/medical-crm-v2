@@ -61,6 +61,14 @@ export class LiveKitMediaAdapter {
     const nextBySid = new Map(
       tracks.filter((track) => track.authorized).map((track) => [track.trackSid, track]),
     );
+    // Operational logging carries no content: identities, SIDs, and revisions only.
+    const previousKey = [...this.#authorizedBySid.values()]
+      .map((track) => `${track.trackSid}@${track.authorizationRevision}`).join(',');
+    const nextKey = [...nextBySid.values()]
+      .map((track) => `${track.trackSid}@${track.authorizationRevision}`).join(',');
+    if (previousKey !== nextKey) {
+      console.error(`[media] authorized tracks: [${nextKey || 'none'}]`);
+    }
     const authorityInvalidated = playoutAuthorityChanged(
       [...this.#authorizedBySid.values()],
       [...nextBySid.values()],
@@ -166,6 +174,7 @@ export class LiveKitMediaAdapter {
       },
     });
     this.#runtimes.set(sid, runtime);
+    console.error(`[media] speaker runtime created: sid=${sid} participant=${participant.identity} ${authorization.sourceLanguage}->${authorization.targetLanguage}`);
     runtime.run();
   }
 }

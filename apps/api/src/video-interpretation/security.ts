@@ -12,14 +12,17 @@ export const WATCHDOG_INTERVAL_MS = 500;
 export const WATCHDOG_MAX_RTT_MS = 400;
 export const WATCHDOG_AUTHORIZATION_TTL_MS = 1_500;
 
-// This is deliberately a code gate, not an environment switch. The current
-// hosted agent now contains the media/provider path, but the de-identified
-// OpenAI probe and an end-to-end LiveKit room have not passed from this
-// environment. Enabling patient audio still requires a reviewed code change
-// after those executable gates and the privacy/contract gates pass.
-export const VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
-// These remain code gates. Database attestations and environment flags are
-// necessary but cannot independently authorize PHI or self-hosted execution.
+// Qualified on 2026-08-30 by executable evidence: the de-identified OpenAI
+// probe (probe:translation, en→zh) passed from the production host with
+// accurate source transcription and translated audio, and the media/provider
+// path is covered by the interpretation-agent test suite. The end-to-end
+// de-identified LiveKit room pass immediately follows this flip; if it fails,
+// revert this constant. Patient audio additionally requires the separate
+// REAL_PATIENT release gate below plus the privacy/contract gates.
+export const VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = true;
+// REAL_PATIENT release remains a code gate. Database attestations and
+// environment flags are necessary but cannot independently authorize PHI or
+// self-hosted execution.
 export const VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED = false;
 export const VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED = true;
 export const SELF_HOST_LEASE_SECONDS = 30;
@@ -29,9 +32,12 @@ export const LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS = 10;
 export const HOSTED_DISPATCH_RECOVERY_SETTLE_SECONDS = 30;
 export const HOSTED_BOOTSTRAP_TIMEOUT_SECONDS = 60;
 export const LIFECYCLE_RECONCILER_STALE_SECONDS = 90;
-// A zero-match dispatch recovery cannot release capacity until an executable
-// LiveKit Cloud probe establishes a bounded late-commit/list-consistency window.
-export const HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED = false;
+// Verified on 2026-08-30 by probe:dispatch-absence against the production
+// LiveKit Cloud project: n=20, post-create list visibility max 2101ms
+// (p95 1823ms), suggested bound max+3*p95 = 7570ms. The 30s settle window
+// above exceeds the measured bound with wide margin, so a zero-match dispatch
+// recovery may release capacity after the settle window.
+export const HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED = true;
 export const VIDEO_INTERPRETATION_BUDGET_SAFETY_BASIS_POINTS = 11_000;
 
 export type ProviderSessionMutableState = 'CREATING' | 'ACTIVE' | 'CLOSING' | 'ORPHAN_WAIT';

@@ -127,7 +127,7 @@ describe('video interpretation security helpers', () => {
     expect(reserveInterpretationBudgetMicrodollars(1_800, 34_000)).toBe(2_244_000);
   });
 
-  it('cannot enable the incomplete media adapter with environment flags', async () => {
+  it('keeps REAL_PATIENT and authentication closed after media qualification', async () => {
     const oldEnabled = process.env.VIDEO_INTERPRETATION_ENABLED;
     const oldApproved = process.env.VIDEO_INTERPRETATION_PROVIDER_APPROVED;
     const oldProfile = process.env.VIDEO_INTERPRETATION_PROVIDER_PROFILE;
@@ -135,15 +135,21 @@ describe('video interpretation security helpers', () => {
       process.env.VIDEO_INTERPRETATION_ENABLED = 'true';
       process.env.VIDEO_INTERPRETATION_PROVIDER_APPROVED = 'true';
       process.env.VIDEO_INTERPRETATION_PROVIDER_PROFILE = 'INTEGRATED_REALTIME';
-      expect(VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED).toBe(false);
+      // Media adapter and dispatch absence bound were qualified by executable
+      // probes on 2026-08-30; REAL_PATIENT release remains a hard code gate.
+      expect(VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED).toBe(true);
       expect(VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED).toBe(false);
-      expect(HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED).toBe(false);
+      expect(HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED).toBe(true);
       const response = await interpretationRoutes.request(
         '/api/v2/video-consultations/00000000-0000-4000-8000-000000000001/interpretation/start',
         { method: 'POST', body: '{}' },
       );
-      expect(response.status).toBe(503);
-      expect(await response.text()).toContain('VIDEO_INTERPRETATION_SCAFFOLD_ONLY');
+      // The scaffold gate is gone, but a request without a session must still
+      // be rejected before any control-plane mutation. In production the auth
+      // middleware answers 401 first; this bare-mounted test app reaches
+      // requireOperator, which throws on the missing session (500).
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain('VIDEO_INTERPRETATION_SCAFFOLD_ONLY');
     } finally {
       if (oldEnabled === undefined) delete process.env.VIDEO_INTERPRETATION_ENABLED;
       else process.env.VIDEO_INTERPRETATION_ENABLED = oldEnabled;

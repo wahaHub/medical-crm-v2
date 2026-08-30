@@ -337,7 +337,12 @@ export class SpeakerRuntime {
   }
 
   #pushPending(pcm: Uint8Array): void {
-    const maxBytes = Math.min(512 * 1024, 24_000 * 2 * 2);
+    // Sized for the cross-region control plane: opening a provider turn costs
+    // an openProviderSession round trip plus the OpenAI websocket handshake
+    // plus activation (~3s total from us-west-2), so the previous 2s budget
+    // overflowed on every cold turn and the turn was discarded as
+    // BUFFER_LIMIT. 512 KiB covers ~10.6s of 24kHz PCM16.
+    const maxBytes = 512 * 1024;
     if (this.#pendingBytes + pcm.byteLength > maxBytes) {
       this.#pendingOverflow = true;
       return;

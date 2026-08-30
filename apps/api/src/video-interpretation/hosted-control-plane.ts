@@ -337,18 +337,41 @@ export async function fenceExpiredOrUnauthorizedHostedJobs(sql: CrmSql): Promise
   });
 }
 
+/** LiveKit Cloud answers code 'not_found' once the room itself is gone. */
+function isRoomNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null
+    && (error as { code?: unknown }).code === 'not_found';
+}
+
 export async function deleteExactDispatch(
   agentDispatch: LiveKitAPI['agentDispatch'],
   roomName: string,
   dispatchId: string,
 ): Promise<void> {
+  // A destroyed room proves the dispatch is gone; LiveKit Cloud deletes idle
+  // rooms quickly, so cleanup must treat not_found as verified absence
+  // instead of retrying forever.
   try {
     await agentDispatch.deleteDispatch(dispatchId, roomName);
-  } catch {
-    const remaining = await agentDispatch.listDispatch(roomName);
+  } catch (error) {
+    if (isRoomNotFound(error)) return;
+    let remaining;
+    try {
+      remaining = await agentDispatch.listDispatch(roomName);
+    } catch (listError) {
+      if (isRoomNotFound(listError)) return;
+      throw listError;
+    }
     if (remaining.some((dispatch) => dispatch.id === dispatchId)) throw new Error('hosted_dispatch_still_present');
+    return;
   }
-  const remaining = await agentDispatch.listDispatch(roomName);
+  let remaining;
+  try {
+    remaining = await agentDispatch.listDispatch(roomName);
+  } catch (error) {
+    if (isRoomNotFound(error)) return;
+    throw error;
+  }
   if (remaining.some((dispatch) => dispatch.id === dispatchId)) throw new Error('hosted_dispatch_still_present');
 }
 

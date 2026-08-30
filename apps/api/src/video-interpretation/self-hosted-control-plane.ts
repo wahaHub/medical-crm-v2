@@ -172,6 +172,8 @@ export function liveKitRevocationCutoffSeconds(nowMs = Date.now()): bigint {
  * LiveKit Cloud applies the cutoff even when the participant is currently
  * absent. Never preflight with listParticipants: an offline old execution may
  * still hold an otherwise valid original or server-refreshed token.
+ * A destroyed room (not_found) proves the identity is absent; idle Cloud
+ * rooms are deleted quickly, so cleanup must not retry forever on them.
  */
 export async function revokeSelfHostedParticipant(
   room: LiveKitRoomRevocationAdmin,
@@ -179,10 +181,23 @@ export async function revokeSelfHostedParticipant(
   identity: string,
   nowMs = Date.now(),
 ): Promise<void> {
-  await room.removeParticipant(roomName, identity, {
-    revokeTokenTs: liveKitRevocationCutoffSeconds(nowMs),
-  });
-  const participants = await room.listParticipants(roomName);
+  const isRoomNotFound = (error: unknown): boolean =>
+    typeof error === 'object' && error !== null
+    && (error as { code?: unknown }).code === 'not_found';
+  try {
+    await room.removeParticipant(roomName, identity, {
+      revokeTokenTs: liveKitRevocationCutoffSeconds(nowMs),
+    });
+  } catch (error) {
+    if (!isRoomNotFound(error)) throw error;
+  }
+  let participants;
+  try {
+    participants = await room.listParticipants(roomName);
+  } catch (error) {
+    if (isRoomNotFound(error)) return;
+    throw error;
+  }
   if (participants.some((participant) => participant.identity === identity)) {
     throw new Error('self_hosted_identity_still_present_after_revocation');
   }

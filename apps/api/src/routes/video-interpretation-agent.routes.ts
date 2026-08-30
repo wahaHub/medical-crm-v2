@@ -417,6 +417,16 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       RETURNING *
     `;
     if (!claimed) return null;
+    // Postgres now() is the transaction-start time, which predates the
+    // Date.now() call above by the whole transaction's elapsed time
+    // (hundreds of ms on the cross-region database). The provider-session
+    // endpoint derives the deadline from the committed started_at, so the
+    // agent-facing deadline must use the same basis or it overshoots and
+    // every provider session open is rejected as application_deadline_elapsed.
+    const committedDeadlineAt = new Date(
+      new Date(claimed.started_at).getTime()
+        + Math.min(claimed.maximum_ai_duration_seconds ?? 0, 7200) * 1_000,
+    ).toISOString();
     await query`
       INSERT INTO video_consultation_interpretation_events (
         job_id, event_type, actor_type, actor_id, execution_version, details
@@ -425,7 +435,7 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
         ${claimed.agent_execution_version}, '{}'::jsonb
       )
     `;
-    return { claimed, expiresAt, applicationDeadlineAt };
+    return { claimed, expiresAt, applicationDeadlineAt: committedDeadlineAt };
   });
   if (!claimedResult) return c.json({ success: false, error: 'bootstrap_rejected' }, 401);
   const { claimed, expiresAt, applicationDeadlineAt } = claimedResult;
@@ -581,6 +591,13 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
       RETURNING *
     `;
     if (!claimed) return 'empty' as const;
+    // Same transaction-start-time skew as the hosted bootstrap: derive the
+    // agent-facing deadline from the committed started_at so it matches the
+    // provider-session endpoint exactly.
+    const committedDeadlineAt = new Date(
+      new Date(claimed.started_at).getTime()
+        + Math.min(claimed.maximum_ai_duration_seconds ?? 1800, 7200) * 1_000,
+    ).toISOString();
     await query`
       UPDATE video_interpretation_self_hosts SET last_heartbeat_at = now() WHERE id = ${hostId}
     `;
@@ -595,7 +612,7 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
         )
       )
     `;
-    return { claimed, applicationDeadlineAt, capabilityExpiresAt };
+    return { claimed, applicationDeadlineAt: committedDeadlineAt, capabilityExpiresAt };
   });
   if (claim === 'unauthorized') return c.json({ success: false, error: 'host_authorization_rejected' }, 401);
   if (claim === 'capacity') return c.json({ success: true, job: null, retryAfterSeconds: SELF_HOST_HEARTBEAT_SECONDS });

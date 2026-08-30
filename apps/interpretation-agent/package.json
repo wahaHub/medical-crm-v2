@@ -10,6 +10,8 @@
     "download": "node --import tsx src/main.ts download-files",
     "probe:vad": "node --import tsx src/probe-silero.ts",
     "probe:translation": "node --import tsx src/probe-realtime-translation.ts",
+    "probe:revocation": "node --import tsx src/probe-livekit-revocation.ts",
+    "probe:dispatch-absence": "node --import tsx src/probe-dispatch-absence.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -19,6 +21,7 @@
     "@livekit/agents": "^1.7.1",
     "@livekit/agents-plugin-silero": "^1.7.1",
     "@livekit/rtc-node": "^0.13.34",
+    "livekit-server-sdk": "^2.18.0",
     "tsx": "^4.21.0",
     "ws": "^8.21.0"
   },

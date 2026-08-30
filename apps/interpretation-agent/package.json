@@ -15,7 +15,8 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "probe:e2e-room": "node --import tsx src/probe-e2e-room.ts"
   },
   "dependencies": {
     "@livekit/agents": "^1.7.1",

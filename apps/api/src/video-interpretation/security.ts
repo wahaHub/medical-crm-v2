@@ -2,6 +2,9 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const INTERPRETATION_POLICY_VERSION = 'video-ai-consent-v1';
 export const MAX_ACTIVE_AI_ROOMS = 2;
+export const MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS = 1;
+export const MAX_DEIDENTIFIED_E2E_DURATION_SECONDS = 300;
+export const MAX_DEIDENTIFIED_E2E_AUTHORITY_LIFETIME_SECONDS = 1_800;
 export const MAX_PROVIDER_SESSIONS_PER_ROOM = 2;
 // Server-owned fallback for the pinned /v1/realtime/translations profile:
 // two hours maximum lifetime plus five minutes for skew/drain. The production
@@ -22,11 +25,11 @@ export const WATCHDOG_AUTHORIZATION_TTL_MS = 5_000;
 
 // Qualified on 2026-08-30 by executable evidence: the de-identified OpenAI
 // probe (probe:translation, en→zh) passed from the production host with
-// accurate source transcription and translated audio, and the media/provider
-// path is covered by the interpretation-agent test suite. The end-to-end
-// de-identified LiveKit room pass immediately follows this flip; if it fails,
-// revert this constant. Patient audio additionally requires the separate
-// REAL_PATIENT release gate below plus the privacy/contract gates.
+// accurate source transcription and translated audio; the de-identified
+// LiveKit room probe then verified translated audio and subtitle messages.
+// Runtime release still requires independent feature, provider, approval,
+// allowlist, capacity, and classification gates. Patient audio additionally
+// requires the separate REAL_PATIENT release gate below.
 export const VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = true;
 // REAL_PATIENT release remains a code gate. Database attestations and
 // environment flags are necessary but cannot independently authorize PHI or
@@ -88,6 +91,50 @@ export function oppositeLanguage(language: 'zh' | 'en'): 'zh' | 'en' {
 
 export function interpretationFeatureEnabled(): boolean {
   return process.env.VIDEO_INTERPRETATION_ENABLED === 'true';
+}
+
+/**
+ * Allows a tightly bounded, de-identified personal E2E in staging without
+ * claiming that the production-only Hosted dispatch absence and Cloud token
+ * revocation probes have passed. Both variables are required so copying one
+ * feature flag into production cannot silently activate the exception.
+ */
+export function deidentifiedE2eModeEnabled(): boolean {
+  return process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER === 'STAGING'
+    && process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED === 'true';
+}
+
+export interface SyntheticE2eConsultationAuthority {
+  room_name: string;
+  status: string;
+  case_id: string | null;
+  patient_id: string | null;
+  patient_name: string | null;
+  patient_email: string | null;
+  metadata: unknown;
+}
+
+export function syntheticDeidentifiedE2eConsultationApproved(
+  consultation: SyntheticE2eConsultationAuthority,
+  nowMs = Date.now(),
+): boolean {
+  if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)
+    || !/^medora-deidentified-e2e-[0-9a-f]{16}$/.test(consultation.room_name)
+    || consultation.case_id !== null
+    || consultation.patient_id !== null
+    || consultation.patient_name !== null
+    || consultation.patient_email !== null
+    || typeof consultation.metadata !== 'object'
+    || consultation.metadata === null
+    || Array.isArray(consultation.metadata)) return false;
+  const metadata = consultation.metadata as Record<string, unknown>;
+  if (metadata.synthetic !== true
+    || metadata.classification !== 'DEIDENTIFIED_EVALUATION'
+    || typeof metadata.expiresAt !== 'string') return false;
+  const expiresAtMs = Date.parse(metadata.expiresAt);
+  return Number.isFinite(expiresAtMs)
+    && expiresAtMs > nowMs
+    && expiresAtMs <= nowMs + MAX_DEIDENTIFIED_E2E_AUTHORITY_LIFETIME_SECONDS * 1_000;
 }
 
 export function approvedProviderProfile(): 'DISABLED' | 'INTEGRATED_REALTIME' {

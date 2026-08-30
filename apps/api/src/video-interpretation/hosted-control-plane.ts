@@ -272,10 +272,9 @@ export async function fenceExpiredOrUnauthorizedHostedJobs(sql: CrmSql): Promise
             AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
             AND allowlist.expires_at > now()
             AND approval.revoked_at IS NULL AND approval.expires_at > now()
-            AND approval.privacy_verified = true
-            AND approval.observability_disabled = true
-            AND approval.retention_verified = true
-            AND (job.data_classification <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+            AND video_interpretation_approval_authorized(
+              approval.id, job.consultation_id, job.data_classification, now()
+            )
         ) AS authorization_valid
       FROM video_consultation_interpretation_jobs job
       WHERE job.runtime_profile = 'HOSTED_AGENT_V1'

@@ -10,6 +10,7 @@ import {
   approvedProviderProfile,
   approvedRuntimeProfile,
   createOpaqueSecret,
+  deidentifiedE2eModeEnabled,
   digestSecret,
   INTERPRETATION_POLICY_VERSION,
   HOSTED_BOOTSTRAP_TIMEOUT_SECONDS,
@@ -19,6 +20,8 @@ import {
   integratedTranslationTargetApproved,
   liveKitMediaPlaneRevocationApproved,
   MAX_ACTIVE_AI_ROOMS,
+  MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS,
+  MAX_DEIDENTIFIED_E2E_DURATION_SECONDS,
   LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
   LIFECYCLE_RECONCILER_STALE_SECONDS,
   normalizeLaunchLanguage,
@@ -27,6 +30,7 @@ import {
   readLiveKitConfig,
   reserveInterpretationBudgetMicrodollars,
   SELF_HOST_CLAIM_TIMEOUT_SECONDS,
+  syntheticDeidentifiedE2eConsultationApproved,
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
@@ -53,6 +57,8 @@ const startSchema = z.object({
   dataClassification: z.enum(['DEIDENTIFIED_EVALUATION', 'REAL_PATIENT']).default('DEIDENTIFIED_EVALUATION'),
 });
 const releaseApprovalSchema = z.object({
+  approvalScope: z.enum(['RELEASE', 'SYNTHETIC_E2E']).default('RELEASE'),
+  syntheticConsultationId: z.string().uuid().optional(),
   dataClassification: z.enum(['DEIDENTIFIED_EVALUATION', 'REAL_PATIENT']),
   provider: z.literal('openai'),
   providerModel: z.string().min(1).max(120),
@@ -60,9 +66,9 @@ const releaseApprovalSchema = z.object({
   processingRegion: z.string().min(2).max(80),
   approvalReference: z.string().min(3).max(160),
   contractsApproved: z.boolean(),
-  privacyVerified: z.literal(true),
-  observabilityDisabled: z.literal(true),
-  retentionVerified: z.literal(true),
+  privacyVerified: z.boolean(),
+  observabilityDisabled: z.boolean(),
+  retentionVerified: z.boolean(),
   providerRateMicrodollarsPerMinute: z.number().int().positive().max(10_000_000),
   perRoomHardLimitMicrodollars: z.number().int().positive().max(1_000_000_000),
   dailyHardLimitMicrodollars: z.number().int().positive().max(10_000_000_000),
@@ -80,11 +86,16 @@ export const selfHostSchema = z.object({
 
 interface ConsultationRow {
   id: string;
+  case_id: string | null;
+  patient_id: string | null;
+  patient_name: string | null;
+  patient_email: string | null;
   room_name: string;
   room_generation: number;
   status: string;
   host_identity: string | null;
   patient_language: string | null;
+  metadata: unknown;
 }
 
 interface JobRow {
@@ -264,7 +275,8 @@ function liveKitApiHost(url: string): string {
 async function loadConsultation(id: string): Promise<ConsultationRow> {
   const sql = sqlClient();
   const [consultation] = await sql<ConsultationRow[]>`
-    SELECT id, room_name, room_generation, status, host_identity, patient_language
+    SELECT id, case_id, patient_id, patient_name, patient_email,
+           room_name, room_generation, status, host_identity, patient_language, metadata
     FROM video_consultations
     WHERE id = ${id}
   `;
@@ -339,8 +351,32 @@ app.post('/api/v2/video-interpretation/release-approvals', async (c) => {
   const actor = requireOperator(c);
   const body = releaseApprovalSchema.parse(await c.req.json());
   const expiresAt = new Date(body.expiresAt);
-  if (expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 366 * 24 * 60 * 60_000) {
-    throw new HTTPException(400, { message: 'Release approval expiry must be within the next year' });
+  const maximumApprovalLifetimeMs = body.approvalScope === 'SYNTHETIC_E2E'
+    ? 30 * 60_000
+    : 366 * 24 * 60 * 60_000;
+  if (expiresAt.getTime() <= Date.now()
+    || expiresAt.getTime() > Date.now() + maximumApprovalLifetimeMs) {
+    throw new HTTPException(400, { message: 'RELEASE_APPROVAL_EXPIRY_INVALID' });
+  }
+  if (body.approvalScope === 'SYNTHETIC_E2E') {
+    if (!deidentifiedE2eModeEnabled()
+      || body.dataClassification !== 'DEIDENTIFIED_EVALUATION'
+      || !body.syntheticConsultationId
+      || body.contractsApproved
+      || body.privacyVerified
+      || body.observabilityDisabled
+      || body.retentionVerified) {
+      throw new HTTPException(409, { message: 'SYNTHETIC_E2E_APPROVAL_INVALID' });
+    }
+    const consultation = await loadConsultation(body.syntheticConsultationId);
+    if (!syntheticDeidentifiedE2eConsultationApproved(consultation)) {
+      throw new HTTPException(409, { message: 'SYNTHETIC_E2E_AUTHORITY_REQUIRED' });
+    }
+  } else if (body.syntheticConsultationId
+    || !body.privacyVerified
+    || !body.observabilityDisabled
+    || !body.retentionVerified) {
+    throw new HTTPException(409, { message: 'RELEASE_PRIVACY_ATTESTATIONS_REQUIRED' });
   }
   if (body.dataClassification === 'REAL_PATIENT') {
     if (!body.contractsApproved) {
@@ -366,14 +402,15 @@ app.post('/api/v2/video-interpretation/release-approvals', async (c) => {
       privacy_verified, observability_disabled, retention_verified,
       provider_rate_microdollars_per_minute, per_room_hard_limit_microdollars,
       daily_hard_limit_microdollars, monthly_hard_limit_microdollars,
-      approved_by_principal_id, expires_at
+      approved_by_principal_id, expires_at, approval_scope, synthetic_consultation_id
     ) VALUES (
       ${body.dataClassification}, ${body.provider}, ${body.providerModel}, ${body.providerEndpoint},
       ${body.processingRegion}, ${body.approvalReference}, ${body.contractsApproved},
       ${body.privacyVerified}, ${body.observabilityDisabled}, ${body.retentionVerified},
       ${body.providerRateMicrodollarsPerMinute}, ${body.perRoomHardLimitMicrodollars},
       ${body.dailyHardLimitMicrodollars}, ${body.monthlyHardLimitMicrodollars},
-      ${actor.userId}, ${body.expiresAt}
+      ${actor.userId}, ${body.expiresAt}, ${body.approvalScope},
+      ${body.syntheticConsultationId ?? null}
     )
     RETURNING id, expires_at
   `;
@@ -423,7 +460,9 @@ app.post('/api/v2/video-consultations/:id/interpretation/allowlist', async (c) =
       FROM video_interpretation_release_approvals
       WHERE id = ${body.releaseApprovalId}
         AND revoked_at IS NULL AND expires_at > now()
-        AND privacy_verified = true AND observability_disabled = true AND retention_verified = true
+        AND video_interpretation_approval_authorized(
+          id, ${consultationId}, data_classification, now()
+        )
       FOR UPDATE
     `;
     if (!approval) return 'approval' as const;
@@ -458,26 +497,39 @@ app.get('/api/v2/video-consultations/:id/interpretation/readiness', async (c) =>
     data_classification: string;
     expires_at: string;
     approval_reference: string;
+    approval_scope: 'RELEASE' | 'SYNTHETIC_E2E';
+    privacy_verified: boolean;
+    observability_disabled: boolean;
+    retention_verified: boolean;
   }[]>`
-    SELECT approval.data_classification, allowlist.expires_at, approval.approval_reference
+    SELECT approval.data_classification, allowlist.expires_at, approval.approval_reference,
+           approval.approval_scope, approval.privacy_verified,
+           approval.observability_disabled, approval.retention_verified
     FROM video_consultation_interpretation_allowlist allowlist
     JOIN video_interpretation_release_approvals approval ON approval.id = allowlist.release_approval_id
     WHERE allowlist.consultation_id = ${consultationId}
       AND allowlist.enabled = true AND allowlist.revoked_at IS NULL AND allowlist.expires_at > now()
       AND approval.revoked_at IS NULL AND approval.expires_at > now()
-      AND approval.privacy_verified = true
-      AND approval.observability_disabled = true
-      AND approval.retention_verified = true
+      AND video_interpretation_approval_authorized(
+        approval.id, ${consultationId}, approval.data_classification, now()
+      )
   `;
   return c.json({
     success: true,
     mediaCodeGate: VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
     realPatientCodeGate: VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
+    deidentifiedE2eMode: deidentifiedE2eModeEnabled(),
+    deidentifiedE2eMaximumDurationSeconds: MAX_DEIDENTIFIED_E2E_DURATION_SECONDS,
+    deidentifiedE2eMaximumActiveRooms: MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS,
     selfHostedCodeReady: VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED,
     approval: approval ? {
       dataClassification: approval.data_classification,
       expiresAt: approval.expires_at,
       approvalReference: approval.approval_reference,
+      approvalScope: approval.approval_scope,
+      privacyVerified: approval.privacy_verified,
+      observabilityDisabled: approval.observability_disabled,
+      retentionVerified: approval.retention_verified,
     } : null,
   });
 });
@@ -588,7 +640,8 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
     // order. A delayed legacy GRANT therefore observes a completed REVOKE and
     // cannot silently turn it back into GRANTED.
     const [consultation] = await query<ConsultationRow[]>`
-      SELECT id, room_name, room_generation, status, host_identity, patient_language
+      SELECT id, case_id, patient_id, patient_name, patient_email,
+             room_name, room_generation, status, host_identity, patient_language, metadata
       FROM video_consultations
       WHERE id = ${consultationId}
       FOR UPDATE
@@ -845,16 +898,32 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     && !VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED) {
     throw new HTTPException(503, { message: 'REAL_PATIENT_INTERPRETATION_NOT_RELEASED' });
   }
+  const stagingE2eRequested = body.dataClassification === 'DEIDENTIFIED_EVALUATION'
+    && deidentifiedE2eModeEnabled();
+  if (stagingE2eRequested
+    && body.maximumAiDurationSeconds > MAX_DEIDENTIFIED_E2E_DURATION_SECONDS) {
+    throw new HTTPException(400, { message: 'DEIDENTIFIED_E2E_DURATION_EXCEEDS_LIMIT' });
+  }
+  const preflightConsultation = stagingE2eRequested
+    ? await loadConsultation(consultationId)
+    : null;
+  const deidentifiedE2e = preflightConsultation !== null
+    && syntheticDeidentifiedE2eConsultationApproved(preflightConsultation);
+  if (stagingE2eRequested && !deidentifiedE2e) {
+    throw new HTTPException(409, { message: 'SYNTHETIC_E2E_AUTHORITY_REQUIRED' });
+  }
   const runtimeProfile = approvedRuntimeProfile();
   if (runtimeProfile === 'DISABLED') {
     throw new HTTPException(503, { message: 'VIDEO_INTERPRETATION_RUNTIME_NOT_APPROVED' });
   }
-  if (runtimeProfile === 'HOSTED_AGENT_V1' && !HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED) {
+  if (runtimeProfile === 'HOSTED_AGENT_V1'
+    && !HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED
+    && !deidentifiedE2e) {
     throw new HTTPException(503, { message: 'HOSTED_DISPATCH_RECOVERY_NOT_QUALIFIED' });
   }
   const hostedConfig = runtimeProfile === 'HOSTED_AGENT_V1' ? readHostedAgentConfig() : null;
   const effectiveLiveKitUrl = hostedConfig?.livekitUrl ?? readLiveKitConfig().livekitUrl;
-  if (!liveKitMediaPlaneRevocationApproved(effectiveLiveKitUrl)) {
+  if (!liveKitMediaPlaneRevocationApproved(effectiveLiveKitUrl) && !deidentifiedE2e) {
     throw new HTTPException(503, { message: 'LIVEKIT_CLOUD_REVOCATION_NOT_QUALIFIED' });
   }
   const providerProfile = approvedProviderProfile();
@@ -871,7 +940,8 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     // invalidation trigger touches jobs, so this also establishes a consistent
     // lock order and serializes simultaneous first START requests.
     const [consultation] = await query<ConsultationRow[]>`
-      SELECT id, room_name, room_generation, status, host_identity, patient_language
+      SELECT id, case_id, patient_id, patient_name, patient_email,
+             room_name, room_generation, status, host_identity, patient_language, metadata
       FROM video_consultations
       WHERE id = ${consultationId}
       FOR UPDATE
@@ -879,6 +949,9 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     if (!consultation) throw new HTTPException(404, { message: 'Video consultation not found' });
     if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
       throw new HTTPException(409, { message: 'Consultation is not active' });
+    }
+    if (deidentifiedE2e && !syntheticDeidentifiedE2eConsultationApproved(consultation)) {
+      throw new HTTPException(409, { message: 'SYNTHETIC_E2E_AUTHORITY_REQUIRED' });
     }
     const [{ healthy_profiles: healthyProfiles } = { healthy_profiles: 0 }] = await query<{
       healthy_profiles: number;
@@ -940,10 +1013,9 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
         AND allowlist.expires_at > now()
         AND approval.data_classification = ${body.dataClassification}
         AND approval.revoked_at IS NULL AND approval.expires_at > now()
-        AND approval.privacy_verified = true
-        AND approval.observability_disabled = true
-        AND approval.retention_verified = true
-        AND (${body.dataClassification} <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+        AND video_interpretation_approval_authorized(
+          approval.id, ${consultationId}, ${body.dataClassification}, now()
+        )
       FOR UPDATE OF allowlist, approval
     `;
     if (!releaseApproval) {
@@ -979,7 +1051,10 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
         OR (desired_state = 'RUNNING' AND status IN ('DISPATCHING', 'AWAITING_AGENT', 'ACTIVE'))
     `;
     const activeCount = capacityRows[0]?.active_count ?? MAX_ACTIVE_AI_ROOMS;
-    if (activeCount >= MAX_ACTIVE_AI_ROOMS) {
+    const activeRoomLimit = deidentifiedE2e
+      ? MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS
+      : MAX_ACTIVE_AI_ROOMS;
+    if (activeCount >= activeRoomLimit) {
       throw new HTTPException(409, { message: 'AI_CAPACITY_UNAVAILABLE' });
     }
     const [budgetUsage] = await query<{

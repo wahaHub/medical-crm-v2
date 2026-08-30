@@ -195,11 +195,12 @@ async function reconcileSourceTracks(
             AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
             AND allowlist.expires_at > now()
             AND approval.revoked_at IS NULL AND approval.expires_at > now()
-            AND approval.privacy_verified = true
-            AND approval.observability_disabled = true
-            AND approval.retention_verified = true
-            AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
-              OR approval.contracts_approved = true)
+            AND video_interpretation_approval_authorized(
+              approval.id,
+              video_consultation_interpretation_jobs.consultation_id,
+              video_consultation_interpretation_jobs.data_classification,
+              now()
+            )
         )
       FOR UPDATE
     `;
@@ -536,10 +537,9 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
             AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
             AND allowlist.expires_at > now()
             AND approval.revoked_at IS NULL AND approval.expires_at > now()
-            AND approval.privacy_verified = true
-            AND approval.observability_disabled = true
-            AND approval.retention_verified = true
-            AND (candidate.data_classification <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+            AND video_interpretation_approval_authorized(
+              approval.id, candidate.consultation_id, candidate.data_classification, now()
+            )
         )
       ORDER BY candidate.created_at
       LIMIT 1
@@ -583,11 +583,12 @@ app.post('/api/v2/internal/video-interpretation/self-hosts/:hostId/claim', async
             AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
             AND allowlist.expires_at > now()
             AND approval.revoked_at IS NULL AND approval.expires_at > now()
-            AND approval.privacy_verified = true
-            AND approval.observability_disabled = true
-            AND approval.retention_verified = true
-            AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
-              OR approval.contracts_approved = true)
+            AND video_interpretation_approval_authorized(
+              approval.id,
+              video_consultation_interpretation_jobs.consultation_id,
+              video_consultation_interpretation_jobs.data_classification,
+              now()
+            )
         )
       RETURNING *
     `;
@@ -895,11 +896,12 @@ app.post('/api/v2/internal/video-interpretation/jobs/:id/provider-sessions', asy
               AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
               AND allowlist.expires_at > now()
               AND approval.revoked_at IS NULL AND approval.expires_at > now()
-              AND approval.privacy_verified = true
-              AND approval.observability_disabled = true
-              AND approval.retention_verified = true
-              AND (video_consultation_interpretation_jobs.data_classification <> 'REAL_PATIENT'
-                OR approval.contracts_approved = true)
+              AND video_interpretation_approval_authorized(
+                approval.id,
+                video_consultation_interpretation_jobs.consultation_id,
+                video_consultation_interpretation_jobs.data_classification,
+                now()
+              )
           )
         FOR UPDATE
       `;

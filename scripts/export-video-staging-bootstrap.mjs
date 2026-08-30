@@ -16,6 +16,8 @@ const migrationFiles = [
   '052_video_interpretation_provider_expiry.sql',
   '053_video_interpretation_launch_and_self_host.sql',
   '054_video_interpretation_self_host_single_job.sql',
+  '055_video_consultation_participants.sql',
+  '056_video_interpretation_synthetic_e2e_approval.sql',
 ];
 
 async function main() {

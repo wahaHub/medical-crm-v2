@@ -10,6 +10,7 @@ BEGIN
   FOREACH table_name IN ARRAY ARRAY[
     'users',
     'video_consultations',
+    'video_consultation_participants',
     'video_consultation_hosted_deployments',
     'video_consultation_ai_consents',
     'video_consultation_interpretation_jobs',
@@ -86,6 +87,14 @@ BEGIN
     target_schema
   );
   EXECUTE format(
+    'REVOKE EXECUTE ON FUNCTION %I.video_interpretation_is_synthetic_e2e_consultation(uuid, timestamptz) FROM PUBLIC',
+    target_schema
+  );
+  EXECUTE format(
+    'REVOKE EXECUTE ON FUNCTION %I.video_interpretation_approval_authorized(uuid, uuid, text, timestamptz) FROM PUBLIC',
+    target_schema
+  );
+  EXECUTE format(
     'ALTER DEFAULT PRIVILEGES IN SCHEMA %I REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC',
     target_schema
   );
@@ -110,6 +119,7 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
       'users',
       'video_consultations',
+      'video_consultation_participants',
       'video_consultation_hosted_deployments',
       'video_consultation_ai_consents',
       'video_consultation_interpretation_jobs',
@@ -151,7 +161,9 @@ BEGIN
 
     FOREACH function_name IN ARRAY ARRAY[
       format('%I.invalidate_video_interpretation_on_consultation_close()', target_schema),
-      format('%I.invalidate_video_interpretation_on_deployment_change()', target_schema)
+      format('%I.invalidate_video_interpretation_on_deployment_change()', target_schema),
+      format('%I.video_interpretation_is_synthetic_e2e_consultation(uuid,timestamptz)', target_schema),
+      format('%I.video_interpretation_approval_authorized(uuid,uuid,text,timestamptz)', target_schema)
     ]
     LOOP
       IF has_function_privilege(role_name, function_name, 'EXECUTE') THEN

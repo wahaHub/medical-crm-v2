@@ -3,6 +3,7 @@ import {
   approvedProviderProfile,
   approvedRuntimeProfile,
   createOpaqueSecret,
+  deidentifiedE2eModeEnabled,
   digestSecret,
   normalizeLaunchLanguage,
   integratedTranslationTargetApproved,
@@ -10,8 +11,12 @@ import {
   oppositeLanguage,
   providerSessionAllowedCurrentStates,
   secretDigestMatches,
+  MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS,
+  MAX_DEIDENTIFIED_E2E_AUTHORITY_LIFETIME_SECONDS,
+  MAX_DEIDENTIFIED_E2E_DURATION_SECONDS,
   reserveInterpretationBudgetMicrodollars,
   selfHostedJoinTokenTtlSeconds,
+  syntheticDeidentifiedE2eConsultationApproved,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED,
@@ -158,6 +163,65 @@ describe('video interpretation security helpers', () => {
       if (oldProfile === undefined) delete process.env.VIDEO_INTERPRETATION_PROVIDER_PROFILE;
       else process.env.VIDEO_INTERPRETATION_PROVIDER_PROFILE = oldProfile;
     }
+  });
+
+  it('requires both staging tier and the explicit flag for the bounded de-identified E2E mode', () => {
+    const oldTier = process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER;
+    const oldEnabled = process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED;
+    try {
+      process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER = 'PRODUCTION';
+      process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED = 'true';
+      expect(deidentifiedE2eModeEnabled()).toBe(false);
+      process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER = 'STAGING';
+      expect(deidentifiedE2eModeEnabled()).toBe(true);
+      process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED = 'false';
+      expect(deidentifiedE2eModeEnabled()).toBe(false);
+      expect(MAX_DEIDENTIFIED_E2E_DURATION_SECONDS).toBe(300);
+      expect(MAX_DEIDENTIFIED_E2E_AUTHORITY_LIFETIME_SECONDS).toBe(1_800);
+      expect(MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS).toBe(1);
+      expect(VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED).toBe(true);
+      expect(VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED).toBe(false);
+      expect(HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED).toBe(true);
+    } finally {
+      if (oldTier === undefined) delete process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER;
+      else process.env.VIDEO_INTERPRETATION_DEPLOYMENT_TIER = oldTier;
+      if (oldEnabled === undefined) delete process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED;
+      else process.env.VIDEO_INTERPRETATION_DEIDENTIFIED_E2E_ENABLED = oldEnabled;
+    }
+  });
+
+  it('binds the staging waiver to a short-lived server-owned synthetic consultation', () => {
+    const now = Date.parse('2026-08-30T14:00:00.000Z');
+    const valid = {
+      room_name: 'medora-deidentified-e2e-0123456789abcdef',
+      status: 'IN_PROGRESS',
+      case_id: null,
+      patient_id: null,
+      patient_name: null,
+      patient_email: null,
+      metadata: {
+        synthetic: true,
+        classification: 'DEIDENTIFIED_EVALUATION',
+        expiresAt: '2026-08-30T14:25:00.000Z',
+      },
+    };
+    expect(syntheticDeidentifiedE2eConsultationApproved(valid, now)).toBe(true);
+    expect(syntheticDeidentifiedE2eConsultationApproved({
+      ...valid,
+      patient_name: 'Real Patient',
+    }, now)).toBe(false);
+    expect(syntheticDeidentifiedE2eConsultationApproved({
+      ...valid,
+      room_name: 'consultation-real-room',
+    }, now)).toBe(false);
+    expect(syntheticDeidentifiedE2eConsultationApproved({
+      ...valid,
+      metadata: { ...valid.metadata, synthetic: false },
+    }, now)).toBe(false);
+    expect(syntheticDeidentifiedE2eConsultationApproved({
+      ...valid,
+      metadata: { ...valid.metadata, expiresAt: '2026-08-30T14:30:00.001Z' },
+    }, now)).toBe(false);
   });
 
   it('does not let an agent relabel an uncertain provider session as failed or closed', () => {

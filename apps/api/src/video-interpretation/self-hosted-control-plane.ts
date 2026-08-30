@@ -86,10 +86,9 @@ export async function fenceExpiredOrUnauthorizedUnclaimedSelfHostedJobs(sql: Crm
               AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
               AND allowlist.expires_at > now()
               AND approval.revoked_at IS NULL AND approval.expires_at > now()
-              AND approval.privacy_verified = true
-              AND approval.observability_disabled = true
-              AND approval.retention_verified = true
-              AND (job.data_classification <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+              AND video_interpretation_approval_authorized(
+                approval.id, job.consultation_id, job.data_classification, now()
+              )
           )
         )
       ORDER BY job.created_at
@@ -295,10 +294,9 @@ export async function fenceUnauthorizedSelfHostedExecutions(sql: CrmSql): Promis
               AND allowlist.enabled = true AND allowlist.revoked_at IS NULL
               AND allowlist.expires_at > now()
               AND approval.revoked_at IS NULL AND approval.expires_at > now()
-              AND approval.privacy_verified = true
-              AND approval.observability_disabled = true
-              AND approval.retention_verified = true
-              AND (job.data_classification <> 'REAL_PATIENT' OR approval.contracts_approved = true)
+              AND video_interpretation_approval_authorized(
+                approval.id, job.consultation_id, job.data_classification, now()
+              )
           )
           OR NOT EXISTS (
             SELECT 1 FROM video_interpretation_self_hosts host

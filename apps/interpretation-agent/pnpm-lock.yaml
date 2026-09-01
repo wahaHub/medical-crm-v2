@@ -17,6 +17,9 @@ importers:
       '@livekit/rtc-node':
         specifier: ^0.13.34
         version: 0.13.34
+      livekit-server-sdk:
+        specifier: ^2.18.0
+        version: 2.18.0
       tsx:
         specifier: ^4.21.0
         version: 4.23.13

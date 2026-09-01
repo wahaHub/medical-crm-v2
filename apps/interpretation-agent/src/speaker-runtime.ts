@@ -333,15 +333,23 @@ export class SpeakerRuntime {
   }
 
   async #predictEndOfTurn(): Promise<boolean> {
+    // Advisory only. The semantic turn detector's "incomplete" verdict must not
+    // drop a translation turn: it receives raw audio without a transcript and
+    // routinely rejects real short/quiet utterances, which silently swallowed
+    // translations in production testing. The provider decides whether the
+    // turn actually contained speech — empty turns complete with no output.
     try {
       const threshold = await this.#turnDetectorStream.unlikelyThreshold(
         asLanguageCode(this.#authorization.sourceLanguage),
       ) ?? 0.5;
       const prediction = await this.#turnDetectorStream.predict().await;
-      return prediction.endOfTurnProbability >= threshold;
+      if (prediction.endOfTurnProbability < threshold) {
+        console.error(`[runtime] end-of-turn detector advised-incomplete: sid=${this.#authorization.trackSid} probability=${prediction.endOfTurnProbability}`);
+      }
     } catch {
-      return false;
+      // Detector unavailable — accept by default.
     }
+    return true;
   }
 
   async #discardActive(reason: Parameters<TranslationTurn['discard']>[0]): Promise<void> {

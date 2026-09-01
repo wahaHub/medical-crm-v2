@@ -556,9 +556,9 @@ export function VideoConsultationRoom({
       </header>
 
       <main className="relative flex flex-1 overflow-hidden p-4">
-        <div className="grid h-full w-full grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid h-full w-full grid-cols-1 grid-rows-[8rem_1fr] gap-4 lg:grid-cols-2 lg:grid-rows-1">
           {/* Local (self) video */}
-          <div className="relative flex min-h-[240px] flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+          <div className="relative flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 lg:min-h-[240px]">
             <div className="absolute left-0 top-0 z-10 rounded-br-lg bg-slate-800/80 px-3 py-1 text-xs text-white">
               You: {displayName || identity}
             </div>

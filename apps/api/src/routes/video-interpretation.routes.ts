@@ -364,7 +364,11 @@ app.get('/api/v2/video-interpretation/release-approvals/active', async (c) => {
     approval_scope: string;
     expires_at: string;
   }[]>`
-    SELECT id, approval_reference, data_classification, approval_scope, expires_at
+    -- Serialize expires_at as strict ISO-8601 (Z suffix): raw driver output uses
+    -- postgres text format ("2026-09-06 13:41:33+00") which fails z.string().datetime()
+    -- when the admin BFF passes it back into the allowlist endpoint.
+    SELECT id, approval_reference, data_classification, approval_scope,
+           to_char(expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expires_at
     FROM video_interpretation_release_approvals
     WHERE revoked_at IS NULL AND expires_at > now()
     ORDER BY expires_at DESC

@@ -113,7 +113,10 @@ app.post(
       roomList: false,
       canPublish: true,
       canSubscribe: true,
-      canPublishData: true,
+      // Guests must not publish data-channel messages: subtitle/interpretation
+      // messages are trusted by identity prefix, and the translator agent
+      // identity starts with 'translator-'.
+      canPublishData: false,
       canUpdateOwnMetadata: false,
     });
 

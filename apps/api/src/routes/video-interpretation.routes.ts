@@ -354,6 +354,34 @@ app.post('/api/v2/video-consultations/:id/token', async (c) => {
   });
 });
 
+app.get('/api/v2/video-interpretation/release-approvals/active', async (c) => {
+  requireOperator(c);
+  const sql = sqlClient();
+  const rows = await sql<{
+    id: string;
+    approval_reference: string;
+    data_classification: string;
+    approval_scope: string;
+    expires_at: string;
+  }[]>`
+    SELECT id, approval_reference, data_classification, approval_scope, expires_at
+    FROM video_interpretation_release_approvals
+    WHERE revoked_at IS NULL AND expires_at > now()
+    ORDER BY expires_at DESC
+    LIMIT 20
+  `;
+  return c.json({
+    success: true,
+    approvals: rows.map((row) => ({
+      id: row.id,
+      approvalReference: row.approval_reference,
+      dataClassification: row.data_classification,
+      approvalScope: row.approval_scope,
+      expiresAt: row.expires_at,
+    })),
+  });
+});
+
 app.post('/api/v2/video-interpretation/release-approvals', async (c) => {
   const actor = requireOperator(c);
   const body = releaseApprovalSchema.parse(await c.req.json());

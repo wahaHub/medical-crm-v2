@@ -11,7 +11,7 @@ import {
   type Column,
 } from '@medical-crm/ui';
 import { formatDate, formatTime } from '@medical-crm/ui';
-import { Video, Check, X, PhoneOff } from 'lucide-react';
+import { Video, Check, X, PhoneOff, Languages } from 'lucide-react';
 import { queryFetch, mutationFetch } from '@/lib/query-fetch';
 import { VideoConsultationRoom } from './video-consultation-room';
 import type {
@@ -65,6 +65,8 @@ export function VideoConsultationsList({ initialData }: Props) {
   const [joining, setJoining] = useState<VideoConsultation | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [roomToken, setRoomToken] = useState<LiveKitTokenResponse | null>(null);
+  const [authorizingAiId, setAuthorizingAiId] = useState<string | null>(null);
+  const [aiAuthorizedIds, setAiAuthorizedIds] = useState<Record<string, boolean>>({});
 
   const filtered = useMemo(() => {
     const tab = TABS.find((t) => t.key === activeTab);
@@ -174,6 +176,52 @@ export function VideoConsultationsList({ initialData }: Props) {
     );
   }
 
+  async function handleAuthorizeAi(consultation: VideoConsultation) {
+    setAuthorizingAiId(consultation.id);
+    setError(null);
+    try {
+      await mutationFetch<{ success: boolean }>(
+        '/api/video-consultations/interpretation/authorize',
+        'POST',
+        { consultationId: consultation.id },
+      );
+      setAiAuthorizedIds((prev) => ({ ...prev, [consultation.id]: true }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to authorize AI translation.';
+      setError(message);
+    } finally {
+      setAuthorizingAiId(null);
+    }
+  }
+
+  function renderAiButton(c: VideoConsultation) {
+    if (c.status === 'COMPLETED' || c.status === 'CANCELLED' || c.status === 'REJECTED') return null;
+    if (aiAuthorizedIds[c.id]) {
+      return (
+        <span className="inline-flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-teal-200 bg-teal-50 px-2 text-xs font-medium text-teal-700">
+          <Check className="h-3.5 w-3.5" /> AI on
+        </span>
+      );
+    }
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 shrink-0 gap-1 whitespace-nowrap text-teal-700 hover:bg-teal-50"
+        onClick={() => void handleAuthorizeAi(c)}
+        disabled={authorizingAiId === c.id}
+        title="Authorize AI translation for this room"
+      >
+        {authorizingAiId === c.id ? (
+          <LoadingSpinner size="sm" />
+        ) : (
+          <Languages className="h-3.5 w-3.5" />
+        )}
+        Enable AI
+      </Button>
+    );
+  }
+
   function isRoomOpen(c: VideoConsultation): boolean {
     if (c.status === 'IN_PROGRESS') return true;
     if (c.status === 'SCHEDULED' && c.scheduled_at) {
@@ -262,6 +310,7 @@ export function VideoConsultationsList({ initialData }: Props) {
               >
                 <X className="h-3.5 w-3.5" /> Reject
               </Button>
+              {renderAiButton(c)}
             </div>
           );
         }
@@ -299,6 +348,7 @@ export function VideoConsultationsList({ initialData }: Props) {
                   End meeting
                 </Button>
               )}
+              {renderAiButton(c)}
             </div>
           );
         }
@@ -324,6 +374,7 @@ export function VideoConsultationsList({ initialData }: Props) {
                 )}
                 End meeting
               </Button>
+              {renderAiButton(c)}
             </div>
           );
         }

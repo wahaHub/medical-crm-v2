@@ -76,6 +76,13 @@ export function VideoConsultationRoom({
   const [interpretationStatusError, setInterpretationStatusError] = useState<string | null>(null);
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
+  // Language the patient speaks. Defaults to the consultation's patient_language
+  // when it is zh/en; staff can override it before starting translation (needed
+  // when the patient booked with a non-zh/en UI locale).
+  const [patientSpeaks, setPatientSpeaks] = useState<'zh' | 'en'>(() => {
+    const normalized = (patientLanguage ?? '').trim().toLowerCase();
+    return normalized === 'zh' || normalized.startsWith('zh-') ? 'zh' : 'en';
+  });
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [originalAudioEnabled, setOriginalAudioEnabled] = useState(true);
@@ -367,13 +374,7 @@ export function VideoConsultationRoom({
     interpretationStatusSequence.current += 1;
 
     try {
-      const normalizedPatientLanguage = patientLanguage.trim().toLowerCase();
-      const sourceLanguage = normalizedPatientLanguage === 'zh' || normalizedPatientLanguage.startsWith('zh-')
-        ? 'zh'
-        : normalizedPatientLanguage === 'en' || normalizedPatientLanguage.startsWith('en-')
-          ? 'en'
-          : null;
-      if (!sourceLanguage) throw new Error('Confirm either Chinese or English before starting AI translation');
+      const sourceLanguage = patientSpeaks;
       const res = await fetch('/api/video-consultations/interpretation/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -737,22 +738,44 @@ export function VideoConsultationRoom({
         </button>
         {!interpretationStarted && interpretationStatusResolved
           && AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
-          <button
-            onClick={() => void startInterpretation()}
-            disabled={interpretationLoading || remoteParticipants.length === 0}
-            title={
-              remoteParticipants.length === 0
-                ? 'Waiting for a remote participant to join'
-                : 'Start real-time translation'
-            }
-            className="ml-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
-          >
-            {interpretationLoading
-              ? 'Starting…'
-              : remoteParticipants.length === 0
-                ? 'Waiting for remote participant…'
-                : 'Start Translation'}
-          </button>
+          <>
+            <span
+              className="ml-2 inline-flex items-center overflow-hidden rounded-full border border-slate-600 text-xs"
+              title="Language the patient speaks (translation direction)"
+            >
+              <span className="px-2 py-2 text-slate-400">Patient speaks</span>
+              <button
+                type="button"
+                onClick={() => setPatientSpeaks('en')}
+                className={`px-3 py-2 font-medium ${patientSpeaks === 'en' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setPatientSpeaks('zh')}
+                className={`px-3 py-2 font-medium ${patientSpeaks === 'zh' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+              >
+                中文
+              </button>
+            </span>
+            <button
+              onClick={() => void startInterpretation()}
+              disabled={interpretationLoading || remoteParticipants.length === 0}
+              title={
+                remoteParticipants.length === 0
+                  ? 'Waiting for a remote participant to join'
+                  : 'Start real-time translation'
+              }
+              className="ml-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {interpretationLoading
+                ? 'Starting…'
+                : remoteParticipants.length === 0
+                  ? 'Waiting for remote participant…'
+                  : 'Start Translation'}
+            </button>
+          </>
         )}
         {!interpretationStarted && !AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED && (
           <span className="ml-2 rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-400">

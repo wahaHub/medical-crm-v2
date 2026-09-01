@@ -93,9 +93,9 @@ export function interpretationFeatureEnabled(): boolean {
   return process.env.VIDEO_INTERPRETATION_ENABLED === 'true';
 }
 
-/** Patient RTC access is independent from AI and remains fail-closed in prod. */
-export function patientVideoJoinEnabled(): boolean {
-  return process.env.VIDEO_CONSULTATION_PATIENT_JOIN_ENABLED === 'true';
+/** Human RTC access is independent from AI and remains fail-closed in prod. */
+export function videoConsultationJoinEnabled(): boolean {
+  return process.env.VIDEO_CONSULTATION_JOIN_ENABLED === 'true';
 }
 
 export function v1ConsentTopologySupported(input: {

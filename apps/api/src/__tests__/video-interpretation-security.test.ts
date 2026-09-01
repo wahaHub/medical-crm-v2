@@ -19,6 +19,7 @@ import {
   syntheticDeidentifiedE2eConsultationApproved,
   v1ConsentTopologySupported,
   v1CumulativeConsentLimitSatisfied,
+  videoConsultationJoinEnabled,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED,
@@ -251,5 +252,20 @@ describe('video interpretation security helpers', () => {
       [operatorIdentity, patientIdentity],
       [operatorIdentity, 'patient-second-consultation'],
     )).toBe(false);
+  });
+
+  it('keeps all human video token issuance fail-closed by default', () => {
+    const previous = process.env.VIDEO_CONSULTATION_JOIN_ENABLED;
+    try {
+      delete process.env.VIDEO_CONSULTATION_JOIN_ENABLED;
+      expect(videoConsultationJoinEnabled()).toBe(false);
+      process.env.VIDEO_CONSULTATION_JOIN_ENABLED = 'false';
+      expect(videoConsultationJoinEnabled()).toBe(false);
+      process.env.VIDEO_CONSULTATION_JOIN_ENABLED = 'true';
+      expect(videoConsultationJoinEnabled()).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.VIDEO_CONSULTATION_JOIN_ENABLED;
+      else process.env.VIDEO_CONSULTATION_JOIN_ENABLED = previous;
+    }
   });
 });

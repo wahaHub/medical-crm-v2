@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  canonicalPatientVideoIdentity,
   closePatientRoom,
   patientJoinDecision,
   PATIENT_TOKEN_MAX_TTL_SECONDS,
@@ -7,6 +8,11 @@ import {
 
 describe('patient video access window', () => {
   const scheduledAt = '2026-09-01T10:00:00.000Z';
+
+  it('derives a consultation-bound canonical patient identity', () => {
+    expect(canonicalPatientVideoIdentity('patient-1', 'consultation-1'))
+      .toBe('patient-patient-1-consultation-1');
+  });
 
   it('fails closed without a schedule and outside the bounded join window', () => {
     expect(patientJoinDecision({ scheduledAt: null, durationMinutes: 30 })).toEqual({

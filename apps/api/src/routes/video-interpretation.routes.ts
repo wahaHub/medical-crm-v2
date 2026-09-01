@@ -34,6 +34,7 @@ import {
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
+  videoConsultationJoinEnabled,
   v1ConsentTopologySupported,
   v1CumulativeConsentLimitSatisfied,
 } from '../video-interpretation/security.js';
@@ -316,6 +317,9 @@ function publicJob(job: JobRow) {
 }
 
 app.post('/api/v2/video-consultations/:id/token', async (c) => {
+  if (!videoConsultationJoinEnabled()) {
+    throw new HTTPException(503, { message: 'Video consultation joining is not enabled' });
+  }
   const actor = requireOperator(c);
   const consultationId = idSchema.parse(c.req.param('id'));
   const consultation = await loadConsultation(consultationId);

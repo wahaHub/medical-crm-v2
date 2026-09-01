@@ -3,10 +3,11 @@ import { z } from '@hono/zod-openapi';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import {
-  patientVideoJoinEnabled,
+  videoConsultationJoinEnabled,
   readLiveKitConfig,
 } from '../video-interpretation/security.js';
 import {
+  canonicalPatientVideoIdentity,
   closePatientRoom,
   patientJoinDecision,
 } from '../video-interpretation/patient-video-access.js';
@@ -96,8 +97,7 @@ async function closeConsultationRoomForPatient(
   // Without server credentials no remote cleanup call is possible; normal
   // deployments that can issue tokens retain these credentials across a kill.
   if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
-    console.error('[video] LiveKit credentials unavailable for consultation room cleanup');
-    return;
+    throw new Error('video_room_cleanup_unavailable');
   }
   const config = readLiveKitConfig();
   const room = new RoomServiceClient(
@@ -108,7 +108,7 @@ async function closeConsultationRoomForPatient(
   await closePatientRoom(
     room,
     consultation.room_name,
-    `patient-${patientId}-${consultation.id}`,
+    canonicalPatientVideoIdentity(patientId, consultation.id),
   );
 }
 
@@ -420,7 +420,7 @@ app.get('/:id', async (c) => {
 
 // POST /:id/join
 app.post('/:id/join', async (c) => {
-  if (!patientVideoJoinEnabled()) {
+  if (!videoConsultationJoinEnabled()) {
     return c.json({ error: 'Patient video joining is not enabled' }, 503);
   }
   const session = c.get('patientSession');
@@ -434,7 +434,10 @@ app.post('/:id/join', async (c) => {
   if (!consultation) {
     return c.json({ error: 'Consultation not found' }, 404);
   }
-  const canonicalIdentity = `patient-${session.userId}-${consultation.id}`;
+  if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
+    return c.json({ error: 'Consultation is not open for joining' }, 409);
+  }
+  const canonicalIdentity = canonicalPatientVideoIdentity(session.userId, consultation.id);
   if (body.identity !== canonicalIdentity || body.role !== 'PATIENT') {
     return c.json({ error: 'Patient identity or role is not authorized' }, 403);
   }
@@ -479,7 +482,7 @@ app.post('/:id/join', async (c) => {
 
 // POST /:id/token — issue a LiveKit join token for the patient's own consultation
 app.post('/:id/token', async (c) => {
-  if (!patientVideoJoinEnabled()) {
+  if (!videoConsultationJoinEnabled()) {
     return c.json({ error: 'Patient video joining is not enabled' }, 503);
   }
   const session = c.get('patientSession');
@@ -505,7 +508,7 @@ app.post('/:id/token', async (c) => {
   }
 
   const config = readLiveKitConfig();
-  const identity = `patient-${session.userId}-${consultation.id}`;
+  const identity = canonicalPatientVideoIdentity(session.userId, consultation.id);
   const token = new AccessToken(config.apiKey, config.apiSecret, {
     identity,
     name: consultation.patient_name ?? undefined,
@@ -546,27 +549,25 @@ app.post('/:id/leave', async (c) => {
     return c.json({ error: 'Consultation not found' }, 404);
   }
 
-  const [participant] = await sql<VideoConsultationParticipant[]>`
-    SELECT * FROM public.video_consultation_participants WHERE id = ${body.participantId}
-  `;
-  if (!participant) {
-    return c.json({ error: 'Participant not found' }, 404);
-  }
-
+  const canonicalIdentity = canonicalPatientVideoIdentity(session.userId, consultation.id);
   const leftAt = nowIso();
-  const durationSeconds = participant.joined_at
-    ? Math.max(
-        0,
-        Math.round((new Date(leftAt).getTime() - new Date(participant.joined_at).getTime()) / 1000),
-      )
-    : 0;
-
   const [updated] = await sql<VideoConsultationParticipant[]>`
     UPDATE public.video_consultation_participants
-    SET left_at = ${leftAt}, duration_seconds = ${durationSeconds}
+    SET left_at = ${leftAt},
+        duration_seconds = GREATEST(
+          0,
+          ROUND(EXTRACT(EPOCH FROM (${leftAt}::timestamptz - joined_at)))::integer
+        )
     WHERE id = ${body.participantId}
+      AND consultation_id = ${id}
+      AND identity = ${canonicalIdentity}
+      AND role = 'PATIENT'
+      AND left_at IS NULL
     RETURNING *
   `;
+  if (!updated) {
+    return c.json({ error: 'Participant not found' }, 404);
+  }
 
   return c.json(updated);
 });

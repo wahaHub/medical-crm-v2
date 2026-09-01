@@ -15,12 +15,10 @@ import { Button, LoadingSpinner } from '@medical-crm/ui';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react';
 import { classifyRemoteAudioTrust } from './video-interpretation-audio-policy';
 
-// Mirrors the API's media-adapter gate. The production media/provider path has
-// been implemented and verified end-to-end in production (see commit 63aaae1),
-// so the admin room may expose the interpretation controls. Starting a session
-// still requires per-consultation release approval, allowlist entry, and
-// participant consents, and REAL_PATIENT data remains blocked API-side.
-const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = true;
+// The media adapter has passed de-identified staging evaluation, but the API's
+// non-overridable REAL_PATIENT release gate is still false. Keep production
+// controls hidden until that separate clinical/privacy release is reviewed.
+const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
 
 interface Props {
   token: string;

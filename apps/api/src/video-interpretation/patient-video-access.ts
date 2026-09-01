@@ -3,6 +3,10 @@ export const PATIENT_JOIN_OVERRUN_MS = 30 * 60_000;
 export const PATIENT_TOKEN_MAX_TTL_SECONDS = 15 * 60;
 export const PATIENT_JOIN_MAX_DURATION_MINUTES = 4 * 60;
 
+export function canonicalPatientVideoIdentity(patientId: string, consultationId: string): string {
+  return `patient-${patientId}-${consultationId}`;
+}
+
 export type PatientJoinDecision =
   | { allowed: true; ttlSeconds: number; closesAtMs: number }
   | { allowed: false; reason: 'missing_schedule' | 'too_early' | 'too_late' };

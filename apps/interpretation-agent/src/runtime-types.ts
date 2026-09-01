@@ -1,5 +1,7 @@
 export interface DispatchMetadata {
   schema: 'medora.interpretation.dispatch.v1';
+  /** Hosted dispatch correlation; absent only for the self-hosted runner. */
+  dispatchCorrelationId?: string;
   jobId: string;
   roomName: string;
   roomGeneration: number;

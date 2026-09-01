@@ -2,6 +2,10 @@
 """Create de-identified e2e fixtures: hosted deployment row, eval consultation, patient participant row."""
 import hashlib, json, subprocess, sys, uuid
 
+raise SystemExit(
+    'This legacy evaluator is disabled. Use apps/api/deploy/video-staging-e2e-harness.mjs.'
+)
+
 def load_env(path):
     env = {}
     with open(path) as f:

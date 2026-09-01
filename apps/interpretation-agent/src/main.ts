@@ -11,6 +11,7 @@ import {
 } from '@livekit/agents';
 import * as silero from '@livekit/agents-plugin-silero';
 import { AuthorizationWatchdog } from './authorization-watchdog.js';
+import { bootstrapWithBoundedRetry } from './bootstrap-retry.js';
 import { ControlPlaneClient } from './control-plane-client.js';
 import { LiveKitMediaAdapter } from './livekit-media-adapter.js';
 import type { DispatchMetadata } from './runtime-types.js';
@@ -27,7 +28,8 @@ function parseDispatchMetadata(raw: string): DispatchMetadata {
     || !Number.isInteger(value.roomGeneration)
     || !Number.isInteger(value.interpretationGeneration)
     || !Number.isInteger(value.executionVersion)
-    || typeof value.agentIdentity !== 'string') {
+    || typeof value.agentIdentity !== 'string'
+    || typeof value.dispatchCorrelationId !== 'string') {
     throw new Error('invalid interpretation dispatch metadata');
   }
   return value as DispatchMetadata;
@@ -42,9 +44,10 @@ const agent = defineAgent<ProcessData>({
   },
   entry: async (ctx: JobContext<ProcessData>) => {
     const execution = parseDispatchMetadata(ctx.job.metadata);
+    if (!execution.dispatchCorrelationId) throw new Error('hosted dispatch correlation is required');
     if (ctx.job.dispatchId.length === 0) throw new Error('explicit dispatch id is required');
     const client = new ControlPlaneClient();
-    const bootstrap = await client.bootstrap(execution, ctx.job.dispatchId);
+    const bootstrap = await bootstrapWithBoundedRetry(client, execution, ctx.job.dispatchId);
     if (bootstrap.job.providerProfile !== 'INTEGRATED_REALTIME') {
       throw new Error('approved integrated provider profile is required');
     }

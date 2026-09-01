@@ -1,7 +1,7 @@
 import type { AuthorizationResponse, DispatchMetadata } from './runtime-types.js';
 import type { WatchdogRequest } from './authorization-watchdog.js';
 
-interface BootstrapResponse {
+export interface BootstrapResponse {
   success: true;
   capability: string;
   capabilityExpiresAt: string;
@@ -23,6 +23,13 @@ interface BootstrapResponse {
     maxRttMs: number;
     authorizationTtlMs: number;
   };
+}
+
+export class BootstrapNotReadyError extends Error {
+  constructor() {
+    super('bootstrap_not_ready');
+    this.name = 'BootstrapNotReadyError';
+  }
 }
 
 interface ProviderSessionResponse {
@@ -49,21 +56,36 @@ export class ControlPlaneClient {
     this.#capability = options?.capability ?? null;
   }
 
-  async bootstrap(execution: DispatchMetadata, dispatchId: string): Promise<BootstrapResponse> {
+  async bootstrap(
+    execution: DispatchMetadata,
+    dispatchId: string,
+    timeoutMs = 10_000,
+  ): Promise<BootstrapResponse> {
     if (!this.#bootstrapSecret) throw new Error('hosted bootstrap secret is unavailable');
-    const response = await fetch(`${this.#baseUrl}/api/v2/internal/video-interpretation/bootstrap`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        bootstrapSecret: this.#bootstrapSecret,
-        ...execution,
-        dispatchId,
-      }),
-    });
-    const result = await response.json().catch(() => ({ error: 'invalid_response' })) as BootstrapResponse & { error?: string };
-    if (!response.ok || !result.success) throw new Error(result.error ?? `bootstrap_failed:${response.status}`);
-    this.#capability = result.capability;
-    return result;
+    if (!execution.dispatchCorrelationId) throw new Error('hosted dispatch correlation is unavailable');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+    try {
+      const response = await fetch(`${this.#baseUrl}/api/v2/internal/video-interpretation/bootstrap`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bootstrapSecret: this.#bootstrapSecret,
+          ...execution,
+          dispatchId,
+        }),
+        signal: controller.signal,
+      });
+      const result = await response.json().catch(() => ({ error: 'invalid_response' })) as BootstrapResponse & { error?: string };
+      if (response.status === 425 && result.error === 'bootstrap_not_ready') {
+        throw new BootstrapNotReadyError();
+      }
+      if (!response.ok || !result.success) throw new Error(result.error ?? `bootstrap_failed:${response.status}`);
+      this.#capability = result.capability;
+      return result;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async authorization(

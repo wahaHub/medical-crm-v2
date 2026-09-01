@@ -2,6 +2,10 @@
 """Create/verify the eval operator (Keycloak user + realm admin role + CRM users row + password-grant token)."""
 import json, os, secrets, subprocess, sys, urllib.parse, urllib.request
 
+raise SystemExit(
+    'This legacy evaluator is disabled. Use apps/api/deploy/video-staging-e2e-harness.mjs.'
+)
+
 def load_env(path):
     env = {}
     with open(path) as f:

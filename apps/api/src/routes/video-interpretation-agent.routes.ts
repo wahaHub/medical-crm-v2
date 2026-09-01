@@ -48,6 +48,7 @@ const bootstrapSchema = z.object({
   interpretationGeneration: z.number().int().positive(),
   executionVersion: z.number().int().positive(),
   agentIdentity: z.string().min(1),
+  dispatchCorrelationId: z.string().min(16).max(240),
 });
 const watchdogSchema = z.object({
   requestSeq: z.number().int().positive(),
@@ -360,37 +361,61 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
       FOR UPDATE
     `;
     if (!deployment) return null;
-    const [candidate] = await query<CapabilityJob[]>`
+    const [candidate] = await query<(CapabilityJob & {
+      hosted_bootstrap_deadline_at: string | null;
+      hosted_dispatch_creation_pending: boolean;
+      hosted_dispatch_correlation_id: string | null;
+      hosted_dispatch_attempt_execution_version: string | number | null;
+      hosted_dispatch_attempt_agent_identity: string | null;
+    })[]>`
       SELECT j.id, j.room_name, j.room_generation, j.interpretation_generation,
              j.agent_execution_version, j.authorization_revision, j.desired_state, j.status,
              j.provider_profile, j.agent_identity, j.dispatch_id, j.job_capability_digest,
              j.capability_expires_at, j.maximum_ai_duration_seconds,
              j.runtime_profile, j.provider_model, j.provider_endpoint,
-             j.data_classification, j.release_approval_id
+             j.data_classification, j.release_approval_id,
+             j.hosted_bootstrap_deadline_at, j.hosted_dispatch_creation_pending,
+             j.hosted_dispatch_correlation_id,
+             j.hosted_dispatch_attempt_execution_version,
+             j.hosted_dispatch_attempt_agent_identity
       FROM video_consultation_interpretation_jobs j
       WHERE j.id = ${body.jobId}
         AND j.hosted_deployment_id = ${locator.hosted_deployment_id}
-        AND j.hosted_bootstrap_deadline_at IS NOT NULL
-        AND j.hosted_bootstrap_deadline_at > now()
       FOR UPDATE OF j
     `;
-    const matches = candidate
+    const immutableMatches = candidate
       && deployment.enabled
       && !deployment.revoked_at
       && secretDigestMatches(body.bootstrapSecret, deployment.bootstrap_secret_digest)
       && candidate.desired_state === 'RUNNING'
-      && candidate.status === 'AWAITING_AGENT'
       && candidate.runtime_profile === 'HOSTED_AGENT_V1'
       && Boolean(candidate.provider_model)
       && Boolean(candidate.provider_endpoint)
-      && candidate.dispatch_id === body.dispatchId
       && candidate.room_name === body.roomName
       && candidate.room_generation === body.roomGeneration
       && candidate.interpretation_generation === body.interpretationGeneration
       && candidate.agent_execution_version === body.executionVersion
       && candidate.agent_identity === body.agentIdentity
       && !candidate.job_capability_digest;
-    if (!matches) return null;
+    if (!immutableMatches) return { kind: 'rejected' as const };
+
+    // createDispatch can wake a warm Hosted Agent before the API has recorded
+    // and independently verified the returned dispatch. Only the exact,
+    // authenticated correlation envelope receives a retryable response.
+    if (candidate.status === 'DISPATCHING'
+      && candidate.hosted_dispatch_creation_pending
+      && candidate.hosted_dispatch_correlation_id === body.dispatchCorrelationId
+      && Number(candidate.hosted_dispatch_attempt_execution_version) === body.executionVersion
+      && candidate.hosted_dispatch_attempt_agent_identity === body.agentIdentity
+      && (candidate.dispatch_id === null || candidate.dispatch_id === body.dispatchId)) {
+      return { kind: 'not_ready' as const };
+    }
+    const ready = candidate.status === 'AWAITING_AGENT'
+      && candidate.dispatch_id === body.dispatchId
+      && candidate.hosted_dispatch_correlation_id === body.dispatchCorrelationId
+      && candidate.hosted_bootstrap_deadline_at !== null
+      && new Date(candidate.hosted_bootstrap_deadline_at).getTime() > Date.now();
+    if (!ready) return { kind: 'rejected' as const };
 
     const applicationDeadlineAt = new Date(
       Date.now() + Math.min(candidate.maximum_ai_duration_seconds ?? 1800, 7200) * 1_000,
@@ -417,14 +442,14 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
         AND job_capability_digest IS NULL
       RETURNING *
     `;
-    if (!claimed) return null;
+    if (!claimed) return { kind: 'rejected' as const };
     // Postgres now() is the transaction-start time, which predates the
     // Date.now() call above by the whole transaction's elapsed time
     // (hundreds of ms on the cross-region database). The provider-session
     // endpoint derives the deadline from the committed started_at, so the
     // agent-facing deadline must use the same basis or it overshoots and
     // every provider session open is rejected as application_deadline_elapsed.
-    if (!claimed.started_at) return null; // unreachable: the UPDATE sets started_at
+    if (!claimed.started_at) return { kind: 'rejected' as const }; // unreachable: the UPDATE sets started_at
     const committedDeadlineAt = new Date(
       new Date(claimed.started_at).getTime()
         + Math.min(claimed.maximum_ai_duration_seconds ?? 0, 7200) * 1_000,
@@ -437,9 +462,14 @@ app.post('/api/v2/internal/video-interpretation/bootstrap', async (c) => {
         ${claimed.agent_execution_version}, '{}'::jsonb
       )
     `;
-    return { claimed, expiresAt, applicationDeadlineAt: committedDeadlineAt };
+    return { kind: 'claimed' as const, claimed, expiresAt, applicationDeadlineAt: committedDeadlineAt };
   });
-  if (!claimedResult) return c.json({ success: false, error: 'bootstrap_rejected' }, 401);
+  if (!claimedResult || claimedResult.kind === 'rejected') {
+    return c.json({ success: false, error: 'bootstrap_rejected' }, 401);
+  }
+  if (claimedResult.kind === 'not_ready') {
+    return c.json({ success: false, error: 'bootstrap_not_ready' }, 425);
+  }
   const { claimed, expiresAt, applicationDeadlineAt } = claimedResult;
   return c.json({
     success: true,

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""STOP the orphaned interpretation job, then re-run the full chain to START a fresh one."""
+"""LEGACY ONLY. Superseded by apps/api/deploy/video-staging-e2e-harness.mjs."""
 import json, subprocess, sys, time, urllib.parse, urllib.request
+
+raise SystemExit(
+    'This legacy evaluator is disabled because it does not satisfy the current '
+    'staging-only synthetic authority gates. Use video-staging-e2e-harness.mjs.'
+)
 
 API = 'http://127.0.0.1:3001'
 
@@ -56,5 +61,5 @@ time.sleep(8)
 st, start = http_json('POST', f'{API}/api/v2/video-consultations/{cid}/interpretation/start',
                       token=token, data={'sourceLanguage': 'en',
                                          'dataClassification': 'DEIDENTIFIED_EVALUATION',
-                                         'maximumAiDurationSeconds': 1800})
+                                         'maximumAiDurationSeconds': 300})
 print('START:', st, json.dumps(start)[:600])

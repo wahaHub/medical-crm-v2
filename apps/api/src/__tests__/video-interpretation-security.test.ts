@@ -17,6 +17,8 @@ import {
   reserveInterpretationBudgetMicrodollars,
   selfHostedJoinTokenTtlSeconds,
   syntheticDeidentifiedE2eConsultationApproved,
+  v1ConsentTopologySupported,
+  v1CumulativeConsentLimitSatisfied,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED,
@@ -228,5 +230,26 @@ describe('video interpretation security helpers', () => {
     expect(providerSessionAllowedCurrentStates('CLOSING')).toEqual(['CREATING', 'ACTIVE']);
     expect(providerSessionAllowedCurrentStates('CLOSED')).toEqual(['CLOSING', 'ORPHAN_WAIT']);
     expect(providerSessionAllowedCurrentStates('ORPHAN_WAIT')).toContain('ACTIVE');
+  });
+
+  it('enforces the V1 one-operator/one-patient topology and cumulative limit', () => {
+    const operatorIdentity = 'operator-admin-consultation';
+    const patientIdentity = 'patient-patient-consultation';
+    expect(v1ConsentTopologySupported({
+      identities: [operatorIdentity, patientIdentity],
+      operatorIdentity,
+      patientIdentity,
+      synthetic: false,
+    })).toBe(true);
+    expect(v1ConsentTopologySupported({
+      identities: [operatorIdentity, 'operator-second-consultation'],
+      operatorIdentity,
+      patientIdentity,
+      synthetic: false,
+    })).toBe(false);
+    expect(v1CumulativeConsentLimitSatisfied(
+      [operatorIdentity, patientIdentity],
+      [operatorIdentity, 'patient-second-consultation'],
+    )).toBe(false);
   });
 });

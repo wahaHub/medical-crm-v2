@@ -24,7 +24,7 @@ The low-cost V1 topology is:
 6. Keep one 4 GB Lightsail agent as a portability/cost fallback, not a V1 purchase. Add a second only if the self-hosted profile is later selected and availability or capacity requires it.
 7. Keep AI output explicitly assistive. The original audio remains available, every participant sees an AI warning, and a human interpreter remains the escalation path for clinically consequential decisions.
 
-This profile targets an initial maximum of eight human participants, Chinese ↔ English, two concurrent AI-enabled rooms, two simultaneous paid provider sessions per room, and no recording or durable transcript by default. Those are launch limits, not untested capacity claims.
+The architecture can later target eight human participants, but the implemented low-cost MVP is deliberately limited server-side to exactly one authorized operator/doctor and one owning patient. Multi-doctor and multi-patient AI require authoritative per-participant roles and languages and are not a current launch claim. The MVP supports Chinese ↔ English, two concurrent AI-enabled rooms, two simultaneous paid provider sessions per room, and no recording or durable transcript by default.
 
 ## 2. Why this profile exists
 
@@ -45,7 +45,7 @@ It does not relax room authorization, invitation scope, LiveKit grant restrictio
 
 | Dimension | Launch value |
 |---|---|
-| Human participants | Maximum 8 per room |
+| Human participants | Implemented MVP: exactly 1 operator + 1 patient; later architecture target: maximum 8 |
 | Service participants | Maximum 1 interpretation agent per active room generation |
 | Languages | Chinese (`zh`) ↔ English (`en`) |
 | Concurrent AI rooms | Maximum 2 for V1 even if the LiveKit plan permits more |
@@ -195,6 +195,8 @@ speaker remains silent + both gates pass + mapped output reaches proved final/dr
 Do not wait until the end of a long utterance before uploading all source audio; that would add the utterance duration to provider computation. `COMMIT_AFTER_EOT` is allowed only when the exact endpoint documents and passes a manual-commit test; the dedicated translation endpoint is not assumed to support it. Measure the additional post-EOT delay, and reject the profile as V1 default if it misses the 0.8–1.3 second first-audio gate.
 
 The per-turn audio buffer is capped initially at 30 seconds and 8 MiB. If either cap is reached, discard translated speech for that turn, retain only qualified captions when independently available, keep original audio connected, and ask the speaker to use shorter turns. Never persist this buffer or allow an unbounded utterance backlog.
+
+The application deadline is also enforced locally by an independent monotonic job timer, not only by the five-second authorization watchdog lease. At the deadline the Agent immediately rejects further PCM and captions, clears buffered input and queued translated playout, discards the active turn, and closes its provider-session fence. A stale watchdog snapshot can therefore never extend paid audio forwarding or AI output beyond the absolute room limit.
 
 Explicitly configure and test the `zh` or `en` threshold rather than relying on an English default when no STT language signal exists. Treat the detector as a quality signal, not a guarantee: the current implementation can time out and commit, so interruption, long-pause, short-answer, crosstalk, and fallback behavior remain blocking tests.
 
@@ -371,7 +373,7 @@ Do not add a separate capacity subsystem until one of these becomes true:
 - START atomically increments `agent_execution_version`, reserves budget, and requests one named LiveKit Hosted Agent dispatch for the exact room and interpretation generation.
 - LiveKit encrypted runtime secrets contain one random deployment-scoped bootstrap secret. The API stores only its digest and grants it only `exchange_hosted_dispatch`; it cannot read arbitrary consultations, mint LiveKit tokens, STOP jobs, or reach PostgreSQL.
 - Dispatch, room, participant, and track metadata contain only non-secret identifiers such as job ID, dispatch ID, and execution version. Never put a bearer, job capability, provider key, or reusable credential in metadata, observability fields, URLs, or logs.
-- Over TLS, the dispatched agent presents the bootstrap secret plus current dispatch identifiers to an exchange endpoint. The API verifies the active job, stored dispatch ID, exact room/generations/execution version, and an atomic unused exchange slot. One successful exchange consumes the slot and returns an opaque random job capability while storing only its digest.
+- Over TLS, the dispatched agent presents the bootstrap secret plus current dispatch identifiers and the non-secret dispatch correlation ID to an exchange endpoint. A warm Hosted Agent can arrive while the API is still independently verifying `createDispatch`; only a valid deployment secret plus the exact pending correlation envelope receives `bootstrap_not_ready`. The Agent retries only that response, no more than once every three seconds and for at most 60 seconds. Wrong secrets, dispatches, rooms, generations, stopped jobs, and consumed exchanges fail immediately. Once ready, one atomic exchange consumes the slot and returns an opaque random job capability while storing only its digest.
 - The job capability is bound to job, dispatch, execution version, audience, and application deadline. It can call only that job's authorization-watchdog, provider-session, metering, and event endpoints. STOP or execution increment invalidates it immediately; crash/redispatch creates a fresh exchange slot and cannot reuse the old capability.
 - Every agent mutation and output carries job ID, room generation, interpretation generation, exact agent identity, and execution version. Conditional updates and clients reject stale versions.
 - A job-level execution-authorization watchdog keeps at most one refresh in flight every 500 ms. Each request carries a strictly increasing execution-local `request_seq` and random nonce. The response echoes both and carries job/generations/execution version, a job-level monotonic `authorization_revision`, and every track's consent/language versions. STOP, execution invalidation, or any consent/track/generation authority change increments the applicable revision/version in the same database transaction.
@@ -403,6 +405,8 @@ The low-cost profile retains the important controls from the enterprise design:
 - moderation, removal, room close, and token revocation are server-side LiveKit operations and audit events;
 - join, leave, reconnect, invitation, consent, AI start/stop, hosted dispatch, optional self-hosted claim, and provider failures are auditable;
 - the browser never receives LiveKit API secret, provider key, Cloudflare API token, or email-provider secret.
+
+The implemented patient RTC token route has its own fail-closed `VIDEO_CONSULTATION_PATIENT_JOIN_ENABLED` gate, independent of the AI feature flag. It accepts only the owning patient's canonical identity and `PATIENT` role, opens 15 minutes before a scheduled start (or at the server-owned `started_at` for an immediate consultation), closes after the bounded consultation duration plus a 30-minute overrun, and issues tokens for no more than 15 minutes or the remaining join window. JWT expiry limits reconnects but does not disconnect an existing participant; patient complete/cancel therefore revokes the patient token generation and deletes the room through the LiveKit server API. Cleanup is intentionally independent of the current join gate so using the gate as an incident kill switch cannot suppress revocation of tokens issued earlier. Production keeps this gate false until the real-patient join and remote-cleanup paths are independently qualified.
 
 The exact two-minute Valkey credential-escrow protocol from the enterprise design is not used. Recovery is based on a narrowly scoped database redemption state and a browser-held bootstrap secret whose digest is stored. No authorization depends on a cache, so Redis/Valkey is not a launch dependency.
 
@@ -484,8 +488,8 @@ Launch limits are enforced by the API, not merely by runtime or plan convention:
 
 - maximum 2 active AI rooms for V1 regardless of hosted-plan quota;
 - maximum 2 concurrent paid provider sessions per room, dynamically assigned to speaking tracks without sharing state between speakers;
-- maximum 8 humans in one room;
-- maximum 8 subscribed human microphone tracks;
+- implemented production MVP: exactly one canonical operator and one canonical patient;
+- later multiparty qualification target: maximum 8 humans and 8 subscribed microphones only after per-participant role/language authority is implemented;
 - maximum one target-language speech queue per supported target language;
 - maximum caption text length and TTS queue depth;
 - provider per-minute, per-room, daily, and monthly budget caps;

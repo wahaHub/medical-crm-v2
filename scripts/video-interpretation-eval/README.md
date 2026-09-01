@@ -1,6 +1,10 @@
 # Video interpretation de-identified evaluation harness
 
-One-off operational scripts used to qualify the low-cost video
+> **LEGACY / DISABLED:** these scripts predate the staging-only synthetic
+> authority contract and intentionally fail fast. Do not run them. Use
+> `apps/api/deploy/video-staging-e2e-harness.mjs` instead.
+
+Historical one-off operational scripts used to qualify the low-cost video
 interpretation path on the production LiveKit project with synthetic,
 de-identified audio. **Never point these at real patient rooms.**
 

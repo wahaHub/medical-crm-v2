@@ -93,6 +93,32 @@ export function interpretationFeatureEnabled(): boolean {
   return process.env.VIDEO_INTERPRETATION_ENABLED === 'true';
 }
 
+/** Patient RTC access is independent from AI and remains fail-closed in prod. */
+export function patientVideoJoinEnabled(): boolean {
+  return process.env.VIDEO_CONSULTATION_PATIENT_JOIN_ENABLED === 'true';
+}
+
+export function v1ConsentTopologySupported(input: {
+  identities: string[];
+  operatorIdentity: string;
+  patientIdentity: string | null;
+  synthetic: boolean;
+}): boolean {
+  const unique = new Set(input.identities);
+  if (unique.size !== 2 || !unique.has(input.operatorIdentity)) return false;
+  if (input.synthetic) return true;
+  return Boolean(input.patientIdentity && unique.has(input.patientIdentity));
+}
+
+export function v1CumulativeConsentLimitSatisfied(
+  grantedIdentities: Iterable<string>,
+  requestedIdentities: Iterable<string>,
+): boolean {
+  const cumulative = new Set(grantedIdentities);
+  for (const identity of requestedIdentities) cumulative.add(identity);
+  return cumulative.size <= 2;
+}
+
 /**
  * Allows a tightly bounded, de-identified personal E2E in staging without
  * claiming that the production-only Hosted dispatch absence and Cloud token

@@ -1,8 +1,15 @@
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
-import { AccessToken } from 'livekit-server-sdk';
-import { readLiveKitConfig } from '../video-interpretation/security.js';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
+import {
+  patientVideoJoinEnabled,
+  readLiveKitConfig,
+} from '../video-interpretation/security.js';
+import {
+  closePatientRoom,
+  patientJoinDecision,
+} from '../video-interpretation/patient-video-access.js';
 
 const app = new Hono();
 
@@ -79,6 +86,30 @@ function intervalsOverlap(
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+async function closeConsultationRoomForPatient(
+  consultation: Pick<VideoConsultation, 'id' | 'room_name'>,
+  patientId: string,
+): Promise<void> {
+  // Cleanup is intentionally independent from the current join kill switch.
+  // Without server credentials no remote cleanup call is possible; normal
+  // deployments that can issue tokens retain these credentials across a kill.
+  if (!process.env.LIVEKIT_URL || !process.env.LIVEKIT_API_KEY || !process.env.LIVEKIT_API_SECRET) {
+    console.error('[video] LiveKit credentials unavailable for consultation room cleanup');
+    return;
+  }
+  const config = readLiveKitConfig();
+  const room = new RoomServiceClient(
+    config.livekitUrl.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:'),
+    config.apiKey,
+    config.apiSecret,
+  );
+  await closePatientRoom(
+    room,
+    consultation.room_name,
+    `patient-${patientId}-${consultation.id}`,
+  );
 }
 
 const listQuerySchema = z.object({
@@ -347,6 +378,8 @@ app.post('/:id/cancel', async (c) => {
     RETURNING *
   `;
 
+  await closeConsultationRoomForPatient(existing, session.userId);
+
   return c.json(updated);
 });
 
@@ -387,6 +420,9 @@ app.get('/:id', async (c) => {
 
 // POST /:id/join
 app.post('/:id/join', async (c) => {
+  if (!patientVideoJoinEnabled()) {
+    return c.json({ error: 'Patient video joining is not enabled' }, 503);
+  }
   const session = c.get('patientSession');
   const id = c.req.param('id');
   const body = joinSchema.parse(await c.req.json());
@@ -397,6 +433,18 @@ app.post('/:id/join', async (c) => {
   `;
   if (!consultation) {
     return c.json({ error: 'Consultation not found' }, 404);
+  }
+  const canonicalIdentity = `patient-${session.userId}-${consultation.id}`;
+  if (body.identity !== canonicalIdentity || body.role !== 'PATIENT') {
+    return c.json({ error: 'Patient identity or role is not authorized' }, 403);
+  }
+  const join = patientJoinDecision({
+    scheduledAt: consultation.scheduled_at,
+    startedAt: consultation.started_at,
+    durationMinutes: consultation.duration_minutes,
+  });
+  if (!join.allowed) {
+    return c.json({ error: `Consultation join window is closed: ${join.reason}` }, 409);
   }
 
   if (consultation.status === 'SCHEDULED') {
@@ -431,6 +479,9 @@ app.post('/:id/join', async (c) => {
 
 // POST /:id/token — issue a LiveKit join token for the patient's own consultation
 app.post('/:id/token', async (c) => {
+  if (!patientVideoJoinEnabled()) {
+    return c.json({ error: 'Patient video joining is not enabled' }, 503);
+  }
   const session = c.get('patientSession');
   const id = c.req.param('id');
   const sql = getDbSql();
@@ -444,16 +495,22 @@ app.post('/:id/token', async (c) => {
   if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
     return c.json({ error: 'Consultation is not open for joining' }, 409);
   }
+  const join = patientJoinDecision({
+    scheduledAt: consultation.scheduled_at,
+    startedAt: consultation.started_at,
+    durationMinutes: consultation.duration_minutes,
+  });
+  if (!join.allowed) {
+    return c.json({ error: `Consultation join window is closed: ${join.reason}` }, 409);
+  }
 
   const config = readLiveKitConfig();
   const identity = `patient-${session.userId}-${consultation.id}`;
-  // LiveKit disconnects participants when their token expires, so the ttl must
-  // cover the whole consultation plus a buffer for overrun.
-  const ttlSeconds = (consultation.duration_minutes || DEFAULT_DURATION_MINUTES) * 60 + 30 * 60;
   const token = new AccessToken(config.apiKey, config.apiSecret, {
     identity,
     name: consultation.patient_name ?? undefined,
-    ttl: ttlSeconds,
+    // JWT expiry limits reconnects; server-side room cleanup ends live RTC.
+    ttl: join.ttlSeconds,
   });
   token.addGrant({
     room: consultation.room_name,
@@ -541,6 +598,8 @@ app.post('/:id/complete', async (c) => {
     WHERE id = ${id}
     RETURNING *
   `;
+
+  await closeConsultationRoomForPatient(consultation, session.userId);
 
   return c.json(updated);
 });

@@ -34,6 +34,8 @@ import {
   VIDEO_INTERPRETATION_REAL_PATIENT_RELEASE_IMPLEMENTED,
   VIDEO_INTERPRETATION_SELF_HOSTED_RUNTIME_IMPLEMENTED,
   VIDEO_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED,
+  v1ConsentTopologySupported,
+  v1CumulativeConsentLimitSatisfied,
 } from '../video-interpretation/security.js';
 import { reconcileExpiredProviderSessions } from '../video-interpretation/provider-session-reconciliation.js';
 import { reconcileInterpretationBudget } from '../video-interpretation/budget-reconciliation.js';
@@ -42,7 +44,8 @@ import { uniquelyMatchesReturnedHostedDispatch } from '../video-interpretation/h
 const app = new Hono();
 const idSchema = z.string().uuid();
 const consentSchema = z.object({
-  participantIdentities: z.array(z.string().min(1).max(160)).min(2).max(8),
+  // The V1 authority model supports exactly one operator and one patient.
+  participantIdentities: z.array(z.string().min(1).max(160)).length(2),
   policyVersion: z.literal(INTERPRETATION_POLICY_VERSION),
   witnessConfirmed: z.literal(true),
 });
@@ -647,6 +650,18 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
       FOR UPDATE
     `;
     if (!consultation) return { kind: 'missing_consultation' as const };
+    const operatorIdentity = `operator-${actor.userId}-${consultation.id}`;
+    const patientIdentity = consultation.patient_id
+      ? `patient-${consultation.patient_id}-${consultation.id}`
+      : null;
+    if (!v1ConsentTopologySupported({
+      identities,
+      operatorIdentity,
+      patientIdentity,
+      synthetic: syntheticDeidentifiedE2eConsultationApproved(consultation),
+    })) {
+      return { kind: 'unsupported_participant_topology' as const };
+    }
     const [job] = await query<{ id: string; agent_execution_version: number }[]>`
       SELECT id, agent_execution_version
       FROM video_consultation_interpretation_jobs
@@ -665,7 +680,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
     `;
     const allowed = new Set(admitted.map((row) => row.identity));
     if (consultation.host_identity) allowed.add(consultation.host_identity);
-    allowed.add(`operator-${actor.userId}-${consultation.id}`);
+    allowed.add(operatorIdentity);
     const disallowed = identities.find((identity) => !allowed.has(identity));
     if (disallowed) return { kind: 'not_admitted' as const, identity: disallowed };
 
@@ -674,12 +689,18 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
       FROM video_consultation_ai_consents
       WHERE consultation_id = ${consultationId}
         AND policy_version = ${body.policyVersion}
-        AND participant_identity = ANY(${query.array(identities)}::text[])
       ORDER BY participant_identity
       FOR UPDATE
     `;
+    const grantedIdentities = current
+      .filter((row) => row.state === 'GRANTED')
+      .map((row) => row.participant_identity);
+    if (!v1CumulativeConsentLimitSatisfied(grantedIdentities, identities)) {
+      return { kind: 'unsupported_participant_topology' as const };
+    }
     const existingByIdentity = new Map(current.map((row) => [row.participant_identity, row]));
-    const requiresReconsent = current.find((row) => row.state !== 'GRANTED');
+    const requiresReconsent = current.find((row) => identities.includes(row.participant_identity)
+      && row.state !== 'GRANTED');
     if (requiresReconsent) {
       return {
         kind: 'explicit_reconsent_required' as const,
@@ -739,6 +760,9 @@ app.post('/api/v2/video-consultations/:id/interpretation/consents', async (c) =>
   }
   if (result.kind === 'not_admitted') {
     throw new HTTPException(409, { message: `Participant is not currently admitted: ${result.identity}` });
+  }
+  if (result.kind === 'unsupported_participant_topology') {
+    throw new HTTPException(409, { message: 'V1 supports exactly one operator and one patient' });
   }
   if (result.kind === 'explicit_reconsent_required') {
     return c.json({
@@ -1103,7 +1127,14 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
           )
         )
     `;
-    if (consentRows.length < 2) {
+    if (!v1ConsentTopologySupported({
+      identities: consentRows.map((row) => row.participant_identity),
+      operatorIdentity: `operator-${actor.userId}-${consultation.id}`,
+      patientIdentity: consultation.patient_id
+        ? `patient-${consultation.patient_id}-${consultation.id}`
+        : null,
+      synthetic: deidentifiedE2e,
+    })) {
       throw new HTTPException(409, { message: 'AI_CONSENT_REQUIRED' });
     }
 

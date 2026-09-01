@@ -35,6 +35,16 @@ export interface SpeakerRuntimeOptions {
   releaseProviderSlot: (trackId: string) => void;
 }
 
+export function runtimeAuthorityOpen(
+  authorized: boolean,
+  watchdogAllows: boolean,
+  applicationDeadlineMs: number,
+  nowMs = Date.now(),
+): boolean {
+  return authorized && watchdogAllows && Number.isFinite(applicationDeadlineMs)
+    && nowMs < applicationDeadlineMs;
+}
+
 export class SpeakerRuntime {
   readonly #options: SpeakerRuntimeOptions;
   readonly #audioStream: AudioStream;
@@ -53,9 +63,16 @@ export class SpeakerRuntime {
   #pendingOverflow = false;
   readonly #turnBoundary = new SpeakerTurnBoundary();
   readonly #tasks = new Set<Promise<void>>();
+  readonly #applicationDeadlineMs: number;
+  #deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+  #deadlineExpired = false;
 
   constructor(options: SpeakerRuntimeOptions) {
     this.#options = options;
+    this.#applicationDeadlineMs = new Date(options.applicationDeadlineAt).getTime();
+    if (!Number.isFinite(this.#applicationDeadlineMs)) {
+      throw new Error('invalid application deadline');
+    }
     this.#authorization = options.authorization;
     this.#audioStream = new AudioStream(options.remoteTrack, {
       sampleRate: 24_000,
@@ -68,6 +85,10 @@ export class SpeakerRuntime {
 
   run(): void {
     if (this.#runPromise) return;
+    const deadlineDelayMs = Math.max(0, this.#applicationDeadlineMs - Date.now());
+    this.#deadlineTimer = setTimeout(() => {
+      this.#trackTask(this.#expireAtApplicationDeadline());
+    }, deadlineDelayMs);
     this.#runPromise = Promise.all([this.#pumpAudio(), this.#observeVad()])
       .then(() => undefined)
       .catch(async () => {
@@ -91,6 +112,8 @@ export class SpeakerRuntime {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    if (this.#deadlineTimer) clearTimeout(this.#deadlineTimer);
+    this.#deadlineTimer = null;
     if (this.#active) await this.#discardActive('AUTHORIZATION_REVOKED');
     this.#vadStream.endInput();
     this.#turnDetectorStream.endInput();
@@ -107,6 +130,10 @@ export class SpeakerRuntime {
     try {
       for await (const frame of this.#audioStream) {
         if (this.#closed) break;
+        if (Date.now() >= this.#applicationDeadlineMs) {
+          await this.#expireAtApplicationDeadline();
+          continue;
+        }
         frames += 1;
         if (frames - loggedAt >= 250) {
           loggedAt = frames;
@@ -167,8 +194,7 @@ export class SpeakerRuntime {
       return;
     }
     if (this.#starting) return;
-    if (!this.#authorizedNow()
-      || Date.now() >= new Date(this.#options.applicationDeadlineAt).getTime()) return;
+    if (!this.#authorizedNow()) return;
     if (!this.#options.acquireProviderSlot(this.#authorization.id, observedAtMonotonicMs)) {
       console.error(`[runtime] provider slot unavailable: track=${this.#authorization.id}`);
       this.#beginDropUntilSpeechEnd();
@@ -190,6 +216,16 @@ export class SpeakerRuntime {
         this.#authorization.id,
         this.#options.applicationDeadlineAt,
       );
+      if (!this.#authorizedNow()) {
+        await this.#options.client.closeProviderSession(
+          this.#options.execution.jobId,
+          providerSession.id,
+          null,
+          'turn_aborted:AUTHORIZATION_REVOKED',
+        ).catch(() => undefined);
+        this.#options.releaseProviderSlot(this.#authorization.id);
+        return;
+      }
       const transport = new RealtimeTranslationSession({
         apiKey: openAiKey,
         targetLanguage: this.#authorization.targetLanguage,
@@ -332,8 +368,19 @@ export class SpeakerRuntime {
   }
 
   #authorizedNow(): boolean {
-    return this.#authorization.authorized
-      && this.#options.watchdog.canForward(this.#authorization.id, performance.now());
+    return runtimeAuthorityOpen(
+      this.#authorization.authorized,
+      this.#options.watchdog.canForward(this.#authorization.id, performance.now()),
+      this.#applicationDeadlineMs,
+    );
+  }
+
+  async #expireAtApplicationDeadline(): Promise<void> {
+    if (this.#deadlineExpired || this.#closed) return;
+    this.#deadlineExpired = true;
+    this.#options.output.invalidateAuthorization();
+    this.#beginDropUntilSpeechEnd();
+    if (this.#active) await this.#discardActive('AUTHORIZATION_REVOKED');
   }
 
   #pushPending(pcm: Uint8Array): void {

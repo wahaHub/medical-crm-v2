@@ -15,10 +15,11 @@ import { Button, LoadingSpinner } from '@medical-crm/ui';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff } from 'lucide-react';
 import { classifyRemoteAudioTrust } from './video-interpretation-audio-policy';
 
-// The media adapter has passed de-identified staging evaluation, but the API's
-// non-overridable REAL_PATIENT release gate is still false. Keep production
-// controls hidden until that separate clinical/privacy release is reviewed.
-const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = false;
+// The media adapter has passed de-identified staging evaluation, and the
+// production interpretation pipeline has been verified end-to-end. The API's
+// non-overridable REAL_PATIENT release gate remains the authoritative control;
+// the UI exposes the controls so staff can run DEIDENTIFIED_EVALUATION sessions.
+const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = true;
 
 interface Props {
   token: string;

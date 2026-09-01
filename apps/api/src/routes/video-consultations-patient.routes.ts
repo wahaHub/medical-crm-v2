@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { z } from '@hono/zod-openapi';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
+import { AccessToken } from 'livekit-server-sdk';
+import { readLiveKitConfig } from '../video-interpretation/security.js';
 
 const app = new Hono();
 
@@ -425,6 +427,52 @@ app.post('/:id/join', async (c) => {
   `;
 
   return c.json(participant, 201);
+});
+
+// POST /:id/token — issue a LiveKit join token for the patient's own consultation
+app.post('/:id/token', async (c) => {
+  const session = c.get('patientSession');
+  const id = c.req.param('id');
+  const sql = getDbSql();
+
+  const [consultation] = await sql<VideoConsultation[]>`
+    SELECT * FROM public.video_consultations WHERE id = ${id} AND patient_id = ${session.userId}
+  `;
+  if (!consultation) {
+    return c.json({ error: 'Consultation not found' }, 404);
+  }
+  if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
+    return c.json({ error: 'Consultation is not open for joining' }, 409);
+  }
+
+  const config = readLiveKitConfig();
+  const identity = `patient-${session.userId}-${consultation.id}`;
+  // LiveKit disconnects participants when their token expires, so the ttl must
+  // cover the whole consultation plus a buffer for overrun.
+  const ttlSeconds = (consultation.duration_minutes || DEFAULT_DURATION_MINUTES) * 60 + 30 * 60;
+  const token = new AccessToken(config.apiKey, config.apiSecret, {
+    identity,
+    name: consultation.patient_name ?? undefined,
+    ttl: ttlSeconds,
+  });
+  token.addGrant({
+    room: consultation.room_name,
+    roomJoin: true,
+    roomAdmin: false,
+    roomList: false,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+  });
+
+  return c.json({
+    success: true,
+    token: await token.toJwt(),
+    livekitUrl: config.livekitUrl,
+    identity,
+    roomName: consultation.room_name,
+  });
 });
 
 // POST /:id/leave

@@ -362,10 +362,18 @@ export class SpeakerRuntime {
     this.#pendingBytes = 0;
     this.#pendingOverflow = false;
     try {
+      // discard() already terminated the provider websocket via transport.abort().
+      // OpenAI realtime sessions are connection-bound, so a terminated socket ends
+      // the provider session; the session id captured from session.created is valid
+      // closure evidence. Reporting CLOSED (instead of ORPHAN_WAIT) avoids the 2h05m
+      // conservative fence that would otherwise block job finalization
+      // (INTERPRETATION_CLEANUP_PENDING on the next start) and consume a per-room
+      // provider slot. Falls back to ORPHAN_WAIT when the session never connected
+      // (no provider reference captured).
       await this.#options.client.closeProviderSession(
         this.#options.execution.jobId,
         active.providerSessionId,
-        null,
+        active.turn.providerSessionReference,
         `turn_aborted:${reason}`,
       );
     } catch {

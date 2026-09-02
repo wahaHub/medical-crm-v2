@@ -127,6 +127,9 @@ export class SpeakerRuntime {
   async #pumpAudio(): Promise<void> {
     let frames = 0;
     let loggedAt = 0;
+    let windowPeak = 0;
+    let windowSumSquares = 0;
+    let windowSamples = 0;
     try {
       for await (const frame of this.#audioStream) {
         if (this.#closed) break;
@@ -135,14 +138,19 @@ export class SpeakerRuntime {
           continue;
         }
         frames += 1;
+        for (const sample of frame.data) {
+          const v = Math.abs(sample);
+          if (v > windowPeak) windowPeak = v;
+          windowSumSquares += sample * sample;
+        }
+        windowSamples += frame.data.length;
         if (frames - loggedAt >= 250) {
           loggedAt = frames;
-          let peak = 0;
-          for (const sample of frame.data) {
-            const v = Math.abs(sample);
-            if (v > peak) peak = v;
-          }
-          console.error(`[runtime] audio flowing: sid=${this.#authorization.trackSid} frames=${frames} peak=${peak}`);
+          const rms = windowSamples > 0 ? Math.round(Math.sqrt(windowSumSquares / windowSamples)) : 0;
+          console.error(`[runtime] audio flowing: sid=${this.#authorization.trackSid} frames=${frames} peak=${windowPeak} rms=${rms}`);
+          windowPeak = 0;
+          windowSumSquares = 0;
+          windowSamples = 0;
         }
         this.#vadStream.pushFrame(frame);
         this.#turnDetectorStream.pushAudio(frame);
@@ -324,7 +332,7 @@ export class SpeakerRuntime {
           performance.now(),
         );
       } else if (!completed) {
-        console.error(`[runtime] turn incomplete: sid=${this.#authorization.trackSid} reason=${active.turn.discardReason ?? 'unknown'}`);
+        console.error(`[runtime] turn incomplete: sid=${this.#authorization.trackSid} reason=${active.turn.discardReason ?? 'unknown'} appendedBytes=${active.turn.appendedBytes} srcChars=${active.turn.sourceTextLength} tgtChars=${active.turn.translatedTextLength} outAudioBytes=${active.turn.capturedAudioBytes}`);
       }
     } finally {
       this.#active = null;

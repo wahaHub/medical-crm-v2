@@ -68,6 +68,7 @@ export class TranslationTurn {
   #translatedText = '';
   #audio: Uint8Array[] = [];
   #audioBytes = 0;
+  #appendedBytes = 0;
   #discardReason: TurnDiscardReason | null = null;
   #connected = false;
   #closing = false;
@@ -129,6 +130,7 @@ export class TranslationTurn {
     }
     if (!this.#connected || this.#closing || this.#discardReason) return false;
     this.#transport.appendPcm16(pcm16);
+    this.#appendedBytes += pcm16.byteLength;
     return true;
   }
 
@@ -183,6 +185,22 @@ export class TranslationTurn {
 
   get discardReason(): TurnDiscardReason | null {
     return this.#discardReason;
+  }
+
+  get appendedBytes(): number {
+    return this.#appendedBytes;
+  }
+
+  get sourceTextLength(): number {
+    return this.#sourceText.trim().length;
+  }
+
+  get translatedTextLength(): number {
+    return this.#translatedText.trim().length;
+  }
+
+  get capturedAudioBytes(): number {
+    return this.#audioBytes;
   }
 
   get providerSessionReference(): string | null {

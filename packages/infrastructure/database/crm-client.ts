@@ -17,16 +17,17 @@ export function getCrmDb() {
     const connectTimeout = parsePositiveInteger(process.env['DB_CONNECT_TIMEOUT_SECONDS'], 10);
     const idleTimeout = parsePositiveInteger(process.env['DB_IDLE_TIMEOUT_SECONDS'], 20);
     const maxLifetime = parsePositiveInteger(process.env['DB_MAX_LIFETIME_SECONDS'], 60 * 30);
+    const maxConnections = parsePositiveInteger(process.env['DB_MAX_CONNECTIONS'], 10);
     if (dbDebugEnabled) {
       console.info('[DB] Initializing CRM client', {
-        maxConnections: 10,
+        maxConnections,
         connectTimeout,
         idleTimeout,
         maxLifetime,
       });
     }
     const client = postgres(env.DATABASE_URL, {
-      max: 10,
+      max: maxConnections,
       idle_timeout: idleTimeout,
       connect_timeout: connectTimeout,
       max_lifetime: maxLifetime,

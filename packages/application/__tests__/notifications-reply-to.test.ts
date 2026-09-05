@@ -72,7 +72,7 @@ describe('NotificationEmailService reply-to routing', () => {
 
     expect(emailService.sendPatientNewMessageAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{64}@medicaltourismchina\.health>$/),
+        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{32}@medicaltourismchina\.health>$/),
       }),
     );
     expect(replyTokenRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -104,7 +104,7 @@ describe('NotificationEmailService reply-to routing', () => {
 
     expect(emailService.sendPatientNewMessageAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{64}@medicaltourismchina\.health>$/),
+        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{32}@medicaltourismchina\.health>$/),
       }),
     );
     expect(replyTokenRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -136,7 +136,7 @@ describe('NotificationEmailService reply-to routing', () => {
 
     expect(emailService.sendPatientCaseUpdateAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{64}@medicaltourismchina\.health>$/),
+        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{32}@medicaltourismchina\.health>$/),
       }),
     );
     expect(replyTokenRepo.save).toHaveBeenCalledWith(expect.objectContaining({
@@ -200,7 +200,7 @@ describe('NotificationEmailService reply-to routing', () => {
     }));
     expect(emailService.sendPatientCaseUpdateAlert).toHaveBeenCalledWith(
       expect.objectContaining({
-        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{64}@medicaltourismchina\.health>$/),
+        replyTo: expect.stringMatching(/^Medora Reply <reply\+[a-f0-9]{32}@medicaltourismchina\.health>$/),
       }),
     );
   });

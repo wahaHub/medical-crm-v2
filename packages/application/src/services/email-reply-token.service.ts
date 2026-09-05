@@ -3,8 +3,11 @@ import { createHash, randomBytes } from 'node:crypto';
 export const PREFERRED_REPLY_DOMAIN = 'medicaltourismchina.health';
 export const ALTERNATE_REPLY_DOMAIN = `reply.${PREFERRED_REPLY_DOMAIN}`;
 
-const GENERATED_REPLY_TOKEN_LENGTH = 64;
-const REPLY_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+// 32 hex chars (128 bits) keeps the reply address local part
+// (`reply+` + token = 38 chars) well under the RFC 5321 64-char local-part
+// limit enforced by Resend (422 validation_error). Legacy 64-hex tokens from
+// previously sent emails must still parse so in-flight replies keep working.
+const REPLY_TOKEN_PATTERN = /^([a-f0-9]{32}|[a-f0-9]{64})$/;
 
 export type ReplyAddressType = 'preferred' | 'alternate';
 
@@ -21,7 +24,7 @@ export interface ParsedReplyAddress {
 }
 
 export function generateReplyToken(): string {
-  return randomBytes(32).toString('hex');
+  return randomBytes(16).toString('hex');
 }
 
 export function hashReplyToken(token: string): string {
@@ -29,7 +32,8 @@ export function hashReplyToken(token: string): string {
 }
 
 export function isValidReplyToken(token: string): boolean {
-  return token.length === GENERATED_REPLY_TOKEN_LENGTH && REPLY_TOKEN_PATTERN.test(token);
+  // Length is encoded in the pattern: 32 (current) or 64 (legacy) hex chars.
+  return REPLY_TOKEN_PATTERN.test(token);
 }
 
 export function buildPreferredReplyAddress(token: string): string {

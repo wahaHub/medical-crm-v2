@@ -14,7 +14,7 @@ describe('EmailReplyTokenService', () => {
 
     const result = service.createReplyToken();
 
-    expect(result.token).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.token).toMatch(/^[a-f0-9]{32}$/);
     expect(result.token).toBe(result.token.toLowerCase());
     expect(result.tokenHash).toBe(hashReplyToken(result.token));
     expect(result.tokenHash).toMatch(/^[a-f0-9]{64}$/);
@@ -82,6 +82,21 @@ describe('EmailReplyTokenService', () => {
     expect(parseReplyAddress(`${token}@REPLY.MEDICALTOURISMCHINA.HEALTH`)).toEqual({
       token,
       tokenHash: hashReplyToken(token),
+      addressType: 'alternate',
+    });
+  });
+
+  it('parses legacy 64-hex tokens from previously sent emails', () => {
+    const legacyToken = 'a'.repeat(64);
+
+    expect(parseReplyAddress(`reply+${legacyToken}@medicaltourismchina.health`)).toEqual({
+      token: legacyToken,
+      tokenHash: hashReplyToken(legacyToken),
+      addressType: 'preferred',
+    });
+    expect(parseReplyAddress(`${legacyToken}@reply.medicaltourismchina.health`)).toEqual({
+      token: legacyToken,
+      tokenHash: hashReplyToken(legacyToken),
       addressType: 'alternate',
     });
   });

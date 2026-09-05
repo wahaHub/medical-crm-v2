@@ -2,12 +2,27 @@ import { getSession } from './session';
 import { effectiveVideoConsultationStatus } from './video-consultation-window';
 import postgres from 'postgres';
 
-function getDbSql() {
+// Cache one pool per serverless instance. Creating a pool per call leaks
+// connections (each pool holds up to `max` and is never closed), which can
+// exhaust Supabase's pool_size across warm lambdas.
+const globalForDb = globalThis as unknown as { __adminDbSql?: ReturnType<typeof postgres> };
+
+function getDbSql(): ReturnType<typeof postgres> {
+  const cached = globalForDb.__adminDbSql;
+  if (cached) {
+    return cached;
+  }
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error('DATABASE_URL is required');
   }
-  return postgres(url, { max: 10 });
+  const sql = postgres(url, {
+    max: 1, // short, sequential queries; one connection per instance is enough
+    prepare: false, // works with both Supabase session and transaction poolers
+    idle_timeout: 20, // release idle connections back to Supabase quickly
+  });
+  globalForDb.__adminDbSql = sql;
+  return sql;
 }
 
 export interface VideoConsultation {

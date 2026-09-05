@@ -113,7 +113,9 @@ function makeMockMilestone(overrides: Partial<ConstructorParameters<typeof Journ
     id: 'milestone-1',
     caseId: 'case-1',
     eventType: 'SURGERY_DATE',
-    eventDate: new Date('2026-08-01'),
+    // Keep the default in the future so "upcoming milestone" assertions
+    // don't rot as wall-clock time passes.
+    eventDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     note: 'Upcoming surgery',
     isVisibleToPatient: true,
     createdBy: 'admin-1',

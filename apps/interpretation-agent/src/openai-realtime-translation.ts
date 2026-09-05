@@ -187,6 +187,9 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
         return;
       }
       this.emit('event', event);
+      if (this.#closing || event.type === 'session.closed') {
+        console.error(`[provider] event=${event.type} closing=${this.#closing} deltaBytes=${typeof (event as { delta?: unknown }).delta === 'string' ? (event as { delta: string }).delta.length : 0}`);
+      }
       if (event.type === 'session.updated') {
         this.#opened = true;
         this.#resolveConnect();
@@ -276,6 +279,7 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
       this.once('sessionError', onError);
       if (!this.#closing) {
         this.#closing = true;
+        console.error('[provider] session.close sent');
         this.#socket!.send(JSON.stringify({ type: 'session.close' }));
       }
     });

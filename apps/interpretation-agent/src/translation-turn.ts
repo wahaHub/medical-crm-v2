@@ -159,7 +159,10 @@ export class TranslationTurn {
       return null;
     }
     if (this.#discardReason || !this.#sourceText.trim()
-      || !this.#translatedText.trim() || this.#audioBytes === 0) return null;
+      || !this.#translatedText.trim() || this.#audioBytes === 0) {
+      console.error(`[turn] finish-guard-fail: discardReason=${this.#discardReason} srcChars=${this.#sourceText.trim().length} tgtChars=${this.#translatedText.trim().length} audioBytes=${this.#audioBytes} appendedBytes=${this.#appendedBytes}`);
+      return null;
+    }
     const closeReference = this.#providerReference
       ?? (typeof closedEvent.event_id === 'string' ? closedEvent.event_id : null);
     if (!closeReference) {

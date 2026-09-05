@@ -18,16 +18,21 @@ export function getCrmDb() {
     const idleTimeout = parsePositiveInteger(process.env['DB_IDLE_TIMEOUT_SECONDS'], 20);
     const maxLifetime = parsePositiveInteger(process.env['DB_MAX_LIFETIME_SECONDS'], 60 * 30);
     const maxConnections = parsePositiveInteger(process.env['DB_MAX_CONNECTIONS'], 10);
+    // Supabase transaction-mode pooler (port 6543) does not support prepared
+    // statements; disable them when pointed at it.
+    const disablePrepare = process.env['DB_DISABLE_PREPARE'] === 'true';
     if (dbDebugEnabled) {
       console.info('[DB] Initializing CRM client', {
         maxConnections,
         connectTimeout,
         idleTimeout,
         maxLifetime,
+        disablePrepare,
       });
     }
     const client = postgres(env.DATABASE_URL, {
       max: maxConnections,
+      ...(disablePrepare ? { prepare: false } : {}),
       idle_timeout: idleTimeout,
       connect_timeout: connectTimeout,
       max_lifetime: maxLifetime,

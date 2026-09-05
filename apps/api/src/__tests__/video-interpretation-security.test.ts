@@ -8,7 +8,7 @@ import {
   normalizeLaunchLanguage,
   integratedTranslationTargetApproved,
   liveKitMediaPlaneRevocationApproved,
-  oppositeLanguage,
+  operatorLanguageFor,
   providerSessionAllowedCurrentStates,
   secretDigestMatches,
   MAX_DEIDENTIFIED_E2E_ACTIVE_AI_ROOMS,
@@ -47,8 +47,18 @@ describe('video interpretation security helpers', () => {
   it('allows only the launch languages', () => {
     expect(normalizeLaunchLanguage('zh-CN')).toBe('zh');
     expect(normalizeLaunchLanguage('English')).toBe('en');
-    expect(normalizeLaunchLanguage('id')).toBeNull();
-    expect(oppositeLanguage('zh')).toBe('en');
+    expect(normalizeLaunchLanguage('chinese')).toBe('zh');
+    expect(normalizeLaunchLanguage('id')).toBe('id');
+    expect(normalizeLaunchLanguage('pt-BR')).toBe('pt');
+    expect(normalizeLaunchLanguage('ru')).toBe('ru');
+    // Arabic is input-only for gpt-realtime-translate (not one of the 13
+    // output languages), so it cannot anchor a bidirectional job.
+    expect(normalizeLaunchLanguage('ar')).toBeNull();
+    expect(normalizeLaunchLanguage('xx')).toBeNull();
+    expect(operatorLanguageFor('zh')).toBe('en');
+    expect(operatorLanguageFor('en')).toBe('zh');
+    expect(operatorLanguageFor('id')).toBe('zh');
+    expect(operatorLanguageFor('ru')).toBe('zh');
   });
 
   it('keeps the provider disabled unless both approval gates are explicit', () => {

@@ -10,7 +10,7 @@ import {
   LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
   OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS,
   providerSessionAllowedCurrentStates,
-  oppositeLanguage,
+  type InterpretationLanguage,
   readLiveKitConfig,
   secretDigestMatches,
   WATCHDOG_AUTHORIZATION_TTL_MS,
@@ -97,8 +97,8 @@ interface CapabilityJob {
   release_approval_id: string | null;
   provider_model: string | null;
   provider_endpoint: string | null;
-  source_language: 'zh' | 'en';
-  target_language: 'zh' | 'en';
+  source_language: InterpretationLanguage;
+  target_language: InterpretationLanguage;
   consent_policy_version: string;
   created_by_principal_id: string;
 }
@@ -107,8 +107,8 @@ interface SourceTrackRow {
   id: string;
   participant_identity: string;
   track_sid: string;
-  expected_source_language: 'zh' | 'en';
-  target_language: 'zh' | 'en';
+  expected_source_language: InterpretationLanguage;
+  target_language: InterpretationLanguage;
   language_version: number;
   consent_version: number;
   authorization_revision: string | number;
@@ -230,8 +230,11 @@ async function reconcileSourceTracks(
     const desired = participants.flatMap((participant) => {
       const consentVersion = consentVersions.get(participant.identity);
       if (!consentVersion || participant.identity === lockedJob.agent_identity) return [];
+      // The job row pins the pair: source_language is the patient's language,
+      // target_language is the operator's. No "opposite" derivation — with more
+      // than two languages the pair must be read from the job.
       const sourceLanguage = participant.identity === operatorIdentity
-        ? oppositeLanguage(lockedJob.source_language)
+        ? lockedJob.target_language
         : lockedJob.source_language;
       return participant.tracks
         .filter((track) => track.source === TrackSource.MICROPHONE && Boolean(track.sid))
@@ -239,7 +242,9 @@ async function reconcileSourceTracks(
           participantIdentity: participant.identity,
           trackSid: track.sid,
           sourceLanguage,
-          targetLanguage: oppositeLanguage(sourceLanguage),
+          targetLanguage: participant.identity === operatorIdentity
+            ? lockedJob.source_language
+            : lockedJob.target_language,
           consentVersion,
         }));
     }).sort((a, b) => a.participantIdentity.localeCompare(b.participantIdentity)

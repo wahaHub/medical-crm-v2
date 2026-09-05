@@ -21,6 +21,27 @@ import { classifyRemoteAudioTrust } from './video-interpretation-audio-policy';
 // the UI exposes the controls so staff can run DEIDENTIFIED_EVALUATION sessions.
 const AI_INTERPRETATION_MEDIA_ADAPTER_IMPLEMENTED = true;
 
+// Patient language choices for interpretation. Restricted to the 13 output
+// languages of the OpenAI gpt-realtime-translate endpoint because the
+// doctor's speech is translated into the patient's language. Mirrors
+// INTERPRETATION_LANGUAGES in apps/api/src/video-interpretation/security.ts.
+const PATIENT_LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+  { value: 'id', label: 'Bahasa Indonesia' },
+  { value: 'ru', label: 'Русский' },
+  { value: 'es', label: 'Español' },
+  { value: 'pt', label: 'Português' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'it', label: 'Italiano' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+  { value: 'hi', label: 'हिन्दी' },
+  { value: 'vi', label: 'Tiếng Việt' },
+] as const;
+type PatientSpokenLanguage = (typeof PATIENT_LANGUAGE_OPTIONS)[number]['value'];
+
 interface Props {
   token: string;
   livekitUrl: string;
@@ -76,11 +97,14 @@ export function VideoConsultationRoom({
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
   // Language the patient speaks. Defaults to the consultation's patient_language
-  // when it is zh/en; staff can override it before starting translation (needed
-  // when the patient booked with a non-zh/en UI locale).
-  const [patientSpeaks, setPatientSpeaks] = useState<'zh' | 'en'>(() => {
-    const normalized = (patientLanguage ?? '').trim().toLowerCase();
-    return normalized === 'zh' || normalized.startsWith('zh-') ? 'zh' : 'en';
+  // when it maps to a supported language; staff can override it before starting
+  // translation. Must be one of the 13 OpenAI realtime-translation output
+  // languages because the doctor's speech is translated into this language.
+  const [patientSpeaks, setPatientSpeaks] = useState<PatientSpokenLanguage>(() => {
+    const base = (patientLanguage ?? '').trim().toLowerCase().split('-')[0];
+    return (PATIENT_LANGUAGE_OPTIONS.some((option) => option.value === base)
+      ? base
+      : 'en') as PatientSpokenLanguage;
   });
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
@@ -743,20 +767,15 @@ export function VideoConsultationRoom({
               title="Language the patient speaks (translation direction)"
             >
               <span className="px-2 py-2 text-slate-400">Patient speaks</span>
-              <button
-                type="button"
-                onClick={() => setPatientSpeaks('en')}
-                className={`px-3 py-2 font-medium ${patientSpeaks === 'en' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+              <select
+                value={patientSpeaks}
+                onChange={(event) => setPatientSpeaks(event.target.value as PatientSpokenLanguage)}
+                className="cursor-pointer bg-slate-800 px-2 py-2 font-medium text-white focus:outline-none"
               >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setPatientSpeaks('zh')}
-                className={`px-3 py-2 font-medium ${patientSpeaks === 'zh' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
-              >
-                中文
-              </button>
+                {PATIENT_LANGUAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </span>
             <button
               onClick={() => void startInterpretation()}

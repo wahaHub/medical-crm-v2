@@ -77,16 +77,31 @@ export function secretDigestMatches(secret: string, expectedHexDigest: string): 
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-export function normalizeLaunchLanguage(language: string | null | undefined): 'zh' | 'en' | null {
+// Languages supported as interpretation source/target. Must stay within the
+// 13 output languages of the OpenAI gpt-realtime-translate endpoint (both job
+// directions require a valid output language); input-side detection covers
+// 70+ languages automatically. Mirrored by TranslationLanguage in
+// apps/interpretation-agent (no shared package between the two deployables).
+export const INTERPRETATION_LANGUAGES = [
+  'zh', 'en', 'es', 'pt', 'fr', 'de', 'it', 'ru', 'ja', 'ko', 'hi', 'id', 'vi',
+] as const;
+export type InterpretationLanguage = (typeof INTERPRETATION_LANGUAGES)[number];
+
+export function normalizeLaunchLanguage(language: string | null | undefined): InterpretationLanguage | null {
   if (!language) return null;
   const normalized = language.trim().toLowerCase();
-  if (normalized === 'zh' || normalized.startsWith('zh-') || normalized === 'chinese') return 'zh';
-  if (normalized === 'en' || normalized.startsWith('en-') || normalized === 'english') return 'en';
-  return null;
+  if (normalized === 'chinese') return 'zh';
+  if (normalized === 'english') return 'en';
+  const base = normalized.split('-')[0] ?? '';
+  return (INTERPRETATION_LANGUAGES as readonly string[]).includes(base)
+    ? (base as InterpretationLanguage)
+    : null;
 }
 
-export function oppositeLanguage(language: 'zh' | 'en'): 'zh' | 'en' {
-  return language === 'zh' ? 'en' : 'zh';
+// Doctors on the platform speak Chinese; an English operator is kept for the
+// legacy zh-patient path so existing zh/en behavior is unchanged.
+export function operatorLanguageFor(patientLanguage: InterpretationLanguage): InterpretationLanguage {
+  return patientLanguage === 'zh' ? 'en' : 'zh';
 }
 
 export function interpretationFeatureEnabled(): boolean {

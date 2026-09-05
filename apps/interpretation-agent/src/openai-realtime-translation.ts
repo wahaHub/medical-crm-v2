@@ -2,7 +2,14 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
 
-export type TranslationLanguage = 'zh' | 'en';
+// The 13 output languages of the OpenAI gpt-realtime-translate endpoint.
+// Source of truth: INTERPRETATION_LANGUAGES in
+// apps/api/src/video-interpretation/security.ts (no shared package between
+// the two deployables; keep in sync). Input language is auto-detected by the
+// provider (70+ languages) and never pinned here.
+export type TranslationLanguage =
+  | 'zh' | 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it'
+  | 'ru' | 'ja' | 'ko' | 'hi' | 'id' | 'vi';
 
 export interface TranslationDeltaEvent {
   type:

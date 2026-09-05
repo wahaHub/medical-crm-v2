@@ -8,6 +8,7 @@ import {
   type Room,
 } from '@livekit/rtc-node';
 import type { AuthorizedTrack, DispatchMetadata } from './runtime-types.js';
+import type { TranslationLanguage } from './openai-realtime-translation.js';
 import type { TranslationCaption } from './translation-turn.js';
 
 export interface PublishedAudioOutput {
@@ -16,13 +17,13 @@ export interface PublishedAudioOutput {
   publication: Pick<LocalTrackPublication, 'sid'>;
 }
 
-export type AudioOutputFactory = (language: 'zh' | 'en') => Promise<PublishedAudioOutput>;
+export type AudioOutputFactory = (language: TranslationLanguage) => Promise<PublishedAudioOutput>;
 
 export class LiveKitOutputPublisher {
   readonly #room: Room;
   readonly #execution: DispatchMetadata;
-  readonly #audio = new Map<'zh' | 'en', PublishedAudioOutput>();
-  readonly #playout = new Map<'zh' | 'en', Promise<void>>();
+  readonly #audio = new Map<TranslationLanguage, PublishedAudioOutput>();
+  readonly #playout = new Map<TranslationLanguage, Promise<void>>();
   readonly #audioOutputFactory: AudioOutputFactory;
   #captionSequence = 0;
   #interruptionGeneration = 0;
@@ -62,7 +63,7 @@ export class LiveKitOutputPublisher {
   }
 
   async play(
-    targetLanguage: 'zh' | 'en',
+    targetLanguage: TranslationLanguage,
     chunks: Uint8Array[],
     eligibleAtMonotonicMs: number,
   ): Promise<void> {
@@ -125,7 +126,7 @@ export class LiveKitOutputPublisher {
     this.#audio.clear();
   }
 
-  async #ensureAudioTrack(language: 'zh' | 'en'): Promise<PublishedAudioOutput> {
+  async #ensureAudioTrack(language: TranslationLanguage): Promise<PublishedAudioOutput> {
     const existing = this.#audio.get(language);
     if (existing) return existing;
     const output = await this.#audioOutputFactory(language);
@@ -139,7 +140,7 @@ export class LiveKitOutputPublisher {
     return output;
   }
 
-  async #createAudioTrack(language: 'zh' | 'en'): Promise<PublishedAudioOutput> {
+  async #createAudioTrack(language: TranslationLanguage): Promise<PublishedAudioOutput> {
     const participant = this.#room.localParticipant;
     if (!participant) throw new Error('LiveKit local participant is unavailable');
     const source = new AudioSource(24_000, 1, 2_000);

@@ -23,10 +23,11 @@ function parseOptions(args: string[]): ProbeOptions {
   const input = values.get('--input');
   const output = values.get('--output');
   const target = values.get('--target');
-  if (!input || !output || (target !== 'zh' && target !== 'en')) {
-    throw new Error('usage: probe-realtime-translation --input input.pcm --output translated.pcm --target zh|en');
+  const supported: readonly string[] = ['zh', 'en', 'es', 'pt', 'fr', 'de', 'it', 'ru', 'ja', 'ko', 'hi', 'id', 'vi'];
+  if (!input || !output || !target || !supported.includes(target)) {
+    throw new Error(`usage: probe-realtime-translation --input input.pcm --output translated.pcm --target ${supported.join('|')}`);
   }
-  return { input, output, target };
+  return { input, output, target: target as TranslationLanguage };
 }
 
 export async function runProbe(options: ProbeOptions): Promise<void> {

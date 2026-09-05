@@ -6,7 +6,9 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       consultationId?: string;
       participantIdentities?: string[];
-      sourceLanguage?: 'zh' | 'en';
+      // InterpretationLanguage on the API side; validated upstream by
+      // POST /api/v2/video-consultations/:id/interpretation/start.
+      sourceLanguage?: 'zh' | 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it' | 'ru' | 'ja' | 'ko' | 'hi' | 'id' | 'vi';
       consentWitnessConfirmed?: boolean;
     };
 

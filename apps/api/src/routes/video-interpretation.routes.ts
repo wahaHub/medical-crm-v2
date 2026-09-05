@@ -18,6 +18,8 @@ import {
   HOSTED_DISPATCH_ABSENCE_BOUND_VERIFIED,
   HOSTED_DISPATCH_RECOVERY_SETTLE_SECONDS,
   interpretationFeatureEnabled,
+  INTERPRETATION_LANGUAGES,
+  type InterpretationLanguage,
   integratedTranslationTargetApproved,
   liveKitMediaPlaneRevocationApproved,
   MAX_ACTIVE_AI_ROOMS,
@@ -26,7 +28,7 @@ import {
   LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
   LIFECYCLE_RECONCILER_STALE_SECONDS,
   normalizeLaunchLanguage,
-  oppositeLanguage,
+  operatorLanguageFor,
   readHostedAgentConfig,
   readLiveKitConfig,
   reserveInterpretationBudgetMicrodollars,
@@ -57,7 +59,7 @@ const revokeConsentSchema = z.object({
   witnessConfirmed: z.literal(true),
 });
 const startSchema = z.object({
-  sourceLanguage: z.enum(['zh', 'en']).optional(),
+  sourceLanguage: z.enum(INTERPRETATION_LANGUAGES).optional(),
   maximumAiDurationSeconds: z.number().int().min(60).max(7200).default(1800),
   dataClassification: z.enum(['DEIDENTIFIED_EVALUATION', 'REAL_PATIENT']).default('DEIDENTIFIED_EVALUATION'),
 });
@@ -117,8 +119,8 @@ interface JobRow {
   desired_state: string;
   status: string;
   provider_profile: string;
-  source_language: 'zh' | 'en';
-  target_language: 'zh' | 'en';
+  source_language: InterpretationLanguage;
+  target_language: InterpretationLanguage;
   agent_identity: string;
   dispatch_id: string | null;
   failure_code: string | null;
@@ -1045,9 +1047,9 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     }
     const sourceLanguage = body.sourceLanguage ?? normalizeLaunchLanguage(consultation.patient_language);
     if (!sourceLanguage) {
-      throw new HTTPException(409, { message: 'A supported zh/en source language must be confirmed' });
+      throw new HTTPException(409, { message: 'A supported source language must be confirmed' });
     }
-    const targetLanguage = oppositeLanguage(sourceLanguage);
+    const targetLanguage = operatorLanguageFor(sourceLanguage);
     const [pendingRuntimeCleanup] = await query<{ id: string }[]>`
       SELECT id FROM video_consultation_interpretation_jobs
       WHERE consultation_id = ${consultationId}

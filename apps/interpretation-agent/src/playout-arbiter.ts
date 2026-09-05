@@ -1,14 +1,16 @@
+import type { TranslationLanguage } from './openai-realtime-translation.js';
+
 export interface EligibleTurn<T> {
   id: string;
-  targetLanguage: 'zh' | 'en';
+  targetLanguage: TranslationLanguage;
   eligibleAtMonotonicMs: number;
   payload: T;
 }
 
 export class PlayoutArbiter<T> {
   readonly #expiryMs: number;
-  #queues = new Map<'zh' | 'en', EligibleTurn<T>[]>();
-  #playing = new Set<'zh' | 'en'>();
+  #queues = new Map<TranslationLanguage, EligibleTurn<T>[]>();
+  #playing = new Set<TranslationLanguage>();
 
   constructor(expiryMs = 5_000) {
     this.#expiryMs = expiryMs;
@@ -21,7 +23,7 @@ export class PlayoutArbiter<T> {
     this.#queues.set(turn.targetLanguage, queue);
   }
 
-  next(language: 'zh' | 'en', nowMonotonicMs: number): EligibleTurn<T> | null {
+  next(language: TranslationLanguage, nowMonotonicMs: number): EligibleTurn<T> | null {
     if (this.#playing.has(language)) return null;
     const queue = this.#queues.get(language) ?? [];
     while (queue[0] && nowMonotonicMs - queue[0].eligibleAtMonotonicMs > this.#expiryMs) queue.shift();
@@ -30,7 +32,7 @@ export class PlayoutArbiter<T> {
     return turn;
   }
 
-  complete(language: 'zh' | 'en'): void {
+  complete(language: TranslationLanguage): void {
     this.#playing.delete(language);
   }
 

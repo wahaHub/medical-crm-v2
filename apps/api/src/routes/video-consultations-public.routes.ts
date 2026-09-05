@@ -4,12 +4,15 @@ import { z } from '@hono/zod-openapi';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { AccessToken } from 'livekit-server-sdk';
 import { readLiveKitConfig } from '../video-interpretation/security.js';
+import { patientJoinDecision } from '../video-interpretation/patient-video-access.js';
 import { rateLimitByIp } from '../middleware/rate-limit.middleware.js';
 
 // Public, unauthenticated guest access to video consultation rooms via a
 // shareable link. The consultation UUID in the URL acts as the bearer
 // capability — anyone with the link can join while the consultation is
-// SCHEDULED or IN_PROGRESS. This is an intentional temporary product decision.
+// SCHEDULED or IN_PROGRESS and inside the join window (15 min before the
+// start until 30 min after the scheduled end). This is an intentional
+// temporary product decision.
 const app = new Hono();
 
 const DEFAULT_DURATION_MINUTES = 30;
@@ -29,6 +32,7 @@ interface ConsultationRow {
   title: string | null;
   doctor_name: string | null;
   scheduled_at: string | null;
+  started_at: string | null;
   duration_minutes: number;
 }
 
@@ -47,13 +51,20 @@ app.get('/video-consultations/:id/public-info', async (c) => {
   const sql = getDbSql();
 
   const [consultation] = await sql<ConsultationRow[]>`
-    SELECT id, room_name, status, title, doctor_name, scheduled_at, duration_minutes
+    SELECT id, room_name, status, title, doctor_name, scheduled_at, started_at, duration_minutes
     FROM public.video_consultations
     WHERE id = ${id}
   `;
   if (!consultation) {
     return c.json({ error: 'Consultation not found' }, 404);
   }
+
+  const joinable = ['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)
+    && patientJoinDecision({
+      scheduledAt: consultation.scheduled_at,
+      startedAt: consultation.started_at,
+      durationMinutes: consultation.duration_minutes,
+    }).allowed;
 
   return c.json({
     id: consultation.id,
@@ -62,7 +73,7 @@ app.get('/video-consultations/:id/public-info', async (c) => {
     doctorName: consultation.doctor_name,
     scheduledAt: consultation.scheduled_at,
     durationMinutes: consultation.duration_minutes,
-    joinable: ['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status),
+    joinable,
   });
 });
 
@@ -76,7 +87,7 @@ app.post(
     const sql = getDbSql();
 
     const [consultation] = await sql<ConsultationRow[]>`
-      SELECT id, room_name, status, title, doctor_name, scheduled_at, duration_minutes
+      SELECT id, room_name, status, title, doctor_name, scheduled_at, started_at, duration_minutes
       FROM public.video_consultations
       WHERE id = ${id}
     `;
@@ -85,6 +96,14 @@ app.post(
     }
     if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
       return c.json({ error: 'Consultation is not open for joining' }, 409);
+    }
+    const join = patientJoinDecision({
+      scheduledAt: consultation.scheduled_at,
+      startedAt: consultation.started_at,
+      durationMinutes: consultation.duration_minutes,
+    });
+    if (!join.allowed) {
+      return c.json({ error: `Consultation join window is closed: ${join.reason}` }, 409);
     }
 
     const identity = `guest-${randomUUID()}`;

@@ -9,6 +9,7 @@ import {
 import {
   canonicalPatientVideoIdentity,
   closePatientRoom,
+  effectiveConsultationStatus,
   patientJoinDecision,
 } from '../video-interpretation/patient-video-access.js';
 
@@ -230,7 +231,14 @@ app.get('/', async (c) => {
     ${query.limit ? sql`LIMIT ${query.limit}` : sql``}
   `;
 
-  return c.json(rows);
+  return c.json(rows.map((row) => ({
+    ...row,
+    status: effectiveConsultationStatus(row.status, {
+      scheduledAt: row.scheduled_at,
+      startedAt: row.started_at,
+      durationMinutes: row.duration_minutes,
+    }),
+  })));
 });
 
 // POST /

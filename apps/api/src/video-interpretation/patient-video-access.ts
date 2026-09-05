@@ -40,6 +40,35 @@ export function patientJoinDecision(input: {
   };
 }
 
+export function isConsultationOver(input: {
+  scheduledAt: string | null;
+  startedAt?: string | null;
+  durationMinutes: number | null | undefined;
+  nowMs?: number;
+}): boolean {
+  const decision = patientJoinDecision(input);
+  return !decision.allowed && decision.reason === 'too_late';
+}
+
+// Read-time derivation: a consultation whose join window has closed is shown
+// as COMPLETED even if no one ever marked it ended. Deliberately not a
+// database sweep, so rescheduling (a new future scheduled_at) revives the
+// consultation without any state-machine surgery.
+export function effectiveConsultationStatus<T extends string>(
+  status: T,
+  input: {
+    scheduledAt: string | null;
+    startedAt?: string | null;
+    durationMinutes: number | null | undefined;
+    nowMs?: number;
+  },
+): T | 'COMPLETED' {
+  if ((status === 'SCHEDULED' || status === 'IN_PROGRESS') && isConsultationOver(input)) {
+    return 'COMPLETED';
+  }
+  return status;
+}
+
 export interface PatientRoomAdmin {
   removeParticipant(
     roomName: string,

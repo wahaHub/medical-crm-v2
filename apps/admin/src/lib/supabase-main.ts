@@ -1,4 +1,5 @@
 import { getSession } from './session';
+import { effectiveVideoConsultationStatus } from './video-consultation-window';
 import postgres from 'postgres';
 
 function getDbSql() {
@@ -60,7 +61,14 @@ export async function listVideoConsultations(options?: { status?: string; doctor
     ORDER BY scheduled_at DESC
   `;
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    status: effectiveVideoConsultationStatus(row.status, {
+      scheduledAt: row.scheduled_at,
+      startedAt: row.started_at,
+      durationMinutes: row.duration_minutes,
+    }),
+  }));
 }
 
 export async function updateVideoConsultationStatus(

@@ -11,8 +11,9 @@ import {
   type Column,
 } from '@medical-crm/ui';
 import { formatDate, formatTime } from '@medical-crm/ui';
-import { Video, Check, X, PhoneOff, Languages } from 'lucide-react';
+import { Video, Check, X, PhoneOff, Languages, Link2 } from 'lucide-react';
 import { queryFetch, mutationFetch } from '@/lib/query-fetch';
+import { patientVideoConsultationLink } from '@/lib/patient-video-link';
 import { VideoConsultationRoom } from './video-consultation-room';
 import type {
   VideoConsultation,
@@ -67,6 +68,7 @@ export function VideoConsultationsList({ initialData }: Props) {
   const [roomToken, setRoomToken] = useState<LiveKitTokenResponse | null>(null);
   const [authorizingAiId, setAuthorizingAiId] = useState<string | null>(null);
   const [aiAuthorizedIds, setAiAuthorizedIds] = useState<Record<string, boolean>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const tab = TABS.find((t) => t.key === activeTab);
@@ -192,6 +194,42 @@ export function VideoConsultationsList({ initialData }: Props) {
     } finally {
       setAuthorizingAiId(null);
     }
+  }
+
+  async function handleCopyPatientLink(c: VideoConsultation) {
+    const url = patientVideoConsultationLink(c.id);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+    setCopiedId(c.id);
+    window.setTimeout(() => setCopiedId((current) => (current === c.id ? null : current)), 2000);
+  }
+
+  function renderCopyPatientLink(c: VideoConsultation) {
+    if (c.status !== 'SCHEDULED' && c.status !== 'IN_PROGRESS') return null;
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-8 shrink-0 gap-1 whitespace-nowrap"
+        onClick={() => void handleCopyPatientLink(c)}
+        title="Copy the patient-only room link (requires the booking patient's login)"
+      >
+        {copiedId === c.id ? (
+          <Check className="h-3.5 w-3.5 text-emerald-600" />
+        ) : (
+          <Link2 className="h-3.5 w-3.5" />
+        )}
+        {copiedId === c.id ? 'Copied' : 'Copy link'}
+      </Button>
+    );
   }
 
   function renderAiButton(c: VideoConsultation) {
@@ -331,6 +369,7 @@ export function VideoConsultationsList({ initialData }: Props) {
                 )}
                 Enter room
               </Button>
+              {renderCopyPatientLink(c)}
               {(c.status === 'SCHEDULED' || c.status === 'IN_PROGRESS') && (
                 <Button
                   size="sm"
@@ -359,6 +398,7 @@ export function VideoConsultationsList({ initialData }: Props) {
               <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-400">
                 <PhoneOff className="h-3.5 w-3.5" /> Opens at {formatTime(new Date(c.scheduled_at!))}
               </span>
+              {renderCopyPatientLink(c)}
               <Button
                 size="sm"
                 variant="outline"

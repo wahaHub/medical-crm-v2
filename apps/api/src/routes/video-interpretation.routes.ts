@@ -6,6 +6,7 @@ import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { AccessToken, LiveKitAPI } from 'livekit-server-sdk';
+import { patientJoinDecision } from '../video-interpretation/patient-video-access.js';
 import {
   approvedProviderProfile,
   approvedRuntimeProfile,
@@ -100,6 +101,9 @@ interface ConsultationRow {
   host_identity: string | null;
   patient_language: string | null;
   metadata: unknown;
+  scheduled_at: string | null;
+  started_at: string | null;
+  duration_minutes: number | null;
 }
 
 interface JobRow {
@@ -280,7 +284,8 @@ async function loadConsultation(id: string): Promise<ConsultationRow> {
   const sql = sqlClient();
   const [consultation] = await sql<ConsultationRow[]>`
     SELECT id, case_id, patient_id, patient_name, patient_email,
-           room_name, room_generation, status, host_identity, patient_language, metadata
+           room_name, room_generation, status, host_identity, patient_language, metadata,
+           scheduled_at, started_at, duration_minutes
     FROM video_consultations
     WHERE id = ${id}
   `;
@@ -325,6 +330,14 @@ app.post('/api/v2/video-consultations/:id/token', async (c) => {
   const consultation = await loadConsultation(consultationId);
   if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
     throw new HTTPException(409, { message: 'Consultation is not open for joining' });
+  }
+  const join = patientJoinDecision({
+    scheduledAt: consultation.scheduled_at,
+    startedAt: consultation.started_at,
+    durationMinutes: consultation.duration_minutes,
+  });
+  if (!join.allowed) {
+    throw new HTTPException(409, { message: `Consultation join window is closed: ${join.reason}` });
   }
 
   const config = readLiveKitConfig();

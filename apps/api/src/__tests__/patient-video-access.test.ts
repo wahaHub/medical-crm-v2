@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canonicalPatientVideoIdentity,
   closePatientRoom,
+  effectiveConsultationStatus,
+  isConsultationOver,
   patientJoinDecision,
   PATIENT_TOKEN_MAX_TTL_SECONDS,
 } from '../video-interpretation/patient-video-access.js';
@@ -62,6 +64,59 @@ describe('patient video access window', () => {
       nowMs: Date.parse('2026-09-01T10:59:50.000Z'),
     });
     expect(decision).toMatchObject({ allowed: true, ttlSeconds: 10 });
+  });
+});
+
+describe('consultation-over derivation', () => {
+  const scheduledAt = '2026-09-01T10:00:00.000Z';
+
+  it('marks SCHEDULED/IN_PROGRESS consultations as COMPLETED once the window closes', () => {
+    const afterWindow = Date.parse('2026-09-01T11:00:00.000Z');
+    expect(effectiveConsultationStatus('SCHEDULED', {
+      scheduledAt, durationMinutes: 30, nowMs: afterWindow,
+    })).toBe('COMPLETED');
+    expect(effectiveConsultationStatus('IN_PROGRESS', {
+      scheduledAt, durationMinutes: 30, nowMs: afterWindow,
+    })).toBe('COMPLETED');
+  });
+
+  it('keeps the stored status while the window is open or already final', () => {
+    const during = Date.parse('2026-09-01T10:10:00.000Z');
+    expect(effectiveConsultationStatus('SCHEDULED', {
+      scheduledAt, durationMinutes: 30, nowMs: during,
+    })).toBe('SCHEDULED');
+    expect(effectiveConsultationStatus('IN_PROGRESS', {
+      scheduledAt, durationMinutes: 30, nowMs: during,
+    })).toBe('IN_PROGRESS');
+    expect(effectiveConsultationStatus('COMPLETED', {
+      scheduledAt, durationMinutes: 30, nowMs: Date.parse('2026-09-05T00:00:00.000Z'),
+    })).toBe('COMPLETED');
+    expect(effectiveConsultationStatus('CANCELLED', {
+      scheduledAt, durationMinutes: 30, nowMs: Date.parse('2026-09-05T00:00:00.000Z'),
+    })).toBe('CANCELLED');
+  });
+
+  it('revives when rescheduled into the future', () => {
+    expect(effectiveConsultationStatus('SCHEDULED', {
+      scheduledAt: '2026-09-10T10:00:00.000Z',
+      durationMinutes: 30,
+      nowMs: Date.parse('2026-09-05T00:00:00.000Z'),
+    })).toBe('SCHEDULED');
+  });
+
+  it('anchors unscheduled immediate consultations on their start time', () => {
+    expect(isConsultationOver({
+      scheduledAt: null,
+      startedAt: '2026-09-01T10:00:00.000Z',
+      durationMinutes: 30,
+      nowMs: Date.parse('2026-09-01T11:00:00.000Z'),
+    })).toBe(true);
+    expect(isConsultationOver({
+      scheduledAt: null,
+      startedAt: '2026-09-01T10:00:00.000Z',
+      durationMinutes: 30,
+      nowMs: Date.parse('2026-09-01T10:20:00.000Z'),
+    })).toBe(false);
   });
 });
 

@@ -20,6 +20,8 @@ function getDbSql(): ReturnType<typeof postgres> {
     max: 1, // short, sequential queries; one connection per instance is enough
     prepare: false, // works with both Supabase session and transaction poolers
     idle_timeout: 20, // release idle connections back to Supabase quickly
+    keep_alive: 30, // detect silently-dropped sockets (NAT/pooler idle cuts)
+    max_lifetime: 300, // proactively recycle connections every 5 minutes
   });
   globalForDb.__adminDbSql = sql;
   return sql;

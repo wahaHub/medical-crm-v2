@@ -102,7 +102,7 @@ async function runClaim(host: SelfHostClient, claim: SelfHostedClaim, signal: Ab
     executionVersion: claim.job.executionVersion,
     agentIdentity: claim.job.agentIdentity,
   };
-  const vad = await silero.VAD.load({ minSilenceDuration: 550, maxBufferedSpeech: 30_000 });
+  const vad = await silero.VAD.load({ minSilenceDuration: 800, maxBufferedSpeech: 30_000 });
   const room = new Room();
   const client = new ControlPlaneClient({ baseUrl: host.baseUrl, capability: claim.capability });
   const watchdog = new AuthorizationWatchdog(

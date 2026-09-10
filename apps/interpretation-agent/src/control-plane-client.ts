@@ -153,10 +153,14 @@ export class ControlPlaneClient {
     providerCloseReference: string | null,
     closeResult?: string,
   ): Promise<void> {
+    // Best-effort transition marker only: after a stop/fence the session may
+    // already sit in ORPHAN_WAIT, where CLOSING is not an allowed transition.
+    // The terminal report below is what finalization waits on and must still
+    // be attempted.
     await this.#authorizedJson(
       `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions/${sessionId}/close`,
       { state: 'CLOSING', closeResult },
-    );
+    ).catch(() => undefined);
     await this.#authorizedJson(
       `/api/v2/internal/video-interpretation/jobs/${jobId}/provider-sessions/${sessionId}/close`,
       providerCloseReference

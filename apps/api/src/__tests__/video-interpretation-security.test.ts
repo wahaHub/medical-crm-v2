@@ -15,6 +15,7 @@ import {
   MAX_DEIDENTIFIED_E2E_AUTHORITY_LIFETIME_SECONDS,
   MAX_DEIDENTIFIED_E2E_DURATION_SECONDS,
   reserveInterpretationBudgetMicrodollars,
+  resolveLaunchSourceLanguage,
   selfHostedJoinTokenTtlSeconds,
   syntheticDeidentifiedE2eConsultationApproved,
   v1ConsentTopologySupported,
@@ -59,6 +60,14 @@ describe('video interpretation security helpers', () => {
     expect(operatorLanguageFor('en')).toBe('zh');
     expect(operatorLanguageFor('id')).toBe('zh');
     expect(operatorLanguageFor('ru')).toBe('zh');
+  });
+
+  it('keeps a supported patient booking language authoritative at launch', () => {
+    expect(resolveLaunchSourceLanguage('fr-CA', undefined)).toBe('fr');
+    expect(resolveLaunchSourceLanguage('fr-CA', 'fr')).toBe('fr');
+    expect(resolveLaunchSourceLanguage('fr-CA', 'en')).toBeNull();
+    expect(resolveLaunchSourceLanguage(null, 'ja')).toBe('ja');
+    expect(resolveLaunchSourceLanguage('ar', undefined)).toBeNull();
   });
 
   it('keeps the provider disabled unless both approval gates are explicit', () => {
@@ -262,6 +271,23 @@ describe('video interpretation security helpers', () => {
       [operatorIdentity, patientIdentity],
       [operatorIdentity, 'patient-second-consultation'],
     )).toBe(false);
+  });
+
+  it('allows a solo operator self-test but no other single-participant topology', () => {
+    const operatorIdentity = 'operator-admin-consultation';
+    const patientIdentity = 'patient-patient-consultation';
+    expect(v1ConsentTopologySupported({
+      identities: [operatorIdentity],
+      operatorIdentity,
+      patientIdentity,
+      synthetic: false,
+    })).toBe(true);
+    expect(v1ConsentTopologySupported({
+      identities: [patientIdentity],
+      operatorIdentity,
+      patientIdentity,
+      synthetic: false,
+    })).toBe(false);
   });
 
   it('keeps all human video token issuance fail-closed by default', () => {

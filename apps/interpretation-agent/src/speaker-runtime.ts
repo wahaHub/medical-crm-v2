@@ -3,7 +3,11 @@ import { asLanguageCode, VADEventType, type inference } from '@livekit/agents';
 import { AudioStream, type AudioFrame, type RemoteAudioTrack } from '@livekit/rtc-node';
 import type { AuthorizationWatchdog } from './authorization-watchdog.js';
 import type { ControlPlaneClient } from './control-plane-client.js';
-import type { LiveKitOutputPublisher } from './livekit-output-publisher.js';
+import type {
+  LiveKitOutputPublisher,
+  PlayoutDiagnostics,
+  PlayoutHandle,
+} from './livekit-output-publisher.js';
 import {
   RealtimeTranslationSession,
   safetyIdentifierForJob,
@@ -17,6 +21,23 @@ interface ActiveTurn {
   providerSessionId: string;
   connected: boolean;
   finishing: boolean;
+  /** Set while a mid-sentence pause is being given extra time to continue. */
+  extensionTimer: ReturnType<typeof setTimeout> | null;
+  /** Set while an end-of-turn prediction await is in flight for this turn. */
+  deciding: boolean;
+  diagnostics: {
+    turnId: string;
+    speechStartedAtMonotonicMs: number;
+    vadSpeechEndedAtMonotonicMs: number | null;
+    firstTranslatedCaptionAtMonotonicMs: number | null;
+    firstProviderAudioAtMonotonicMs: number | null;
+    providerCompletedAtMonotonicMs: number | null;
+  };
+  playout: {
+    handle: PlayoutHandle | null;
+    bufferedChunks: Uint8Array[];
+    bufferedBytes: number;
+  };
 }
 
 export interface SpeakerRuntimeOptions {
@@ -45,6 +66,15 @@ export function runtimeAuthorityOpen(
     && nowMs < applicationDeadlineMs;
 }
 
+/**
+ * How long a turn stays open when the VAD sees a pause but the end-of-turn
+ * model considers the sentence unfinished. Bounds the extra latency added to
+ * short utterances the model misjudges.
+ */
+const TURN_EXTENSION_MS = 2_000;
+const STREAMING_PLAYOUT_LOOKAHEAD_MS = 1_500;
+const STREAMING_PLAYOUT_LOOKAHEAD_BYTES = 24_000 * 2 * STREAMING_PLAYOUT_LOOKAHEAD_MS / 1_000;
+
 export class SpeakerRuntime {
   readonly #options: SpeakerRuntimeOptions;
   readonly #audioStream: AudioStream;
@@ -61,11 +91,21 @@ export class SpeakerRuntime {
   #pendingSpeechEndAt: number | null = null;
   #starting = false;
   #pendingOverflow = false;
+  #inSpeech = false;
+  // Utterance that overlaps the previous turn's generation/playout. It is
+  // buffered here and kicked off as the next turn when the previous turn
+  // releases, instead of being dropped.
+  #queuedSpeechStart = false;
+  #queuedSpeechEndAt: number | null = null;
+  #queuedPcm: Uint8Array[] = [];
+  #queuedBytes = 0;
+  #queuedOverflow = false;
   readonly #turnBoundary = new SpeakerTurnBoundary();
   readonly #tasks = new Set<Promise<void>>();
   readonly #applicationDeadlineMs: number;
   #deadlineTimer: ReturnType<typeof setTimeout> | null = null;
   #deadlineExpired = false;
+  #turnSequence = 0;
 
   constructor(options: SpeakerRuntimeOptions) {
     this.#options = options;
@@ -162,7 +202,12 @@ export class SpeakerRuntime {
           else this.#pushPreRoll(pcm);
           continue;
         }
-        if (active.finishing) continue;
+        if (active.finishing) {
+          // The previous turn is generating/playing its translation. Buffer
+          // overlapping speech for the next turn instead of dropping it.
+          this.#pushQueued(pcm);
+          continue;
+        }
         if (!this.#authorizedNow()) {
           await this.#discardActive('AUTHORIZATION_REVOKED');
           continue;
@@ -181,16 +226,42 @@ export class SpeakerRuntime {
       if (this.#closed) return;
       if (event.type === VADEventType.START_OF_SPEECH) {
         console.error(`[runtime] vad speech start: sid=${this.#authorization.trackSid}`);
-        this.#options.output.interruptHumanSpeech();
+        this.#inSpeech = true;
+        // No hard barge-in here: interrupting the playing translation on every
+        // speech start silently discarded spoken content (the tail of the
+        // sentence being played, or a whole turn queued behind it). Overlap is
+        // handled by the listeners' clients ducking original audio instead.
         this.#trackTask(this.#onSpeechStart(performance.now()));
       } else if (event.type === VADEventType.END_OF_SPEECH) {
         console.error(`[runtime] vad speech end: sid=${this.#authorization.trackSid}`);
+        this.#inSpeech = false;
         this.#trackTask(this.#onSpeechEnd(performance.now()));
       }
     }
   }
 
   async #onSpeechStart(observedAtMonotonicMs: number): Promise<void> {
+    const activeTurn = this.#active;
+    if (activeTurn?.finishing) {
+      // Speech overlapping the previous turn's translation: mark it queued so
+      // its frames (already buffering in #pumpAudio) become the next turn.
+      this.#queuedSpeechStart = true;
+      return;
+    }
+    if (activeTurn && activeTurn.extensionTimer) {
+      // The speaker resumed inside the extension window: the pause was
+      // mid-sentence, so this audio continues the same translation turn.
+      clearTimeout(activeTurn.extensionTimer);
+      activeTurn.extensionTimer = null;
+      console.error(`[runtime] turn extension resumed: sid=${this.#authorization.trackSid}`);
+      return;
+    }
+    if (activeTurn?.deciding) {
+      // The speaker resumed while an end-of-turn prediction was in flight:
+      // keep the turn open. The in-flight check re-verifies #inSpeech before
+      // extending or finishing.
+      return;
+    }
     const boundaryDecision = this.#turnBoundary.onSpeechStart(Boolean(this.#active));
     if (boundaryDecision === 'DROP') return;
     if (boundaryDecision === 'DISCARD_ACTIVE') {
@@ -241,13 +312,49 @@ export class SpeakerRuntime {
         model: this.#options.providerModel,
         endpoint: this.#options.providerEndpoint,
       });
+      const diagnostics: PlayoutDiagnostics = {
+        turnId: `${this.#authorization.trackSid}:${++this.#turnSequence}`,
+        speechStartedAtMonotonicMs: observedAtMonotonicMs,
+        vadSpeechEndedAtMonotonicMs: null,
+        firstTranslatedCaptionAtMonotonicMs: null as number | null,
+        firstProviderAudioAtMonotonicMs: null,
+        providerCompletedAtMonotonicMs: null,
+      };
+      const playout = {
+        handle: null as PlayoutHandle | null,
+        bufferedChunks: [] as Uint8Array[],
+        bufferedBytes: 0,
+      };
       const turn = new TranslationTurn({
         transport,
         sourceLanguage: this.#authorization.sourceLanguage,
         targetLanguage: this.#authorization.targetLanguage,
         onCaption: (caption) => {
           if (!this.#authorizedNow()) return;
+          if (caption.translatedText.trim()
+            && diagnostics.firstTranslatedCaptionAtMonotonicMs === null) {
+            diagnostics.firstTranslatedCaptionAtMonotonicMs = performance.now();
+          }
           void this.#options.output.publishCaption(this.#authorization, caption).catch(() => undefined);
+        },
+        onAudioChunk: (chunk, audioObservedAtMonotonicMs) => {
+          diagnostics.firstProviderAudioAtMonotonicMs ??= audioObservedAtMonotonicMs;
+          if (playout.handle) {
+            playout.handle.push(chunk);
+            return;
+          }
+          playout.bufferedChunks.push(chunk);
+          playout.bufferedBytes += chunk.byteLength;
+          if (playout.bufferedBytes < STREAMING_PLAYOUT_LOOKAHEAD_BYTES) return;
+
+          playout.handle = this.#options.output.beginPlayout(
+            this.#authorization.targetLanguage,
+            performance.now(),
+            diagnostics,
+          );
+          for (const buffered of playout.bufferedChunks) playout.handle.push(buffered);
+          playout.bufferedChunks = [];
+          playout.bufferedBytes = 0;
         },
       });
       this.#active = {
@@ -255,6 +362,10 @@ export class SpeakerRuntime {
         providerSessionId: providerSession.id,
         connected: false,
         finishing: false,
+        extensionTimer: null,
+        deciding: false,
+        diagnostics,
+        playout,
       };
       await turn.connect();
       if (this.#closed || this.#active?.turn !== turn || !this.#authorizedNow()) {
@@ -307,68 +418,146 @@ export class SpeakerRuntime {
       if (this.#starting) this.#pendingSpeechEndAt = vadSpeechEndMonotonicMs;
       return;
     }
-    if (active.finishing) return;
+    if (active.finishing) {
+      // The queued utterance ended while the previous turn was still
+      // generating/playing; remember the boundary for the kick-off.
+      if (this.#queuedSpeechStart) this.#queuedSpeechEndAt = vadSpeechEndMonotonicMs;
+      return;
+    }
     if (!active.connected) {
       this.#pendingSpeechEndAt = vadSpeechEndMonotonicMs;
       return;
     }
+    // Semantic sentence-boundary gate: a VAD pause alone does not end the
+    // turn. When the end-of-turn model says the utterance is likely
+    // unfinished, keep the provider session open and give the speaker extra
+    // time; a resume inside the window continues the same turn. This stops
+    // sentences from being split at every thinking pause.
+    if (!active.extensionTimer && !this.#inSpeech) {
+      // Two VAD ends (or an extension expiry) can race into the decision; only
+      // one may run, otherwise finish() would be entered twice.
+      if (active.deciding) return;
+      active.deciding = true;
+      try {
+        const eot = await this.#eotProbability();
+        if (eot && eot.probability < eot.threshold) {
+          if (this.#inSpeech) return; // resumed during the check; turn continues
+          console.error(`[runtime] turn extended (incomplete sentence): sid=${this.#authorization.trackSid} probability=${eot.probability} threshold=${eot.threshold}`);
+          active.extensionTimer = setTimeout(() => {
+            this.#trackTask(this.#onExtensionExpired(active, vadSpeechEndMonotonicMs));
+          }, TURN_EXTENSION_MS);
+          return;
+        }
+      } finally {
+        active.deciding = false;
+      }
+      if (this.#inSpeech) return; // resumed during the check; the next speech-end re-decides
+    }
+    await this.#finishActive(active, vadSpeechEndMonotonicMs);
+  }
+
+  async #onExtensionExpired(active: ActiveTurn, vadSpeechEndMonotonicMs: number): Promise<void> {
+    if (this.#closed || this.#active?.turn !== active.turn) return;
+    if (active.finishing || active.deciding) return;
+    if (active.extensionTimer) {
+      clearTimeout(active.extensionTimer);
+      active.extensionTimer = null;
+    }
+    if (this.#inSpeech) return; // speaker resumed; the next speech-end re-decides
+    console.error(`[runtime] turn extension expired: sid=${this.#authorization.trackSid}`);
+    await this.#finishActive(active, vadSpeechEndMonotonicMs);
+  }
+
+  async #finishActive(active: ActiveTurn, vadSpeechEndMonotonicMs: number): Promise<void> {
+    if (active.finishing) return; // a raced decision already owns this turn
+    if (active.extensionTimer) {
+      clearTimeout(active.extensionTimer);
+      active.extensionTimer = null;
+    }
     active.finishing = true;
-    const accepted = this.#predictEndOfTurn();
-    const completed = await active.turn.finish(vadSpeechEndMonotonicMs, accepted);
-    if (this.#active?.turn !== active.turn) return;
-    const providerReference = completed?.providerCloseReference ?? active.turn.confirmedCloseReference;
+    active.diagnostics.vadSpeechEndedAtMonotonicMs = vadSpeechEndMonotonicMs;
+    let playoutReleased = false;
     try {
+      const completed = await active.turn.finish(vadSpeechEndMonotonicMs, Promise.resolve(true));
+      const providerCompletedAtMonotonicMs = performance.now();
+      active.diagnostics.providerCompletedAtMonotonicMs = providerCompletedAtMonotonicMs;
+      if (this.#active?.turn !== active.turn) return;
+      const providerReference = completed?.providerCloseReference ?? active.turn.confirmedCloseReference;
+      if (completed && this.#authorizedNow()) {
+        console.error(`[runtime] turn completed: sid=${this.#authorization.trackSid} audioBytes=${completed.audio.reduce((n, b) => n + b.byteLength, 0)}`);
+        // Release only a fully drained provider turn. This intentionally trades
+        // some first-audio latency for the guarantee that provider failure or a
+        // safety limit can never leave the listener with half a sentence.
+        active.diagnostics.firstProviderAudioAtMonotonicMs
+          ??= active.turn.firstOutputAudioAtMonotonicMs;
+        if (active.playout.handle) {
+          active.playout.handle.finish();
+        } else {
+          void this.#options.output.play(
+            this.#authorization.targetLanguage,
+            completed.audio,
+            providerCompletedAtMonotonicMs,
+            active.diagnostics,
+          );
+        }
+        playoutReleased = true;
+      } else if (!completed) {
+        active.playout.handle?.abort();
+        console.error(`[runtime] turn incomplete: sid=${this.#authorization.trackSid} reason=${active.turn.discardReason ?? 'unknown'} appendedBytes=${active.turn.appendedBytes} srcChars=${active.turn.sourceTextLength} tgtChars=${active.turn.translatedTextLength} outAudioBytes=${active.turn.capturedAudioBytes}`);
+      }
+      // Fully generated audio is already independently queued before CRM
+      // finality is reported, so a reporting failure cannot cut it short.
       await this.#options.client.closeProviderSession(
         this.#options.execution.jobId,
         active.providerSessionId,
         providerReference,
         completed ? 'session_closed' : `turn_discarded:${active.turn.discardReason ?? 'incomplete'}`,
       );
-      if (completed && this.#authorizedNow()) {
-        console.error(`[runtime] turn completed: sid=${this.#authorization.trackSid} audioBytes=${completed.audio.reduce((n, b) => n + b.byteLength, 0)}`);
-        await this.#options.output.play(
-          this.#authorization.targetLanguage,
-          completed.audio,
-          performance.now(),
-        );
-      } else if (!completed) {
-        console.error(`[runtime] turn incomplete: sid=${this.#authorization.trackSid} reason=${active.turn.discardReason ?? 'unknown'} appendedBytes=${active.turn.appendedBytes} srcChars=${active.turn.sourceTextLength} tgtChars=${active.turn.translatedTextLength} outAudioBytes=${active.turn.capturedAudioBytes}`);
-      }
     } finally {
-      this.#active = null;
-      this.#options.releaseProviderSlot(this.#authorization.id);
+      if (!playoutReleased) active.playout.handle?.abort();
+      if (this.#active?.turn === active.turn) {
+        // Release the turn and the provider slot as soon as generation settles;
+        // playout continues in the publisher's per-language queue. A queued
+        // overlapping utterance becomes the next turn right away.
+        this.#active = null;
+        this.#options.releaseProviderSlot(this.#authorization.id);
+        this.#kickQueuedTurn();
+      }
     }
   }
 
-  async #predictEndOfTurn(): Promise<boolean> {
-    // Advisory only. The semantic turn detector's "incomplete" verdict must not
-    // drop a translation turn: it receives raw audio without a transcript and
-    // routinely rejects real short/quiet utterances, which silently swallowed
-    // translations in production testing. The provider decides whether the
-    // turn actually contained speech — empty turns complete with no output.
+  /**
+   * Ask the audio end-of-turn model whether the utterance is complete.
+   * Returns null when the detector is unavailable/failing — callers must then
+   * fall back to finishing the turn immediately (VAD-only behavior).
+   */
+  async #eotProbability(): Promise<{ probability: number; threshold: number } | null> {
     try {
       const threshold = await this.#turnDetectorStream.unlikelyThreshold(
         asLanguageCode(this.#authorization.sourceLanguage),
       ) ?? 0.5;
       const prediction = await this.#turnDetectorStream.predict().await;
-      if (prediction.endOfTurnProbability < threshold) {
-        console.error(`[runtime] end-of-turn detector advised-incomplete: sid=${this.#authorization.trackSid} probability=${prediction.endOfTurnProbability}`);
-      }
+      return { probability: prediction.endOfTurnProbability, threshold };
     } catch {
-      // Detector unavailable — accept by default.
+      return null;
     }
-    return true;
   }
 
   async #discardActive(reason: Parameters<TranslationTurn['discard']>[0]): Promise<void> {
     const active = this.#active;
     if (!active) return;
+    if (active.extensionTimer) {
+      clearTimeout(active.extensionTimer);
+      active.extensionTimer = null;
+    }
     active.turn.discard(reason);
+    active.playout.handle?.abort();
     this.#active = null;
     this.#pendingSpeechEndAt = null;
     this.#pendingPcm = [];
     this.#pendingBytes = 0;
     this.#pendingOverflow = false;
+    this.#clearQueuedSpeech();
     try {
       // discard() already terminated the provider websocket via transport.abort().
       // OpenAI realtime sessions are connection-bound, so a terminated socket ends
@@ -431,6 +620,60 @@ export class SpeakerRuntime {
     }
   }
 
+  #pushQueued(pcm: Uint8Array): void {
+    // Hold a full long-form medical utterance while the prior turn finishes.
+    // At 24kHz PCM16, this is 30 seconds / ~1.37 MiB per active speaker.
+    const maxBytes = 24_000 * 2 * 30;
+    if (this.#queuedBytes + pcm.byteLength > maxBytes) {
+      if (!this.#queuedOverflow) {
+        console.error(`[runtime] queued utterance truncated (buffer limit): sid=${this.#authorization.trackSid}`);
+      }
+      this.#queuedOverflow = true;
+      return;
+    }
+    this.#queuedBytes += pcm.byteLength;
+    this.#queuedPcm.push(pcm);
+  }
+
+  /**
+   * Starts the buffered overlapping utterance as the next turn. Called after
+   * the previous turn released its provider slot. Buffered frames become the
+   * pre-roll so the beginning of the utterance survives.
+   */
+  #kickQueuedTurn(): void {
+    const start = this.#queuedSpeechStart;
+    const endAt = this.#queuedSpeechEndAt;
+    const buffered = this.#queuedPcm;
+    const bufferedBytes = this.#queuedBytes;
+    const overflow = this.#queuedOverflow;
+    this.#clearQueuedSpeech();
+    if (!start) return;
+    if (overflow) {
+      // Never send a known-truncated utterance to the translator. If speech is
+      // still in progress, keep dropping through its matching VAD end.
+      if (endAt === null) this.#beginDropUntilSpeechEnd();
+      return;
+    }
+    this.#preRoll = buffered;
+    this.#preRollBytes = bufferedBytes;
+    if (this.#closed) {
+      this.#preRoll = [];
+      this.#preRollBytes = 0;
+      return;
+    }
+    console.error(`[runtime] starting queued utterance as next turn: sid=${this.#authorization.trackSid} bufferedBytes=${bufferedBytes}`);
+    if (endAt !== null) this.#pendingSpeechEndAt = endAt;
+    this.#trackTask(this.#onSpeechStart(performance.now()));
+  }
+
+  #clearQueuedSpeech(): void {
+    this.#queuedSpeechStart = false;
+    this.#queuedSpeechEndAt = null;
+    this.#queuedPcm = [];
+    this.#queuedBytes = 0;
+    this.#queuedOverflow = false;
+  }
+
   #beginDropUntilSpeechEnd(): void {
     this.#turnBoundary.discardUntilSpeechEnd();
     this.#clearTurnInputBuffers();
@@ -443,6 +686,7 @@ export class SpeakerRuntime {
     this.#pendingBytes = 0;
     this.#pendingSpeechEndAt = null;
     this.#pendingOverflow = false;
+    this.#clearQueuedSpeech();
   }
 
   #trackTask(task: Promise<void>): void {

@@ -1,7 +1,7 @@
 import * as silero from '@livekit/agents-plugin-silero';
 
 const vad = await silero.VAD.load({
-  minSilenceDuration: 550,
+  minSilenceDuration: 800,
   maxBufferedSpeech: 30_000,
 });
 

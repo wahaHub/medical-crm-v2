@@ -53,6 +53,9 @@ interface RealtimeTranslationEvents {
   event: [event: TranslationServerEvent];
   inputTranscriptDelta: [event: TranslationDeltaEvent];
   outputTranscriptDelta: [event: TranslationDeltaEvent];
+  /** Full accumulated transcript, from completion-style events (no deltas). */
+  inputTranscript: [transcript: string];
+  outputTranscript: [transcript: string];
   outputAudioDelta: [event: TranslationDeltaEvent, pcm16: Uint8Array];
   closed: [event: TranslationDoneEvent];
   sessionError: [error: Error];
@@ -129,6 +132,7 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
   #connectReady: ReturnType<typeof deferred<void>> | null = null;
   #connectSettled = false;
   #connectTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly #seenEventTypes = new Set<string>();
 
   constructor(options: RealtimeTranslationOptions) {
     super();
@@ -194,6 +198,13 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
         return;
       }
       this.emit('event', event);
+      if (!this.#seenEventTypes.has(event.type)) {
+        // One line per event type per session, so production logs show exactly
+        // which variants the translations endpoint emits (e.g. whether
+        // completion-style transcript events exist alongside deltas).
+        this.#seenEventTypes.add(event.type);
+        console.error(`[provider] first-seen event: type=${event.type}`);
+      }
       if (this.#closing || event.type === 'session.closed') {
         console.error(`[provider] event=${event.type} closing=${this.#closing} deltaBytes=${typeof (event as { delta?: unknown }).delta === 'string' ? (event as { delta: string }).delta.length : 0}`);
       }
@@ -216,6 +227,18 @@ export class RealtimeTranslationSession extends EventEmitter<RealtimeTranslation
           return;
         }
         this.emit('outputTranscriptDelta', event as TranslationDeltaEvent);
+        return;
+      }
+      if (event.type.includes('transcript') && !event.type.endsWith('.delta')) {
+        // Completion-style variants (e.g. session.output_transcript.done)
+        // carry the full accumulated transcript instead of deltas. Some turns
+        // only deliver their output text this way — without this the final
+        // caption goes out with no translated text.
+        const transcript = (event as { transcript?: unknown }).transcript;
+        if (typeof transcript === 'string' && transcript.trim().length > 0) {
+          if (event.type.includes('output_transcript')) this.emit('outputTranscript', transcript);
+          else if (event.type.includes('input_transcript')) this.emit('inputTranscript', transcript);
+        }
         return;
       }
       if (event.type === 'session.output_audio.delta') {

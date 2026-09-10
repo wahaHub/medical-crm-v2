@@ -1,11 +1,35 @@
 import type { getCrmDb } from '@medical-crm/infrastructure/database';
-import { OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS } from './security.js';
+import {
+  OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS,
+  STOPPED_ORPHAN_EXPIRY_SECONDS,
+} from './security.js';
 
 type CrmSql = ReturnType<typeof getCrmDb>['$client'];
 
 type ReconciliationScope =
   | { jobId: string }
   | { consultationId: string };
+
+/**
+ * Fences a job's open provider sessions into ORPHAN_WAIT when the control
+ * plane stops the job (operator stop, takeover, budget/deadline fence). The
+ * agent has AGENT_CLOSURE_REPORT_GRACE_SECONDS to prove provider closure; a
+ * fenced agent is fail-closed, so the orphan's provider fence is clamped to
+ * STOPPED_ORPHAN_EXPIRY_SECONDS — a missed report must not wedge the room in
+ * STOPPING (or block the next start) for the full provider-lifetime bound.
+ */
+export async function fenceJobProviderSessionsAsOrphans(sql: CrmSql, jobId: string): Promise<void> {
+  await sql`
+    UPDATE video_consultation_provider_sessions
+    SET state = 'ORPHAN_WAIT', orphan_risk = true,
+        provider_expires_at = LEAST(
+          COALESCE(provider_expires_at, 'infinity'::timestamptz),
+          now() + ${STOPPED_ORPHAN_EXPIRY_SECONDS} * interval '1 second'
+        ),
+        updated_at = now()
+    WHERE job_id = ${jobId} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
+  `;
+}
 
 /**
  * Releases a provider fence only after its server-owned conservative upper

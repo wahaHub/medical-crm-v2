@@ -11,6 +11,24 @@ export const MAX_PROVIDER_SESSIONS_PER_ROOM = 2;
 // media gate must remain false until the exact endpoint/model contract and an
 // executable probe prove that this bound cannot be extended by the provider.
 export const OPENAI_TRANSLATION_CONSERVATIVE_EXPIRY_SECONDS = (2 * 60 + 5) * 60;
+// After a job is fenced/stopped, its capability stays valid for this short
+// grace so the agent can still report provider-session closure. Without it,
+// any turn open at stop time sits in ORPHAN_WAIT until the 2h05m conservative
+// expiry and blocks the next start (INTERPRETATION_CLEANUP_PENDING). The
+// grace capability cannot extend authority: the authorization and admission
+// endpoints independently require desired_state='RUNNING' and status='ACTIVE',
+// and the close endpoint only allows transitions toward terminal states.
+export const AGENT_CLOSURE_REPORT_GRACE_SECONDS = 60;
+// When the control plane fences a job's provider sessions into ORPHAN_WAIT
+// (operator stop, takeover, budget/deadline fence), the agent has the closure
+// report grace above to prove provider closure. A fenced agent is fail-closed
+// by design: its authorization dies with the fence and it terminates provider
+// sockets on shutdown, so a session with no report well past the grace is dead
+// in practice. Clamp the orphan's provider fence so a missed report cannot
+// wedge a room in STOPPING (or block the next start) for the full 2h05m
+// provider-lifetime bound; the residual risk is minutes of unaccounted
+// provider usage from a non-compliant agent build.
+export const STOPPED_ORPHAN_EXPIRY_SECONDS = 2 * 60;
 // Watchdog budget tuned to the production topology: the CRM database is
 // Supabase us-east-2 while the API/agent run in us-west-2, so each SQL round
 // trip costs ~400 ms and a single authorization pass (several statements)
@@ -98,6 +116,19 @@ export function normalizeLaunchLanguage(language: string | null | undefined): In
     : null;
 }
 
+export function resolveLaunchSourceLanguage(
+  patientLanguage: string | null | undefined,
+  requestedLanguage: InterpretationLanguage | undefined,
+): InterpretationLanguage | null {
+  const preferredLanguage = normalizeLaunchLanguage(patientLanguage);
+  if (preferredLanguage) {
+    return requestedLanguage === undefined || requestedLanguage === preferredLanguage
+      ? preferredLanguage
+      : null;
+  }
+  return requestedLanguage ?? null;
+}
+
 // Doctors on the platform speak Chinese; an English operator is kept for the
 // legacy zh-patient path so existing zh/en behavior is unchanged.
 export function operatorLanguageFor(patientLanguage: InterpretationLanguage): InterpretationLanguage {
@@ -120,6 +151,9 @@ export function v1ConsentTopologySupported(input: {
   synthetic: boolean;
 }): boolean {
   const unique = new Set(input.identities);
+  // Solo operator self-test: an operator alone in the room may consent and
+  // translate only their own track.
+  if (unique.size === 1) return unique.has(input.operatorIdentity);
   if (unique.size !== 2 || !unique.has(input.operatorIdentity)) return false;
   if (input.synthetic) return true;
   return Boolean(input.patientIdentity && unique.has(input.patientIdentity));

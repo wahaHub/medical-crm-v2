@@ -13,9 +13,9 @@ export async function POST(request: NextRequest) {
     };
 
     if (!body.consultationId || !Array.isArray(body.participantIdentities)
-      || body.participantIdentities.length < 2 || body.consentWitnessConfirmed !== true) {
+      || body.participantIdentities.length < 1 || body.consentWitnessConfirmed !== true) {
       return Response.json(
-        { success: false, error: 'consultationId, two participants, and explicit consent attestation are required' },
+        { success: false, error: 'consultationId, at least one participant, and explicit consent attestation are required' },
         { status: 400 },
       );
     }

@@ -36,6 +36,22 @@ interface ConsultationRow {
   duration_minutes: number;
 }
 
+interface ConsultationFenceRow {
+  id: string;
+  room_generation: number;
+}
+
+interface InterpretationFenceRow {
+  id: string;
+  room_generation: number;
+  interpretation_generation: number;
+  agent_execution_version: number;
+  agent_identity: string;
+  desired_state: string;
+  status: string;
+  valid_until: string;
+}
+
 function getDbSql() {
   return getCrmDb().$client;
 }
@@ -74,6 +90,55 @@ app.get('/video-consultations/:id/public-info', async (c) => {
     scheduledAt: consultation.scheduled_at,
     durationMinutes: consultation.duration_minutes,
     joinable,
+  });
+});
+
+// Public room links already use the consultation UUID as their bearer
+// capability. Expose only the current execution fence so room clients can
+// reject stale or translator-like media; no patient or transcript data leaves
+// this endpoint.
+app.get('/video-consultations/:id/interpretation-status', async (c) => {
+  c.header('Cache-Control', 'no-store');
+
+  const id = idSchema.parse(c.req.param('id'));
+  const sql = getDbSql();
+  const [consultation] = await sql<ConsultationFenceRow[]>`
+    SELECT id, room_generation FROM public.video_consultations WHERE id = ${id}
+  `;
+  if (!consultation) return c.json({ error: 'Consultation not found' }, 404);
+
+  const [job] = await sql<InterpretationFenceRow[]>`
+    SELECT id, room_generation, interpretation_generation,
+           agent_execution_version, agent_identity, desired_state, status,
+           LEAST(
+             capability_expires_at,
+             started_at + maximum_ai_duration_seconds * interval '1 second',
+             CASE WHEN runtime_profile = 'SELF_HOSTED_AGENT'
+               THEN lease_expires_at ELSE 'infinity'::timestamptz END
+           ) AS valid_until
+    FROM public.video_consultation_interpretation_jobs
+    WHERE consultation_id = ${id}
+      AND room_generation = ${consultation.room_generation}
+      AND desired_state = 'RUNNING'
+      AND status = 'ACTIVE'
+      AND capability_expires_at > now()
+      AND started_at + maximum_ai_duration_seconds * interval '1 second' > now()
+      AND (runtime_profile <> 'SELF_HOSTED_AGENT' OR lease_expires_at > now())
+    ORDER BY interpretation_generation DESC
+    LIMIT 1
+  `;
+  return c.json({
+    success: true,
+    job: job ? {
+      jobId: job.id,
+      roomGeneration: job.room_generation,
+      interpretationGeneration: job.interpretation_generation,
+      executionVersion: job.agent_execution_version,
+      agentIdentity: job.agent_identity,
+      desiredState: job.desired_state,
+      status: job.status,
+      validUntil: job.valid_until,
+    } : null,
   });
 });
 

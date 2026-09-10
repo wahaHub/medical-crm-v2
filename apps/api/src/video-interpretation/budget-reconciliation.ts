@@ -1,4 +1,6 @@
 import type { getCrmDb } from '@medical-crm/infrastructure/database';
+import { fenceJobProviderSessionsAsOrphans } from './provider-session-reconciliation.js';
+import { AGENT_CLOSURE_REPORT_GRACE_SECONDS } from './security.js';
 
 type CrmSql = ReturnType<typeof getCrmDb>['$client'];
 
@@ -58,7 +60,7 @@ export async function reconcileInterpretationBudget(
     SET consumed_microdollars = ${consumed}, desired_state = 'STOPPED',
         status = 'STOPPING',
         failure_code = 'BUDGET_EXHAUSTED', exchange_available = false,
-        job_capability_digest = NULL, capability_expires_at = NULL,
+        capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
         agent_execution_version = agent_execution_version + 1,
         authorization_revision = authorization_revision + 1,
         lease_expires_at = CASE WHEN runtime_profile = 'SELF_HOSTED_AGENT' THEN NULL ELSE lease_expires_at END,
@@ -79,11 +81,7 @@ export async function reconcileInterpretationBudget(
           authorization_revision = ${Number(stopped.authorization_revision)}
       WHERE job_id = ${job.id} AND authorized = true
     `;
-    await sql`
-      UPDATE video_consultation_provider_sessions
-      SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-      WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-    `;
+    await fenceJobProviderSessionsAsOrphans(sql, job.id);
     await sql`
       INSERT INTO video_consultation_interpretation_events (
         job_id, event_type, actor_type, actor_id, execution_version, details

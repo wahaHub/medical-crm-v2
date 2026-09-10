@@ -1,4 +1,5 @@
 export const PATIENT_JOIN_EARLY_MS = 15 * 60_000;
+export const DOCTOR_JOIN_EARLY_MS = 10 * 60_000;
 export const PATIENT_JOIN_OVERRUN_MS = 30 * 60_000;
 export const PATIENT_TOKEN_MAX_TTL_SECONDS = 15 * 60;
 export const PATIENT_JOIN_MAX_DURATION_MINUTES = 4 * 60;
@@ -11,12 +12,14 @@ export type PatientJoinDecision =
   | { allowed: true; ttlSeconds: number; closesAtMs: number }
   | { allowed: false; reason: 'missing_schedule' | 'too_early' | 'too_late' };
 
-export function patientJoinDecision(input: {
+interface JoinDecisionInput {
   scheduledAt: string | null;
   startedAt?: string | null;
   durationMinutes: number | null | undefined;
   nowMs?: number;
-}): PatientJoinDecision {
+}
+
+function joinDecision(input: JoinDecisionInput, earlyMs: number): PatientJoinDecision {
   const nowMs = input.nowMs ?? Date.now();
   const anchor = input.scheduledAt ?? input.startedAt;
   if (!anchor) return { allowed: false, reason: 'missing_schedule' };
@@ -26,7 +29,7 @@ export function patientJoinDecision(input: {
     Math.max(1, input.durationMinutes ?? 30),
     PATIENT_JOIN_MAX_DURATION_MINUTES,
   );
-  const opensAtMs = input.scheduledAt ? scheduledAtMs - PATIENT_JOIN_EARLY_MS : scheduledAtMs;
+  const opensAtMs = input.scheduledAt ? scheduledAtMs - earlyMs : scheduledAtMs;
   const closesAtMs = scheduledAtMs + durationMinutes * 60_000 + PATIENT_JOIN_OVERRUN_MS;
   if (nowMs < opensAtMs) return { allowed: false, reason: 'too_early' };
   if (nowMs >= closesAtMs) return { allowed: false, reason: 'too_late' };
@@ -38,6 +41,14 @@ export function patientJoinDecision(input: {
     )),
     closesAtMs,
   };
+}
+
+export function patientJoinDecision(input: JoinDecisionInput): PatientJoinDecision {
+  return joinDecision(input, PATIENT_JOIN_EARLY_MS);
+}
+
+export function doctorJoinDecision(input: JoinDecisionInput): PatientJoinDecision {
+  return joinDecision(input, DOCTOR_JOIN_EARLY_MS);
 }
 
 export function isConsultationOver(input: {

@@ -3,6 +3,7 @@ import { z } from '@hono/zod-openapi';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import {
+  INTERPRETATION_LANGUAGES,
   videoConsultationJoinEnabled,
   readLiveKitConfig,
 } from '../video-interpretation/security.js';
@@ -133,7 +134,7 @@ const scheduleSchema = z.object({
   durationMinutes: z.number().int().positive().default(DEFAULT_DURATION_MINUTES),
   timezone: z.string().default('UTC'),
   metadata: z.record(z.unknown()).nullable().optional(),
-  patientLanguage: z.string().nullable().optional(),
+  patientLanguage: z.enum(INTERPRETATION_LANGUAGES),
 });
 
 const rescheduleSchema = z.object({
@@ -540,6 +541,7 @@ app.post('/:id/token', async (c) => {
     livekitUrl: config.livekitUrl,
     identity,
     roomName: consultation.room_name,
+    patientLanguage: consultation.patient_language,
   });
 });
 

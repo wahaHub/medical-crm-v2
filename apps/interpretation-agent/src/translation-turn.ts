@@ -9,6 +9,9 @@ export interface TranslationTransportEvents {
   event: [event: { type: string; [key: string]: unknown }];
   inputTranscriptDelta: [event: TranslationDeltaEvent];
   outputTranscriptDelta: [event: TranslationDeltaEvent];
+  /** Full accumulated transcript from completion-style provider events. */
+  inputTranscript: [transcript: string];
+  outputTranscript: [transcript: string];
   outputAudioDelta: [event: TranslationDeltaEvent, pcm16: Uint8Array];
   closed: [event: TranslationDoneEvent];
   sessionError: [error: Error];
@@ -47,7 +50,9 @@ export interface TranslationTurnOptions {
   sourceLanguage: TranslationLanguage;
   targetLanguage: TranslationLanguage;
   onCaption?: (caption: TranslationCaption) => void;
+  onAudioChunk?: (pcm16: Uint8Array, observedAtMonotonicMs: number) => void;
   gracePeriodMs?: number;
+  postCloseDrainMs?: number;
   maxAudioDurationMs?: number;
   maxAudioBytes?: number;
   now?: () => number;
@@ -59,7 +64,9 @@ export class TranslationTurn {
   readonly #sourceLanguage: TranslationLanguage;
   readonly #targetLanguage: TranslationLanguage;
   readonly #onCaption?: (caption: TranslationCaption) => void;
+  readonly #onAudioChunk?: (pcm16: Uint8Array, observedAtMonotonicMs: number) => void;
   readonly #gracePeriodMs: number;
+  readonly #postCloseDrainMs: number;
   readonly #maxAudioDurationMs: number;
   readonly #maxAudioBytes: number;
   readonly #now: () => number;
@@ -68,6 +75,7 @@ export class TranslationTurn {
   #translatedText = '';
   #audio: Uint8Array[] = [];
   #audioBytes = 0;
+  #firstOutputAudioAtMonotonicMs: number | null = null;
   #appendedBytes = 0;
   #discardReason: TurnDiscardReason | null = null;
   #connected = false;
@@ -80,8 +88,13 @@ export class TranslationTurn {
     this.#sourceLanguage = options.sourceLanguage;
     this.#targetLanguage = options.targetLanguage;
     this.#onCaption = options.onCaption;
+    this.#onAudioChunk = options.onAudioChunk;
     this.#gracePeriodMs = options.gracePeriodMs ?? 700;
-    this.#maxAudioDurationMs = options.maxAudioDurationMs ?? 30_000;
+    this.#postCloseDrainMs = options.postCloseDrainMs ?? 800;
+    // Medical explanations routinely exceed 30 seconds after translation.
+    // Keep a bounded guard, but do not turn ordinary long sentences into an
+    // already-audible partial response.
+    this.#maxAudioDurationMs = options.maxAudioDurationMs ?? 120_000;
     this.#maxAudioBytes = options.maxAudioBytes ?? 8 * 1024 * 1024;
     this.#now = options.now ?? (() => performance.now());
     this.#wait = options.wait ?? (async (delayMs) => {
@@ -104,6 +117,22 @@ export class TranslationTurn {
       this.#translatedText += event.delta;
       this.#publishCaption(false);
     });
+    this.#transport.on('inputTranscript', (transcript) => {
+      if (this.#discardReason) return;
+      // Completion-style full text is authoritative; keep whichever is longer
+      // in case deltas already accumulated a partial version.
+      if (transcript.trim().length > this.#sourceText.trim().length) {
+        this.#sourceText = transcript;
+        this.#publishCaption(false);
+      }
+    });
+    this.#transport.on('outputTranscript', (transcript) => {
+      if (this.#discardReason) return;
+      if (transcript.trim().length > this.#translatedText.trim().length) {
+        this.#translatedText = transcript;
+        this.#publishCaption(false);
+      }
+    });
     this.#transport.on('outputAudioDelta', (_event, pcm16) => {
       if (this.#discardReason) return;
       const nextBytes = this.#audioBytes + pcm16.byteLength;
@@ -112,8 +141,11 @@ export class TranslationTurn {
         this.discard('BUFFER_LIMIT');
         return;
       }
+      const observedAtMonotonicMs = this.#now();
+      this.#firstOutputAudioAtMonotonicMs ??= observedAtMonotonicMs;
       this.#audioBytes = nextBytes;
       this.#audio.push(pcm16);
+      this.#onAudioChunk?.(pcm16, observedAtMonotonicMs);
     });
     this.#transport.on('sessionError', () => this.discard('PROVIDER_ERROR'));
   }
@@ -158,8 +190,16 @@ export class TranslationTurn {
       this.discard('END_OF_TURN_REJECTED');
       return null;
     }
-    if (this.#discardReason || !this.#sourceText.trim()
-      || !this.#translatedText.trim() || this.#audioBytes === 0) {
+    // The provider flushes transcript deltas lazily — input transcripts in
+    // particular keep arriving after session.closed (observed in production
+    // logs). Drain briefly so the final caption and the guard below see the
+    // complete turn instead of racing the last deltas.
+    await this.#wait(this.#postCloseDrainMs);
+    if (this.#discardReason) return null;
+    // Require output, not input: what the listener needs is the translation.
+    // The source transcript is best-effort and often arrives too late to gate
+    // on; gating on it silently dropped fully-generated translations.
+    if (!this.#translatedText.trim() && this.#audioBytes === 0) {
       console.error(`[turn] finish-guard-fail: discardReason=${this.#discardReason} srcChars=${this.#sourceText.trim().length} tgtChars=${this.#translatedText.trim().length} audioBytes=${this.#audioBytes} appendedBytes=${this.#appendedBytes}`);
       return null;
     }
@@ -169,9 +209,10 @@ export class TranslationTurn {
       this.discard('PROVIDER_ERROR');
       return null;
     }
-    const caption = this.#caption(true);
-    this.#onCaption?.(caption);
-    return { audio: this.#audio, caption, providerCloseReference: closeReference };
+    if (this.#sourceText.trim() || this.#translatedText.trim()) {
+      this.#onCaption?.(this.#caption(true));
+    }
+    return { audio: this.#audio, caption: this.#caption(true), providerCloseReference: closeReference };
   }
 
   speakerResumed(): void {
@@ -204,6 +245,10 @@ export class TranslationTurn {
 
   get capturedAudioBytes(): number {
     return this.#audioBytes;
+  }
+
+  get firstOutputAudioAtMonotonicMs(): number | null {
+    return this.#firstOutputAudioAtMonotonicMs;
   }
 
   get providerSessionReference(): string | null {

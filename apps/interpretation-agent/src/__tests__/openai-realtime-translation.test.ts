@@ -140,4 +140,41 @@ describe('OpenAI Realtime Translation protocol', () => {
     opened.socket.emit('close');
     await expect(connected).resolves.toBeUndefined();
   });
+
+  it('emits full transcripts from completion-style events that carry no deltas', async () => {
+    const { session, socket } = harness();
+    const outputTranscripts: string[] = [];
+    const inputTranscripts: string[] = [];
+    const outputDeltas: string[] = [];
+    session.on('outputTranscript', (transcript) => outputTranscripts.push(transcript));
+    session.on('inputTranscript', (transcript) => inputTranscripts.push(transcript));
+    session.on('outputTranscriptDelta', (event) => outputDeltas.push(event.delta));
+    const connecting = session.connect();
+    socket.emit('open');
+    socket.emit('message', Buffer.from(JSON.stringify({ type: 'session.updated', session: { id: 's' } })));
+    await connecting;
+
+    socket.emit('message', Buffer.from(JSON.stringify({
+      type: 'session.output_transcript.done',
+      transcript: '好的，我们下周安排手术。',
+    })));
+    socket.emit('message', Buffer.from(JSON.stringify({
+      type: 'session.input_transcript.done',
+      transcript: 'Okay, we will schedule the surgery next week.',
+    })));
+    // Delta events must keep flowing through the delta channel, not this one.
+    socket.emit('message', Buffer.from(JSON.stringify({
+      type: 'session.output_transcript.delta',
+      delta: '好',
+    })));
+    // Transcript events without usable text are ignored.
+    socket.emit('message', Buffer.from(JSON.stringify({
+      type: 'session.output_transcript.done',
+      transcript: '   ',
+    })));
+
+    expect(outputTranscripts).toEqual(['好的，我们下周安排手术。']);
+    expect(inputTranscripts).toEqual(['Okay, we will schedule the surgery next week.']);
+    expect(outputDeltas).toEqual(['好']);
+  });
 });

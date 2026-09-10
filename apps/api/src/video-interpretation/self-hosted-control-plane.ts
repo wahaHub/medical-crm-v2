@@ -1,11 +1,11 @@
 import type { getCrmDb } from '@medical-crm/infrastructure/database';
-import { reconcileExpiredProviderSessions } from './provider-session-reconciliation.js';
+import { fenceJobProviderSessionsAsOrphans, reconcileExpiredProviderSessions } from './provider-session-reconciliation.js';
 import { reconcileInterpretationBudget } from './budget-reconciliation.js';
 import type {
   ReconcilePassOutcome,
   ReconcileRunGuard,
 } from './reconcile-run-lease.js';
-import { SELF_HOST_CLAIM_TIMEOUT_SECONDS } from './security.js';
+import { AGENT_CLOSURE_REPORT_GRACE_SECONDS, SELF_HOST_CLAIM_TIMEOUT_SECONDS } from './security.js';
 
 type CrmSql = ReturnType<typeof getCrmDb>['$client'];
 
@@ -107,7 +107,7 @@ export async function fenceExpiredOrUnauthorizedUnclaimedSelfHostedJobs(sql: Crm
         UPDATE video_consultation_interpretation_jobs
         SET desired_state = 'STOPPED', status = ${neverClaimed ? 'FAILED' : 'STOPPING'},
             failure_code = ${failureCode}, exchange_available = false,
-            job_capability_digest = NULL, capability_expires_at = NULL,
+            capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
             agent_execution_version = agent_execution_version + 1,
             authorization_revision = authorization_revision + 1,
             lease_expires_at = NULL,
@@ -130,11 +130,7 @@ export async function fenceExpiredOrUnauthorizedUnclaimedSelfHostedJobs(sql: Crm
         WHERE job_id = ${job.id} AND authorized = true
       `;
       if (!neverClaimed) {
-        await query`
-          UPDATE video_consultation_provider_sessions
-          SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-          WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-        `;
+        await fenceJobProviderSessionsAsOrphans(query, job.id);
       }
       await query`
         INSERT INTO video_consultation_interpretation_events (
@@ -226,7 +222,7 @@ export async function fenceExpiredSelfHostedLeases(sql: CrmSql): Promise<Expired
       const [fenced] = await query<{ agent_execution_version: number; authorization_revision: string | number }[]>`
         UPDATE video_consultation_interpretation_jobs
         SET status = 'STOPPING', exchange_available = false,
-            job_capability_digest = NULL, capability_expires_at = NULL,
+            capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
             agent_execution_version = agent_execution_version + 1,
             authorization_revision = authorization_revision + 1,
             lease_expires_at = NULL, agent_identity_revoked_at = NULL,
@@ -244,11 +240,7 @@ export async function fenceExpiredSelfHostedLeases(sql: CrmSql): Promise<Expired
             authorization_revision = ${Number(fenced.authorization_revision)}
         WHERE job_id = ${job.id} AND authorized = true
       `;
-      await query`
-        UPDATE video_consultation_provider_sessions
-        SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-        WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-      `;
+      await fenceJobProviderSessionsAsOrphans(query, job.id);
       await query`
         INSERT INTO video_consultation_interpretation_events (
           job_id, event_type, actor_type, actor_id, execution_version, details
@@ -319,8 +311,8 @@ export async function fenceUnauthorizedSelfHostedExecutions(sql: CrmSql): Promis
       const [fenced] = await query<{ agent_execution_version: number; authorization_revision: string | number }[]>`
         UPDATE video_consultation_interpretation_jobs
         SET desired_state = 'STOPPED', status = 'STOPPING',
-            exchange_available = false, job_capability_digest = NULL,
-            capability_expires_at = NULL,
+            exchange_available = false,
+            capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
             agent_execution_version = agent_execution_version + 1,
             authorization_revision = authorization_revision + 1,
             lease_expires_at = NULL, agent_identity_revoked_at = NULL,
@@ -337,11 +329,7 @@ export async function fenceUnauthorizedSelfHostedExecutions(sql: CrmSql): Promis
             authorization_revision = ${Number(fenced.authorization_revision)}
         WHERE job_id = ${job.id} AND authorized = true
       `;
-      await query`
-        UPDATE video_consultation_provider_sessions
-        SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-        WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-      `;
+      await fenceJobProviderSessionsAsOrphans(query, job.id);
       await query`
         INSERT INTO video_consultation_interpretation_events (
           job_id, event_type, actor_type, actor_id, execution_version, details

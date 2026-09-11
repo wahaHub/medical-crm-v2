@@ -93,6 +93,11 @@ export function VideoConsultationRoom({
   const interpretationStatusAbort = useRef<AbortController | null>(null);
   const interpretationRefreshPending = useRef(false);
   const refreshInterpretationStatus = useRef<(() => void) | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const [interpretationStarted, setInterpretationStarted] = useState(false);
   const [interpretationStatusResolved, setInterpretationStatusResolved] = useState(false);
@@ -243,7 +248,13 @@ export function VideoConsultationRoom({
           // Ignore malformed subtitle messages.
         }
       })
-      .on(RoomEvent.Disconnected, () => onClose());
+      .on(RoomEvent.Disconnected, (reason) => {
+        console.warn('[video-consultation] LiveKit room disconnected', {
+          roomName,
+          reason,
+        });
+        onCloseRef.current();
+      });
 
     async function connect() {
       setStatus('Connecting…');
@@ -272,7 +283,7 @@ export function VideoConsultationRoom({
       disposed = true;
       lkRoom.disconnect().catch(() => {});
     };
-  }, [livekitUrl, token, roomName, onClose]);
+  }, [livekitUrl, token, roomName]);
 
   useEffect(() => {
     let disposed = false;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   DataTable,
@@ -78,6 +78,11 @@ export function VideoConsultationsList({ initialData }: Props) {
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 15_000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  const handleRoomClose = useCallback(() => {
+    setRoomToken(null);
+    setJoining(null);
   }, []);
 
   const filtered = useMemo(() => {
@@ -512,10 +517,7 @@ export function VideoConsultationsList({ initialData }: Props) {
           roomName={roomToken.roomName}
           consultationId={joining.id}
           patientLanguage={joining.patient_language || 'en'}
-          onClose={() => {
-            setRoomToken(null);
-            setJoining(null);
-          }}
+          onClose={handleRoomClose}
         />
       )}
     </div>

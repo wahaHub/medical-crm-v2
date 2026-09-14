@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   DataTable,
@@ -14,6 +14,10 @@ import { formatDate, formatTime } from '@medical-crm/ui';
 import { Video, Check, X, PhoneOff, Languages, Link2 } from 'lucide-react';
 import { queryFetch, mutationFetch } from '@/lib/query-fetch';
 import { patientVideoConsultationLink } from '@/lib/patient-video-link';
+import {
+  doctorVideoRoomIsOpen,
+  doctorVideoRoomWindow,
+} from '@/lib/video-consultation-window';
 import { VideoConsultationRoom } from './video-consultation-room';
 import type {
   VideoConsultation,
@@ -69,6 +73,17 @@ export function VideoConsultationsList({ initialData }: Props) {
   const [authorizingAiId, setAuthorizingAiId] = useState<string | null>(null);
   const [aiAuthorizedIds, setAiAuthorizedIds] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const handleRoomClose = useCallback(() => {
+    setRoomToken(null);
+    setJoining(null);
+  }, []);
 
   const filtered = useMemo(() => {
     const tab = TABS.find((t) => t.key === activeTab);
@@ -261,11 +276,29 @@ export function VideoConsultationsList({ initialData }: Props) {
   }
 
   function isRoomOpen(c: VideoConsultation): boolean {
+    return doctorVideoRoomIsOpen({
+      status: c.status,
+      scheduledAt: c.scheduled_at,
+      startedAt: c.started_at,
+      durationMinutes: c.duration_minutes,
+      nowMs,
+    });
+  }
+
+  function roomOpensAt(c: VideoConsultation): Date | null {
+    const window = doctorVideoRoomWindow({
+      scheduledAt: c.scheduled_at,
+      startedAt: c.started_at,
+      durationMinutes: c.duration_minutes,
+    });
+    return window ? new Date(window.opensAtMs) : null;
+  }
+
+  function meetingHasStarted(c: VideoConsultation): boolean {
     if (c.status === 'IN_PROGRESS') return true;
-    if (c.status === 'SCHEDULED' && c.scheduled_at) {
-      return new Date(c.scheduled_at).getTime() <= Date.now();
-    }
-    return false;
+    if (!c.scheduled_at) return false;
+    const scheduledAtMs = new Date(c.scheduled_at).getTime();
+    return Number.isFinite(scheduledAtMs) && nowMs >= scheduledAtMs;
   }
 
   function formatDateTime(value: string | null): string {
@@ -361,6 +394,7 @@ export function VideoConsultationsList({ initialData }: Props) {
                 className="h-8 gap-1"
                 onClick={() => void handleJoin(c)}
                 disabled={joining?.id === c.id}
+                title="Enter consultation room"
               >
                 {joining?.id === c.id ? (
                   <LoadingSpinner size="sm" />
@@ -370,7 +404,7 @@ export function VideoConsultationsList({ initialData }: Props) {
                 Enter room
               </Button>
               {renderCopyPatientLink(c)}
-              {(c.status === 'SCHEDULED' || c.status === 'IN_PROGRESS') && (
+              {meetingHasStarted(c) && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -393,10 +427,11 @@ export function VideoConsultationsList({ initialData }: Props) {
         }
 
         if (c.status === 'SCHEDULED') {
+          const opensAt = roomOpensAt(c);
           return (
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-slate-400">
-                <PhoneOff className="h-3.5 w-3.5" /> Opens at {formatTime(new Date(c.scheduled_at!))}
+                <PhoneOff className="h-3.5 w-3.5" /> Opens at {opensAt ? formatTime(opensAt) : '—'}
               </span>
               {renderCopyPatientLink(c)}
               <Button
@@ -482,10 +517,7 @@ export function VideoConsultationsList({ initialData }: Props) {
           roomName={roomToken.roomName}
           consultationId={joining.id}
           patientLanguage={joining.patient_language || 'en'}
-          onClose={() => {
-            setRoomToken(null);
-            setJoining(null);
-          }}
+          onClose={handleRoomClose}
         />
       )}
     </div>

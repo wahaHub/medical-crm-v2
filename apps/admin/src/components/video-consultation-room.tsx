@@ -41,6 +41,9 @@ const PATIENT_LANGUAGE_OPTIONS = [
   { value: 'vi', label: 'Tiếng Việt' },
 ] as const;
 type PatientSpokenLanguage = (typeof PATIENT_LANGUAGE_OPTIONS)[number]['value'];
+const INTERPRETATION_LANGUAGE_CODES = new Set<string>(
+  PATIENT_LANGUAGE_OPTIONS.map((option) => option.value),
+);
 
 interface Props {
   token: string;
@@ -90,22 +93,25 @@ export function VideoConsultationRoom({
   const interpretationStatusAbort = useRef<AbortController | null>(null);
   const interpretationRefreshPending = useRef(false);
   const refreshInterpretationStatus = useRef<(() => void) | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const [interpretationStarted, setInterpretationStarted] = useState(false);
   const [interpretationStatusResolved, setInterpretationStatusResolved] = useState(false);
   const [interpretationStatusError, setInterpretationStatusError] = useState<string | null>(null);
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
-  // Language the patient speaks. Defaults to the consultation's patient_language
-  // when it maps to a supported language; staff can override it before starting
-  // translation. Must be one of the 13 OpenAI realtime-translation output
-  // languages because the doctor's speech is translated into this language.
-  const [patientSpeaks, setPatientSpeaks] = useState<PatientSpokenLanguage>(() => {
-    const base = (patientLanguage ?? '').trim().toLowerCase().split('-')[0];
-    return (PATIENT_LANGUAGE_OPTIONS.some((option) => option.value === base)
-      ? base
-      : 'en') as PatientSpokenLanguage;
-  });
+  // Language the patient speaks. The booking preference is the default, but
+  // staff can correct it before translation starts. It must be one of the 13
+  // realtime-translation output languages because the doctor's speech is
+  // translated into this language.
+  const persistedPatientLanguage = (patientLanguage ?? '').trim().toLowerCase().split('-')[0] ?? '';
+  const [patientSpeaks, setPatientSpeaks] = useState<PatientSpokenLanguage>(
+    (INTERPRETATION_LANGUAGE_CODES.has(persistedPatientLanguage) ? persistedPatientLanguage : 'en') as PatientSpokenLanguage,
+  );
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [originalAudioEnabled, setOriginalAudioEnabled] = useState(true);
@@ -212,19 +218,42 @@ export function VideoConsultationRoom({
           if (msg.schema !== 'medora.subtitle.v1'
             || !matchesFence
             || typeof msg.from !== 'string'
-            || !['zh', 'en'].includes(String(msg.fromLanguage))
-            || !['zh', 'en'].includes(String(msg.toLanguage))
+            || !INTERPRETATION_LANGUAGE_CODES.has(String(msg.fromLanguage))
+            || !INTERPRETATION_LANGUAGE_CODES.has(String(msg.toLanguage))
             || typeof msg.sourceText !== 'string'
             || typeof msg.translatedText !== 'string'
             || msg.sourceText.length > 4_000
             || msg.translatedText.length > 4_000
             || typeof msg.isFinal !== 'boolean') return;
-          setSubtitles((prev) => [...prev.slice(-50), msg as unknown as (typeof prev)[number]]);
+          setSubtitles((prev) => {
+            // Interim captions carry the accumulated text of the same turn —
+            // update the speaker's in-progress bubble in place instead of
+            // appending one bubble per delta. A final caption seals the bubble;
+            // the next turn then opens a new one.
+            const next = [...prev];
+            let liveIndex = -1;
+            for (let i = next.length - 1; i >= 0; i -= 1) {
+              const entry = next[i];
+              if (entry && !entry.isFinal && entry.from === msg.from) {
+                liveIndex = i;
+                break;
+              }
+            }
+            if (liveIndex >= 0) next[liveIndex] = msg as unknown as (typeof prev)[number];
+            else next.push(msg as unknown as (typeof prev)[number]);
+            return next.slice(-50);
+          });
         } catch {
           // Ignore malformed subtitle messages.
         }
       })
-      .on(RoomEvent.Disconnected, () => onClose());
+      .on(RoomEvent.Disconnected, (reason) => {
+        console.warn('[video-consultation] LiveKit room disconnected', {
+          roomName,
+          reason,
+        });
+        onCloseRef.current();
+      });
 
     async function connect() {
       setStatus('Connecting…');
@@ -253,7 +282,7 @@ export function VideoConsultationRoom({
       disposed = true;
       lkRoom.disconnect().catch(() => {});
     };
-  }, [livekitUrl, token, roomName, onClose]);
+  }, [livekitUrl, token, roomName]);
 
   useEffect(() => {
     let disposed = false;
@@ -380,13 +409,14 @@ export function VideoConsultationRoom({
     onClose();
   }
 
-  async function startInterpretation(remoteParticipant?: RemoteParticipant) {
+  async function startInterpretation() {
     if (interpretationMutationInFlight.current) return;
     if (!room) return;
-    const targetParticipant = remoteParticipant ?? remoteParticipants[0];
-    if (!targetParticipant) return;
+    const soloTest = remoteParticipants.length === 0;
     if (!window.confirm(
-      'Confirm that every listed participant has explicitly consented to AI captions and translated speech. AI output is assistive; keep original audio available.',
+      soloTest
+        ? 'You are alone in the room. Confirm that you consent to AI captions and translated speech of your own voice. AI output is assistive; keep original audio available.'
+        : 'Confirm that every listed participant has explicitly consented to AI captions and translated speech. AI output is assistive; keep original audio available.',
     )) return;
     setInterpretationLoading(true);
     setInterpretationError(null);
@@ -681,7 +711,14 @@ export function VideoConsultationRoom({
                     {s.fromLanguage} → {s.toLanguage}
                     {!s.isFinal && <span className="ml-1 italic">(typing…)</span>}
                   </span>
-                  <p className="text-slate-200">{s.translatedText || s.sourceText}</p>
+                  <p className="text-slate-200">
+                    {s.translatedText || (s.isFinal ? '' : s.sourceText)}
+                    {!s.translatedText && s.isFinal && s.sourceText && (
+                      <span className="text-slate-500 italic">
+                        {s.sourceText} (no translated text — played as audio)
+                      </span>
+                    )}
+                  </p>
                 </div>
               ))
             )}
@@ -764,9 +801,13 @@ export function VideoConsultationRoom({
           <>
             <span
               className="ml-2 inline-flex items-center overflow-hidden rounded-full border border-slate-600 text-xs"
-              title="Language the patient speaks (translation direction)"
+              title={remoteParticipants.length === 0
+                ? 'Solo test: your speech is translated into this language'
+                : 'Language the patient speaks (translation direction)'}
             >
-              <span className="px-2 py-2 text-slate-400">Patient speaks</span>
+              <span className="px-2 py-2 text-slate-400">
+                {remoteParticipants.length === 0 ? 'Translate my speech to' : 'Patient speaks'}
+              </span>
               <select
                 value={patientSpeaks}
                 onChange={(event) => setPatientSpeaks(event.target.value as PatientSpokenLanguage)}
@@ -779,10 +820,10 @@ export function VideoConsultationRoom({
             </span>
             <button
               onClick={() => void startInterpretation()}
-              disabled={interpretationLoading || remoteParticipants.length === 0}
+              disabled={interpretationLoading}
               title={
                 remoteParticipants.length === 0
-                  ? 'Waiting for a remote participant to join'
+                  ? 'Test mode: only your own voice will be translated'
                   : 'Start real-time translation'
               }
               className="ml-2 rounded-full bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
@@ -790,7 +831,7 @@ export function VideoConsultationRoom({
               {interpretationLoading
                 ? 'Starting…'
                 : remoteParticipants.length === 0
-                  ? 'Waiting for remote participant…'
+                  ? 'Test Translation (solo)'
                   : 'Start Translation'}
             </button>
           </>

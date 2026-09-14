@@ -50,6 +50,12 @@ Never point the production unit at the staging database, share internal API
 secrets between environments, or use staging reconciler health as evidence that
 production is ready.
 
+Run the hosted Node worker with
+`medora-video-interpretation-hosted.service`; do not leave it attached to an
+interactive SSH session. The unit reads the existing root deployment `.env`,
+runs as the unprivileged `ubuntu` deployment user, restarts after failures, and
+uses a process-group shutdown so LiveKit child workers do not survive a deploy.
+
 ## Low-cost LiveKit Cloud deployment
 
 The Build plan has no named non-production deployments. For the staging MVP,

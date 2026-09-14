@@ -1032,13 +1032,19 @@ app.post('/api/v2/internal/video-interpretation/jobs/:jobId/provider-sessions/:s
   const sql = sqlClient();
   const allowedCurrentStates = providerSessionAllowedCurrentStates(body.state);
   const closeResult = body.state === 'CLOSED' ? body.providerCloseReference : body.closeResult;
+  // A stop/fence bumps the job's agent_execution_version to fence the old
+  // execution, but closure reports for that execution's sessions are exactly
+  // what STOPPING finalization waits on. While the job is stopped, accept
+  // reports for earlier execution versions; the allowed-transitions table
+  // above only permits movement toward terminal states.
   const [closed] = await sql<{ id: string; state: string }[]>`
     UPDATE video_consultation_provider_sessions
     SET state = ${body.state}, close_result = ${closeResult ?? null},
         closed_at = CASE WHEN ${body.state} = 'CLOSED' THEN now() ELSE closed_at END,
         orphan_risk = ${body.state === 'ORPHAN_WAIT'}, updated_at = now()
     WHERE id = ${sessionId} AND job_id = ${jobId}
-      AND agent_execution_version = ${job.agent_execution_version}
+      AND (agent_execution_version = ${job.agent_execution_version}
+        OR ${job.desired_state === 'STOPPED'})
       AND state = ANY(${sql.array(allowedCurrentStates)}::text[])
     RETURNING id, state
   `;

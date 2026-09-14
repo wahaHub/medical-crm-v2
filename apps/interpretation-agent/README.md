@@ -14,6 +14,9 @@ Implemented now:
 - a dedicated OpenAI `gpt-realtime-translate` WebSocket adapter using 24 kHz mono PCM16, separate source/translated transcript deltas, translated PCM deltas, and graceful `session.close` draining;
 - server-authoritative LiveKit room listing reconciliation, exact microphone-SID subscriptions, per-speaker VAD/Turn Detector streams, and target-language audio/data publication;
 - one provider translation session per admitted local turn so `session.closed` is the documented final barrier and the entire provider stream maps to exactly one local turn.
+- translated audio starts streaming to LiveKit after a 1.5-second lookahead;
+  sentence-boundary detection closes input without delaying long utterances
+  until full generation has completed.
 - release-approval/allowlist-bound provider targets and server-timestamp budget enforcement without content telemetry;
 - an optional self-hosted claim path with per-host digest credentials, one concurrent job per V1 supervisor, short-lived exact-room LiveKit tokens, 30-second leases, 10-second heartbeats, and fenced takeover;
 - reliable translated-playout boundary events for original/translated/ducking controls without publishing transcript content.

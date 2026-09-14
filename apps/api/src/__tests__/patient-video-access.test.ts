@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   canonicalPatientVideoIdentity,
   closePatientRoom,
+  doctorJoinDecision,
   effectiveConsultationStatus,
   isConsultationOver,
   patientJoinDecision,
@@ -64,6 +65,23 @@ describe('patient video access window', () => {
       nowMs: Date.parse('2026-09-01T10:59:50.000Z'),
     });
     expect(decision).toMatchObject({ allowed: true, ttlSeconds: 10 });
+  });
+});
+
+describe('doctor video access window', () => {
+  const scheduledAt = '2026-09-01T10:00:00.000Z';
+
+  it('opens exactly ten minutes before the scheduled consultation', () => {
+    expect(doctorJoinDecision({
+      scheduledAt,
+      durationMinutes: 30,
+      nowMs: Date.parse('2026-09-01T09:49:59.999Z'),
+    })).toEqual({ allowed: false, reason: 'too_early' });
+    expect(doctorJoinDecision({
+      scheduledAt,
+      durationMinutes: 30,
+      nowMs: Date.parse('2026-09-01T09:50:00.000Z'),
+    })).toMatchObject({ allowed: true });
   });
 });
 

@@ -16,7 +16,11 @@ export function getCrmDb() {
     const dbDebugEnabled = process.env['DB_DEBUG_LOGGING'] === 'true';
     const connectTimeout = parsePositiveInteger(process.env['DB_CONNECT_TIMEOUT_SECONDS'], 10);
     const idleTimeout = parsePositiveInteger(process.env['DB_IDLE_TIMEOUT_SECONDS'], 20);
-    const maxLifetime = parsePositiveInteger(process.env['DB_MAX_LIFETIME_SECONDS'], 60 * 30);
+    // Recycle connections proactively: a silently-dropped socket (NAT idle cut,
+    // pooler state loss) otherwise lingers in the pool and hangs every query
+    // handed to it, which has caused full API outages in production.
+    const maxLifetime = parsePositiveInteger(process.env['DB_MAX_LIFETIME_SECONDS'], 60 * 5);
+    const keepAlive = parsePositiveInteger(process.env['DB_KEEP_ALIVE_SECONDS'], 30);
     const maxConnections = parsePositiveInteger(process.env['DB_MAX_CONNECTIONS'], 10);
     // Supabase transaction-mode pooler (port 6543) does not support prepared
     // statements; disable them when pointed at it.
@@ -27,6 +31,7 @@ export function getCrmDb() {
         connectTimeout,
         idleTimeout,
         maxLifetime,
+        keepAlive,
         disablePrepare,
       });
     }
@@ -36,6 +41,7 @@ export function getCrmDb() {
       idle_timeout: idleTimeout,
       connect_timeout: connectTimeout,
       max_lifetime: maxLifetime,
+      keep_alive: keepAlive,
       onnotice: dbDebugEnabled
         ? (notice) => {
           console.warn('[DB][notice]', notice.message);

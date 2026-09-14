@@ -38,7 +38,10 @@ function parseDispatchMetadata(raw: string): DispatchMetadata {
 const agent = defineAgent<ProcessData>({
   prewarm: async (proc: JobProcess<ProcessData>) => {
     proc.userData.vad = await silero.VAD.load({
-      minSilenceDuration: 550,
+      // 550ms cut sentences apart at every natural pause; 1200ms held the
+      // turn open well but added too much latency. 800ms is the compromise:
+      // sentence-level boundaries mostly survive, response feels faster.
+      minSilenceDuration: 800,
       maxBufferedSpeech: 30_000,
     });
   },

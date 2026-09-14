@@ -6,8 +6,9 @@ import { toActor } from '@medical-crm/application';
 import type { Session } from '@medical-crm/infrastructure/auth';
 import { getCrmDb } from '@medical-crm/infrastructure/database';
 import { AccessToken, LiveKitAPI } from 'livekit-server-sdk';
-import { patientJoinDecision } from '../video-interpretation/patient-video-access.js';
+import { doctorJoinDecision } from '../video-interpretation/patient-video-access.js';
 import {
+  AGENT_CLOSURE_REPORT_GRACE_SECONDS,
   approvedProviderProfile,
   approvedRuntimeProfile,
   createOpaqueSecret,
@@ -27,10 +28,10 @@ import {
   MAX_DEIDENTIFIED_E2E_DURATION_SECONDS,
   LIVEKIT_CONTROL_REQUEST_TIMEOUT_SECONDS,
   LIFECYCLE_RECONCILER_STALE_SECONDS,
-  normalizeLaunchLanguage,
   operatorLanguageFor,
   readHostedAgentConfig,
   readLiveKitConfig,
+  resolveLaunchSourceLanguage,
   reserveInterpretationBudgetMicrodollars,
   SELF_HOST_CLAIM_TIMEOUT_SECONDS,
   syntheticDeidentifiedE2eConsultationApproved,
@@ -41,15 +42,16 @@ import {
   v1ConsentTopologySupported,
   v1CumulativeConsentLimitSatisfied,
 } from '../video-interpretation/security.js';
-import { reconcileExpiredProviderSessions } from '../video-interpretation/provider-session-reconciliation.js';
+import { fenceJobProviderSessionsAsOrphans, reconcileExpiredProviderSessions } from '../video-interpretation/provider-session-reconciliation.js';
 import { reconcileInterpretationBudget } from '../video-interpretation/budget-reconciliation.js';
 import { uniquelyMatchesReturnedHostedDispatch } from '../video-interpretation/hosted-control-plane.js';
 
 const app = new Hono();
 const idSchema = z.string().uuid();
 const consentSchema = z.object({
-  // The V1 authority model supports exactly one operator and one patient.
-  participantIdentities: z.array(z.string().min(1).max(160)).length(2),
+  // The V1 authority model supports one operator and one patient; a single
+  // operator identity alone is also valid (solo self-test of their own track).
+  participantIdentities: z.array(z.string().min(1).max(160)).min(1).max(2),
   policyVersion: z.literal(INTERPRETATION_POLICY_VERSION),
   witnessConfirmed: z.literal(true),
 });
@@ -167,7 +169,7 @@ async function invalidateSelfHostJobs(
   }[]>`
     UPDATE video_consultation_interpretation_jobs
     SET desired_state = 'STOPPED', status = 'STOPPING', exchange_available = false,
-        job_capability_digest = NULL, capability_expires_at = NULL,
+        capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
         agent_execution_version = agent_execution_version + 1,
         authorization_revision = authorization_revision + 1,
         lease_expires_at = NULL, agent_identity_revoked_at = NULL,
@@ -191,11 +193,7 @@ async function invalidateSelfHostJobs(
           authorization_revision = ${Number(job.authorization_revision)}
       WHERE job_id = ${job.id} AND authorized = true
     `;
-    await query`
-      UPDATE video_consultation_provider_sessions
-      SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-      WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-    `;
+    await fenceJobProviderSessionsAsOrphans(query, job.id);
     await query`
       INSERT INTO video_consultation_interpretation_events (
         job_id, event_type, actor_type, actor_id, execution_version, details
@@ -222,7 +220,7 @@ async function invalidateReleaseApprovalJobs(
   }[]>`
     UPDATE video_consultation_interpretation_jobs
     SET desired_state = 'STOPPED', status = 'STOPPING', exchange_available = false,
-        job_capability_digest = NULL, capability_expires_at = NULL,
+        capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
         agent_execution_version = agent_execution_version + 1,
         authorization_revision = authorization_revision + 1,
         lease_expires_at = CASE WHEN runtime_profile = 'SELF_HOSTED_AGENT' THEN NULL ELSE lease_expires_at END,
@@ -252,11 +250,7 @@ async function invalidateReleaseApprovalJobs(
           authorization_revision = ${Number(job.authorization_revision)}
       WHERE job_id = ${job.id} AND authorized = true
     `;
-    await query`
-      UPDATE video_consultation_provider_sessions
-      SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-      WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-    `;
+    await fenceJobProviderSessionsAsOrphans(query, job.id);
     await query`
       INSERT INTO video_consultation_interpretation_events (
         job_id, event_type, actor_type, actor_id, execution_version, details
@@ -333,7 +327,7 @@ app.post('/api/v2/video-consultations/:id/token', async (c) => {
   if (!['SCHEDULED', 'IN_PROGRESS'].includes(consultation.status)) {
     throw new HTTPException(409, { message: 'Consultation is not open for joining' });
   }
-  const join = patientJoinDecision({
+  const join = doctorJoinDecision({
     scheduledAt: consultation.scheduled_at,
     startedAt: consultation.started_at,
     durationMinutes: consultation.duration_minutes,
@@ -1045,7 +1039,12 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     if (healthyProfiles !== requiredProfiles) {
       throw new HTTPException(503, { message: 'VIDEO_INTERPRETATION_RECONCILER_UNHEALTHY' });
     }
-    const sourceLanguage = body.sourceLanguage ?? normalizeLaunchLanguage(consultation.patient_language);
+    // The booking preference is the default. An operator may explicitly
+    // correct it before launch when the patient's spoken language differs.
+    const sourceLanguage = resolveLaunchSourceLanguage(
+      consultation.patient_language,
+      body.sourceLanguage,
+    );
     if (!sourceLanguage) {
       throw new HTTPException(409, { message: 'A supported source language must be confirmed' });
     }
@@ -1415,7 +1414,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
             failure_code = ${failureCode},
             exchange_available = false, agent_execution_version = agent_execution_version + 1,
             authorization_revision = authorization_revision + 1,
-            job_capability_digest = NULL, capability_expires_at = NULL,
+            capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
             hosted_dispatch_deleted_at = NULL, agent_identity_revoked_at = NULL,
             hosted_dispatch_creation_pending = ${!dispatchSetVerified},
             updated_at = now()
@@ -1434,11 +1433,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
             authorization_revision = ${Number(fenced.authorization_revision)}
         WHERE job_id = ${job.id} AND authorized = true
       `;
-      await query`
-        UPDATE video_consultation_provider_sessions
-        SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-        WHERE job_id = ${job.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-      `;
+      await fenceJobProviderSessionsAsOrphans(query, job.id);
       await query`
         INSERT INTO video_consultation_interpretation_events (
           job_id, event_type, actor_type, actor_id, execution_version, details
@@ -1496,7 +1491,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/stop', async (c) => {
     const [invalidated] = await query<JobRow[]>`
       UPDATE video_consultation_interpretation_jobs
       SET desired_state = 'STOPPED', status = 'STOPPING', exchange_available = false,
-          job_capability_digest = NULL, capability_expires_at = NULL,
+          capability_expires_at = LEAST(capability_expires_at, now() + ${AGENT_CLOSURE_REPORT_GRACE_SECONDS} * interval '1 second'),
           agent_execution_version = agent_execution_version + 1,
           authorization_revision = authorization_revision + 1,
           lease_expires_at = CASE WHEN runtime_profile = 'SELF_HOSTED_AGENT' THEN NULL ELSE lease_expires_at END,
@@ -1516,11 +1511,7 @@ app.post('/api/v2/video-consultations/:id/interpretation/stop', async (c) => {
     // This shares the job row lock with provider-session admission. If admission
     // commits first we fence its session here; if STOP commits first, admission
     // revalidation rejects the stale capability.
-    await query`
-      UPDATE video_consultation_provider_sessions
-      SET state = 'ORPHAN_WAIT', orphan_risk = true, updated_at = now()
-      WHERE job_id = ${current.id} AND state IN ('CREATING', 'ACTIVE', 'CLOSING')
-    `;
+    await fenceJobProviderSessionsAsOrphans(query, current.id);
     await query`
       INSERT INTO video_consultation_interpretation_events (
         job_id, event_type, actor_type, actor_id, execution_version, details

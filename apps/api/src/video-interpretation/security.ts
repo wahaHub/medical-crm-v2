@@ -120,13 +120,7 @@ export function resolveLaunchSourceLanguage(
   patientLanguage: string | null | undefined,
   requestedLanguage: InterpretationLanguage | undefined,
 ): InterpretationLanguage | null {
-  const preferredLanguage = normalizeLaunchLanguage(patientLanguage);
-  if (preferredLanguage) {
-    return requestedLanguage === undefined || requestedLanguage === preferredLanguage
-      ? preferredLanguage
-      : null;
-  }
-  return requestedLanguage ?? null;
+  return requestedLanguage ?? normalizeLaunchLanguage(patientLanguage);
 }
 
 // Doctors on the platform speak Chinese; an English operator is kept for the

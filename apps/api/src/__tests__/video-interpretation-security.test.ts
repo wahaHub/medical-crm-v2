@@ -62,10 +62,10 @@ describe('video interpretation security helpers', () => {
     expect(operatorLanguageFor('ru')).toBe('zh');
   });
 
-  it('keeps a supported patient booking language authoritative at launch', () => {
+  it('defaults to the booking language but accepts an explicit operator correction', () => {
     expect(resolveLaunchSourceLanguage('fr-CA', undefined)).toBe('fr');
     expect(resolveLaunchSourceLanguage('fr-CA', 'fr')).toBe('fr');
-    expect(resolveLaunchSourceLanguage('fr-CA', 'en')).toBeNull();
+    expect(resolveLaunchSourceLanguage('fr-CA', 'en')).toBe('en');
     expect(resolveLaunchSourceLanguage(null, 'ja')).toBe('ja');
     expect(resolveLaunchSourceLanguage('ar', undefined)).toBeNull();
   });

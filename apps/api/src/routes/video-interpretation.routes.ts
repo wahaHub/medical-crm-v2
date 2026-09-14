@@ -1039,9 +1039,8 @@ app.post('/api/v2/video-consultations/:id/interpretation/start', async (c) => {
     if (healthyProfiles !== requiredProfiles) {
       throw new HTTPException(503, { message: 'VIDEO_INTERPRETATION_RECONCILER_UNHEALTHY' });
     }
-    // A supported language selected by the patient at booking is authoritative.
-    // The operator may supply a language only for legacy consultations that do
-    // not have a usable preference; they cannot silently override the patient.
+    // The booking preference is the default. An operator may explicitly
+    // correct it before launch when the patient's spoken language differs.
     const sourceLanguage = resolveLaunchSourceLanguage(
       consultation.patient_language,
       body.sourceLanguage,

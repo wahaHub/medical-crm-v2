@@ -50,6 +50,7 @@ interface InterpretationFenceRow {
   desired_state: string;
   status: string;
   valid_until: string;
+  source_language: string;
 }
 
 function getDbSql() {
@@ -109,7 +110,7 @@ app.get('/video-consultations/:id/interpretation-status', async (c) => {
 
   const [job] = await sql<InterpretationFenceRow[]>`
     SELECT id, room_generation, interpretation_generation,
-           agent_execution_version, agent_identity, desired_state, status,
+           agent_execution_version, agent_identity, desired_state, status, source_language,
            LEAST(
              capability_expires_at,
              started_at + maximum_ai_duration_seconds * interval '1 second',
@@ -138,6 +139,7 @@ app.get('/video-consultations/:id/interpretation-status', async (c) => {
       desiredState: job.desired_state,
       status: job.status,
       validUntil: job.valid_until,
+      patientLanguage: job.source_language,
     } : null,
   });
 });

@@ -104,14 +104,13 @@ export function VideoConsultationRoom({
   const [interpretationStatusError, setInterpretationStatusError] = useState<string | null>(null);
   const [interpretationLoading, setInterpretationLoading] = useState(false);
   const [interpretationError, setInterpretationError] = useState<string | null>(null);
-  // Language the patient speaks. A supported booking preference is locked;
-  // staff choose only for legacy consultations without a usable value. It must
-  // be one of the 13 realtime-translation output languages because the
-  // doctor's speech is translated into this language.
+  // Language the patient speaks. The booking preference is the default, but
+  // staff can correct it before translation starts. It must be one of the 13
+  // realtime-translation output languages because the doctor's speech is
+  // translated into this language.
   const persistedPatientLanguage = (patientLanguage ?? '').trim().toLowerCase().split('-')[0] ?? '';
-  const patientLanguageLocked = INTERPRETATION_LANGUAGE_CODES.has(persistedPatientLanguage);
   const [patientSpeaks, setPatientSpeaks] = useState<PatientSpokenLanguage>(
-    (patientLanguageLocked ? persistedPatientLanguage : 'en') as PatientSpokenLanguage,
+    (INTERPRETATION_LANGUAGE_CODES.has(persistedPatientLanguage) ? persistedPatientLanguage : 'en') as PatientSpokenLanguage,
   );
   const [endingMeeting, setEndingMeeting] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
@@ -812,8 +811,7 @@ export function VideoConsultationRoom({
               <select
                 value={patientSpeaks}
                 onChange={(event) => setPatientSpeaks(event.target.value as PatientSpokenLanguage)}
-                disabled={patientLanguageLocked}
-                className="cursor-pointer bg-slate-800 px-2 py-2 font-medium text-white focus:outline-none disabled:cursor-default"
+                className="cursor-pointer bg-slate-800 px-2 py-2 font-medium text-white focus:outline-none"
               >
                 {PATIENT_LANGUAGE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>

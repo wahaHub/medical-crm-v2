@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState, type ReactNode } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   StatusBadge,
   SearchInput,
@@ -143,6 +144,12 @@ function TicketDetailRow({
 // ── Main Component ───────────────────────────────────────────────────
 
 export function SupportList() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  // Deep-link target used by admin ticket notification emails:
+  // `/support?ticket=<id>` (historical `/tickets/<id>` links redirect here).
+  const linkedTicketId = searchParams.get('ticket');
+
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -254,6 +261,25 @@ export function SupportList() {
 
   return (
     <div className="space-y-4">
+      {/* Ticket opened from an email link — pinned above the list so it is
+          reachable regardless of pagination and filters. */}
+      {linkedTicketId && (
+        <section
+          aria-label="Ticket from email link"
+          className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4"
+        >
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-cyan-800">
+            Opened from email link
+          </p>
+          <div className="rounded-lg border border-cyan-100 bg-white">
+            <CaseSupportDetailPanel
+              ticketId={linkedTicketId}
+              onClose={() => router.replace('/support')}
+            />
+          </div>
+        </section>
+      )}
+
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-[200px] max-w-sm">

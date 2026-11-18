@@ -15,7 +15,7 @@ import {
   type MessageConversationSection,
   useMediaUpload,
 } from '@medical-crm/ui';
-import { MessageSquare, Check, X, Search, FolderOpen, Building2, User } from 'lucide-react';
+import { MessageSquare, Check, X, Search, FolderOpen, Building2, User, Download } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useConversations, useMessages } from '@/queries/use-conversations';
 import { useHospitals, useHospitalCases } from '@/queries/use-hospitals';
@@ -748,7 +748,23 @@ export function ChatPanel({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-900">Original</h3>
-                <span className="text-xs text-slate-500">{previewAttachment.type ?? 'file'}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">{previewAttachment.type ?? 'file'}</span>
+                  {previewAttachment.url && (
+                    <a
+                      href={previewAttachment.url}
+                      download={previewAttachment.name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Download ${previewAttachment.name ?? 'original file'}`}
+                      aria-label={`Download ${previewAttachment.name ?? 'original file'}`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <Download size={12} />
+                      Download
+                    </a>
+                  )}
+                </div>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                 {isImageAttachment(previewAttachment) && previewAttachment.url ? (
@@ -774,9 +790,23 @@ export function ChatPanel({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-900">Translated</h3>
-                <span className="text-xs text-slate-500">
-                  {isPdfAttachment(previewAttachment) ? `Target: ${portalLanguage}` : 'Preview only'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    {isPdfAttachment(previewAttachment) ? `Target: ${portalLanguage}` : 'Preview only'}
+                  </span>
+                  {translatedPreviewUrl && (
+                    <a
+                      href={translatedPreviewUrl}
+                      download={`${previewAttachment.name?.replace(/\.pdf$/i, '') ?? 'attachment'}-${portalLanguage}.pdf`}
+                      title="Download translated PDF"
+                      aria-label="Download translated PDF"
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <Download size={12} />
+                      Download
+                    </a>
+                  )}
+                </div>
               </div>
               <div className="h-[70vh] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                 {isPdfAttachment(previewAttachment) ? (
